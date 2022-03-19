@@ -16,7 +16,7 @@ def detect(
         method: str,
         var: str = None,
         keep_other_vars : bool = False, 
-        method_kwargs=None
+        method_kwargs={}
     ) -> xr.Dataset :
     """Map an abrupt shift detection algorithm to the dataset in the temporal
     dimension.
@@ -100,6 +100,7 @@ def detect(
             [data , dataset_with_as], combine_attrs='no_conflicts')
         pass
 
+    # TODO: add git commit / version tag to attributes
     return dataset_with_as
 
 # TODO: implement

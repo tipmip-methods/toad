@@ -22,7 +22,6 @@ setup(
         'seaborn',
         'netcdf4',
         'ipykernel',
-        'cartopy',
         'dask',
         'distributed'
     ]

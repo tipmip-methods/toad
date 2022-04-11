@@ -187,7 +187,10 @@ def map_dts_to_xarray(
     return xr.apply_ufunc(
         construct_detection_ts,
         values_3d,
-        kwargs=dict(times_1d=values_3d[temporal_dim].values),
+        kwargs=dict(
+                times_1d=values_3d[temporal_dim].values,
+                lmin=lmin, lmax=lmax
+            ),
         input_core_dims=[[temporal_dim]],
         output_core_dims=[[temporal_dim]],
         vectorize=True

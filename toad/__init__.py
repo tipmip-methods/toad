@@ -51,10 +51,7 @@ def detect(
             * `var` : original variable data, 
             * `as_var` : Nonzero values denote an AS with the value
               corresponding to its magnitude,
-            * `as_type_var` : classifier for the type of shift.
         The attributes are
-            * `as_types` : list of shift classifier IDs
-            * `as_types_description` : list of corresponding classifier names
             * `as_detection_method` : details on the used as detection method
         If `keep_other_vars` is True, then these results are complemented by the
         unprocessed variables and attributes of the original `data`.

@@ -202,100 +202,95 @@ def detect(
     data: xr.DataArray,
     temporal_dim : str,
     lmin: int = 5, lmax : int = None,
-    dts_eval: str = 'all',
-    thresh: float = None, tdist: int = None
+    **dts_eval_kwargs,
 ):
     method_details = 'asdetect'
-    # Take the maximum of the absolute of the detection time series. The Shift
-    # classification is based on the sign of the maximum.
-    if dts_eval == 'max':
-        pass
-    # Treat consecutive points above thresh as one event, and use its maximum
-    # only. tdist defines how much two subsequent points can be separated at 
-    # max to still be counted as one event. 
-    elif dts_eval == 'events':
-        # check if (thresh, tdist) defined
-        pass
-    else:
-        # default: Each timestep there is an abrupt shift, with the magnitude of
-        # the dts at that time being the magnitude of the shift. The shift
-        # classification is based on the sign of the shift only
-        method_details += ' (all)'
-        dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
-        dts = dts.rename(f'as_{data.name}')
-        dts_type = np.sign(dts).rename(f'as_type_{data.name}')
-        data_with_as = xr.merge([data, dts, dts_type])
-        data_with_as.attrs['as_types'] = [-1, 1]
-        data_with_as.attrs['as_types_description'] = ['negative', 'positive']
 
+    # Compute the detection time series and add the result as dataarray to df,
+    # unless that is explicitly not wished for 
+    dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
+    dts = dts.rename(f'dts_{data.name}')
+
+    # Return plain detection time series without further processing, which needs
+    # to be implemented if needed.
+    if not dts_eval_kwargs:
+        method_details += f' (plain dts: lmin={lmin}, lmax={lmax})'
+    # else:
+    #     method_details += ' (xxx.get('name'))'
+  
+    # Return origindal timeseries together with the dts as joint xr.DataSet
+    data_with_as = xr.merge([data, dts])
     data_with_as.attrs['as_detection_method'] = method_details        
+
     return data_with_as
 
-def re_evaluate_dts(
-    data_with_dts : xr.Dataset,
-    var: str,
-    dts_eval: str,
-    thresh: float = None,
-    tdist : int = None
-):
 
-    # The following re-evaluation assumes that as_<var> is a detection time
-    # series, which is the case if this variable was generated with 
-    # method =='asdetect' and dts_eval == 'all'. 
-    assert data_with_dts.get(f'as_{var}') is not None, \
-            'No detection time series to re-evaluate: ' + \
-            f'No abrupt shift data for variable {var}!'
-    assert data_with_dts.attrs['as_detection_method'] == 'asdetect (all)', \
-            'No detection time series to re-evaluate: ' +\
-            f'as_{var} was not generated with asdetect (all)!'
+# Detection time series evaluation methods =====================================
+# def re_evaluate_dts(
+#     data_with_dts : xr.Dataset,
+#     var: str,
+#     dts_eval: str,
+#     thresh: float = None,
+#     tdist : int = None
+# ):
 
-
-# def detect(**methodkwargs, redo_asd = True):
-#     pass
-    # check xarray 
-    # map_dts_to_xarray
-    # evaluate_dts
-    # return xr dataset with vars
-    # - var (len nt)
-    # - as_var  (len nt, nonzero where as, value=magnitude)
-    # - as_type_var (len nt, value=type)
-    # and attribute
-    # - types = dict{A:..., B:...}
-    # - git commit?s
+#     # The following re-evaluation assumes that as_<var> is a detection time
+#     # series, which is the case if this variable was generated with 
+#     # method =='asdetect' and dts_eval == 'all'. 
+#     assert data_with_dts.get(f'as_{var}') is not None, \
+#             'No detection time series to re-evaluate: ' + \
+#             f'No abrupt shift data for variable {var}!'
+#     assert data_with_dts.attrs['as_detection_method'] == 'asdetect (all)', \
+#             'No detection time series to re-evaluate: ' +\
+#             f'as_{var} was not generated with asdetect (all)!'
 
 
-
-# evaluation of the detection time series =====================================
-# dts evaluations + dts viewer
-# 1 maxima
-# 2 threshold event bunching
-# 3 prob dist fit
-def get_dts_maxima(dts: xr.DataArray, sign='all'):
-    """dts: detection time series data array!"""
-    if sign=='pos':
-        maxt = dts.idmax(dim='time')
-    elif sign=='neg':
-        maxt = dts.idmin(dim='time')
-    else:
-        maxt = np.abs(dts).idxmax(dim="time")
+# # def detect(**methodkwargs, redo_asd = True):
+# #     pass
+#     # check xarray 
+#     # map_dts_to_xarray
+#     # evaluate_dts
+#     # return xr dataset with vars
+#     # - var (len nt)
+#     # - as_var  (len nt, nonzero where as, value=magnitude)
+#     # - as_type_var (len nt, value=type)
+#     # and attribute
+#     # - types = dict{A:..., B:...}
+#     # - git commit?s
 
 
-    dmax = xr.Dataset(
-        data_vars = dict(
-            # time of the maximum
-            maxtime = (["latitude", "longitude"], maxt.data),
-            # value of det_ts at that time
-            maxval = (["latitude", "longitude"], dts.sel(time=maxt).data)),
-        coords = dict(
-            longitude=dts.longitude,
-            latitude=dts.latitude)
-        )
 
-    # shift at first time stamp is due to a nan dts at that location. 
-    # set those to nan. also drop the now useless time label
-    dmax = dmax.where(dmax.maxtime>dts.time[0]).drop_vars("time")
+# # evaluation of the detection time series =====================================
+# # dts evaluations + dts viewer
+# # 1 maxima
+# # 2 threshold event bunching
+# # 3 prob dist fit
+# def get_dts_maxima(dts: xr.DataArray, sign='all'):
+#     """dts: detection time series data array!"""
+#     if sign=='pos':
+#         maxt = dts.idmax(dim='time')
+#     elif sign=='neg':
+#         maxt = dts.idmin(dim='time')
+#     else:
+#         maxt = np.abs(dts).idxmax(dim="time")
 
-    return dmax
+
+#     dmax = xr.Dataset(
+#         data_vars = dict(
+#             # time of the maximum
+#             maxtime = (["latitude", "longitude"], maxt.data),
+#             # value of det_ts at that time
+#             maxval = (["latitude", "longitude"], dts.sel(time=maxt).data)),
+#         coords = dict(
+#             longitude=dts.longitude,
+#             latitude=dts.latitude)
+#         )
+
+#     # shift at first time stamp is due to a nan dts at that location. 
+#     # set those to nan. also drop the now useless time label
+#     dmax = dmax.where(dmax.maxtime>dts.time[0]).drop_vars("time")
+
+#     return dmax
 
 
 # demo zone ===================================================================
@@ -311,4 +306,4 @@ if __name__=='__main__':
 
     res1d = construct_detection_ts(arr1d, times)
     res3d = map_dts_to_ndarray(arr3d, times)
-    resxd = map_dts_to_xarray(darr3d)    
+    resxd = map_dts_to_xarray(darr3d, temporal_dim='t')    

@@ -96,7 +96,7 @@ def detect(
     )
 
     # Save gitversion to dataset
-    dataset_with_as.attrs['git_detect'] = _gitversion
+    dataset_with_as.attrs[f'git_detect_{var}'] = _gitversion
 
     # If True, dataset_with_as is merged into data.
     if keep_other_vars:

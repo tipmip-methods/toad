@@ -8,8 +8,6 @@ January 22
 import numpy as np
 import xarray as xr
 from scipy import stats
-from typing import Tuple
-import copy
 
 # 1D time series analysis of abrupt shifts =====================================
 def centered_segmentation(

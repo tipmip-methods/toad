@@ -4,6 +4,13 @@ import xarray as xr
 
 from .tsanalysis import asdetect
 
+try:
+    import git
+    _gitversion = git.Repo(search_parent_directories=True).head.object.hexsha[:7]
+except:
+    logging.warning('package `gitpython` not installed')
+    _gitversion = 'not specified'
+
 # Each new abrupt shift detection method needs to register the function which
 # maps the analysis to xr.DataArray 
 _detection_methods = {
@@ -88,6 +95,9 @@ def detect(
         **method_kwargs
     )
 
+    # Save gitversion to dataset
+    dataset_with_as.attrs['git_detect'] = _gitversion
+
     # If True, dataset_with_as is merged into data.
     if keep_other_vars:
         assert type(data) == xr.Dataset, \
@@ -97,7 +107,6 @@ def detect(
             [data , dataset_with_as], combine_attrs='no_conflicts')
         pass
 
-    # TODO: add git commit / version tag to attributes
     return dataset_with_as
 
 # TODO: implement

@@ -24,5 +24,8 @@ setup(
         'ipykernel',
         'dask',
         'distributed'
-    ]
+    ],
+    extras_require = {
+        'vc_labels': ['gitpython']
+    }
 )

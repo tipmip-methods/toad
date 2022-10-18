@@ -4,6 +4,8 @@ import xarray as xr
 
 from .tsanalysis import asdetect
 
+from _version import __version__
+
 # Each new abrupt shift detection method needs to register the function which
 # maps the analysis to xr.DataArray 
 _detection_methods = {
@@ -16,7 +18,7 @@ def detect(
         method: str,
         var: str = None,
         keep_other_vars : bool = False, 
-        method_kwargs=None
+        method_kwargs={}
     ) -> xr.Dataset :
     """Map an abrupt shift detection algorithm to the dataset in the temporal
     dimension.
@@ -51,10 +53,7 @@ def detect(
             * `var` : original variable data, 
             * `as_var` : Nonzero values denote an AS with the value
               corresponding to its magnitude,
-            * `as_type_var` : classifier for the type of shift.
         The attributes are
-            * `as_types` : list of shift classifier IDs
-            * `as_types_description` : list of corresponding classifier names
             * `as_detection_method` : details on the used as detection method
         If `keep_other_vars` is True, then these results are complemented by the
         unprocessed variables and attributes of the original `data`.
@@ -90,6 +89,9 @@ def detect(
         temporal_dim=temporal_dim,
         **method_kwargs
     )
+
+    # Save gitversion to dataset
+    dataset_with_as.attrs[f'git_detect_{var}'] = __version__
 
     # If True, dataset_with_as is merged into data.
     if keep_other_vars:

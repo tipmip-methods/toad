@@ -5,11 +5,10 @@ import xarray as xr
 from .tsanalysis import asdetect
 
 try:
-    import git
-    _gitversion = git.Repo(search_parent_directories=True).head.object.hexsha[:7]
+    with open('_VERSION', 'r') as verfile:
+        _gitversion = verfile.read()
 except:
-    logging.warning('package `gitpython` not installed')
-    _gitversion = 'not specified'
+    _gitversion = 'not_specified'
 
 # Each new abrupt shift detection method needs to register the function which
 # maps the analysis to xr.DataArray 

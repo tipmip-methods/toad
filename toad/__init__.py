@@ -4,11 +4,7 @@ import xarray as xr
 
 from .tsanalysis import asdetect
 
-try:
-    with open('_VERSION', 'r') as verfile:
-        _gitversion = verfile.read()
-except:
-    _gitversion = 'not_specified'
+from _version import __version__
 
 # Each new abrupt shift detection method needs to register the function which
 # maps the analysis to xr.DataArray 
@@ -95,7 +91,7 @@ def detect(
     )
 
     # Save gitversion to dataset
-    dataset_with_as.attrs[f'git_detect_{var}'] = _gitversion
+    dataset_with_as.attrs[f'git_detect_{var}'] = __version__
 
     # If True, dataset_with_as is merged into data.
     if keep_other_vars:

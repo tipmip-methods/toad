@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+from _version import __version__
 
 def readme():
     with open('README.md') as f:
@@ -6,7 +7,7 @@ def readme():
 
 setup(
     name='toad',
-    version='0.1',
+    version=__version__,
     description='Tipping and other abrupt events detector',
     long_description=readme(),
     author='Sina Loriani',

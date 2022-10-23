@@ -47,11 +47,12 @@ def cluster(
     dts_func : Callable[[float], bool] = None,
     scaler : str = 'StandardScaler'
 ):
-    method_details = f'dbscan (eps={eps}, min_samples={min_samples})'
+    method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
 
-    # data preparation 
+    # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
-    coords = df[list(data.dims.keys())]
+    dims = list(data.dims.keys())
+    coords = df[dims]
     vals = df[[f'dts_{var}']]
 
     if scaler == 'StandardScaler':
@@ -61,7 +62,7 @@ def cluster(
     
     scaled_coords = scaler.fit_transform(coords)
 
-    # clustering
+    # Clustering
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
     y_pred = dbscan.fit_predict(
                         scaled_coords, 
@@ -70,18 +71,13 @@ def cluster(
     lbl_dbscan = dbscan.labels_.astype(float)
     labels = np.unique(lbl_dbscan)
 
-    # writing to dataset
+    # Writing to dataset
     df_var[[f'cluster_{var}']] = -1
     df_var[[f'dts_{var}']] = df_dts[[f'dts_{var}']]
     df_var.loc[df.index, f'cluster_{var}'] = lbl_dbscan
-    ct, cx, cy = np.array([ df_var.loc[df_var.get(f'cluster_{var}')==cluster].mean()[list(data.dims.keys())].values.tolist() for cluster in labels]).T
 
-    # TODO make independent to dim names
-    dataset_with_clusterlabels = df_var.set_index(['time','x','y']).to_xarray()
+    dataset_with_clusterlabels = df_var.set_index(dims).to_xarray()
     dataset_with_clusterlabels.attrs[f'{var}_clusters'] = labels
-    dataset_with_clusterlabels.attrs[f'{var}_cluster_times'] = ct
-    dataset_with_clusterlabels.attrs[f'{var}_cluster_x'] = cx
-    dataset_with_clusterlabels.attrs[f'{var}_cluster_y'] = cy
 
     dataset_with_clusterlabels.attrs[f'{var}_clustering_method'] = method_details
 

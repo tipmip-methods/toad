@@ -114,7 +114,6 @@ def detect(
 
 def cluster(
         data: xr.Dataset,
-        temporal_dim : str,
         var : str,
         method : str,
         method_kwargs = {}

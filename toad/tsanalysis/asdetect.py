@@ -206,7 +206,7 @@ def detect(
     # Compute the detection time series and add the result as dataarray to df,
     # unless that is explicitly not wished for 
     dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
-    dts = dts.rename(f'dts_{data.name}')
+    dts = dts.rename(f'{data.name}_dts')
 
     # Return origindal timeseries together with the dts as joint xr.DataSet
     data_with_as = xr.merge([data, dts])

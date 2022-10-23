@@ -6,11 +6,9 @@ pipeline.
 October 22
 """
 
-
 import xarray as xr
 import numpy as np
 from typing import Callable
-import itertools
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.cluster import DBSCAN
@@ -22,7 +20,7 @@ def construct_dataframe(
     dts_func : Callable[[float], bool] = None,
 ):
     df_var = data.get(var).to_dataframe().reset_index()
-    df_dts = data.get(f'dts_{var}').to_dataframe().reset_index()
+    df_dts = data.get(f'{var}_dts').to_dataframe().reset_index()
 
     if not var_func:
         var_func = np.vectorize(lambda x: True)
@@ -30,7 +28,7 @@ def construct_dataframe(
         dts_func = np.vectorize(lambda x: True)
 
     var_mask = var_func(df_var.get(var))
-    dts_mask = dts_func(df_dts.get(f'dts_{var}'))
+    dts_mask = dts_func(df_dts.get(f'{var}_dts'))
 
     df = df_dts.loc[var_mask & dts_mask]
 
@@ -48,12 +46,15 @@ def cluster(
     scaler : str = 'StandardScaler'
 ):
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
+    print(var)
 
     # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
     dims = list(data.dims.keys())
     coords = df[dims]
-    vals = df[[f'dts_{var}']]
+    vals = df[[f'{var}_dts']]
+
+    print(df_dts)
 
     if scaler == 'StandardScaler':
         scaler = StandardScaler()
@@ -72,21 +73,13 @@ def cluster(
     labels = np.unique(lbl_dbscan)
 
     # Writing to dataset
-    df_var[[f'cluster_{var}']] = -1
-    df_var[[f'dts_{var}']] = df_dts[[f'dts_{var}']]
-    df_var.loc[df.index, f'cluster_{var}'] = lbl_dbscan
+    df_var[[f'{var}_cluster']] = -1
+    df_var[[f'{var}_dts']] = df_dts[[f'{var}_dts']]
+    df_var.loc[df.index, f'{var}_cluster'] = lbl_dbscan
 
     dataset_with_clusterlabels = df_var.set_index(dims).to_xarray()
     dataset_with_clusterlabels.attrs[f'{var}_clusters'] = labels
 
     dataset_with_clusterlabels.attrs[f'{var}_clustering_method'] = method_details
 
-
     return dataset_with_clusterlabels
-
-
-if __name__ =='__main__':
-
-    ds = xr.open_dataset('../../data/generated/ice_with_as.nc')
-    ds1 = cluster(ds, 'time', 'thk', 0.2, 20, lambda x: x>0, lambda x: np.abs(x)>0.5)
-    print(ds1)

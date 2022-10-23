@@ -1,0 +1,96 @@
+"""dbscan module
+
+Uses the scipy dbscan clustering algorithm and a taylored preprocessing
+pipeline.
+
+October 22
+"""
+
+
+import xarray as xr
+import numpy as np
+from typing import Callable
+import itertools
+
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.cluster import DBSCAN
+
+def construct_dataframe(
+    data : xr.Dataset,
+    var : str,
+    var_func : Callable[[float], bool] = None,
+    dts_func : Callable[[float], bool] = None,
+):
+    df_var = data.get(var).to_dataframe().reset_index()
+    df_dts = data.get(f'dts_{var}').to_dataframe().reset_index()
+
+    if not var_func:
+        var_func = np.vectorize(lambda x: True)
+    if not dts_func:
+        dts_func = np.vectorize(lambda x: True)
+
+    var_mask = var_func(df_var.get(var))
+    dts_mask = dts_func(df_dts.get(f'dts_{var}'))
+
+    df = df_dts.loc[var_mask & dts_mask]
+
+    return df_var, df_dts, df
+
+
+# Main function called from outside ============================================
+def cluster(
+    data: xr.DataArray,
+    var : str,
+    eps : float,
+    min_samples : int,
+    var_func : Callable[[float], bool] = None,
+    dts_func : Callable[[float], bool] = None,
+    scaler : str = 'StandardScaler'
+):
+    method_details = f'dbscan (eps={eps}, min_samples={min_samples})'
+
+    # data preparation 
+    df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
+    coords = df[list(data.dims.keys())]
+    vals = df[[f'dts_{var}']]
+
+    if scaler == 'StandardScaler':
+        scaler = StandardScaler()
+    elif scaler == 'MinMaxScaler':
+        scaler = MinMaxScaler() 
+    
+    scaled_coords = scaler.fit_transform(coords)
+
+    # clustering
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    y_pred = dbscan.fit_predict(
+                        scaled_coords, 
+                        sample_weight=vals.values.flatten()
+                    )
+    lbl_dbscan = dbscan.labels_.astype(float)
+    labels = np.unique(lbl_dbscan)
+
+    # writing to dataset
+    df_var[[f'cluster_{var}']] = -1
+    df_var[[f'dts_{var}']] = df_dts[[f'dts_{var}']]
+    df_var.loc[df.index, f'cluster_{var}'] = lbl_dbscan
+    ct, cx, cy = np.array([ df_var.loc[df_var.get(f'cluster_{var}')==cluster].mean()[list(data.dims.keys())].values.tolist() for cluster in labels]).T
+
+    # TODO make independent to dim names
+    dataset_with_clusterlabels = df_var.set_index(['time','x','y']).to_xarray()
+    dataset_with_clusterlabels.attrs[f'{var}_clusters'] = labels
+    dataset_with_clusterlabels.attrs[f'{var}_cluster_times'] = ct
+    dataset_with_clusterlabels.attrs[f'{var}_cluster_x'] = cx
+    dataset_with_clusterlabels.attrs[f'{var}_cluster_y'] = cy
+
+    dataset_with_clusterlabels.attrs[f'{var}_clustering_method'] = method_details
+
+
+    return dataset_with_clusterlabels
+
+
+if __name__ =='__main__':
+
+    ds = xr.open_dataset('../../data/generated/ice_with_as.nc')
+    ds1 = cluster(ds, 'time', 'thk', 0.2, 20, lambda x: x>0, lambda x: np.abs(x)>0.5)
+    print(ds1)

@@ -201,7 +201,7 @@ def detect(
     temporal_dim : str,
     lmin: int = 5, lmax : int = None
 ):
-    method_details = 'asdetect'
+    method_details = f'asdetect (lmin={lmin}, lmax={lmax}'
 
     # Compute the detection time series and add the result as dataarray to df,
     # unless that is explicitly not wished for 
@@ -210,7 +210,7 @@ def detect(
 
     # Return origindal timeseries together with the dts as joint xr.DataSet
     data_with_as = xr.merge([data, dts])
-    data_with_as.attrs['as_detection_method'] = method_details        
+    data_with_as.attrs[f'{data.name}_as_detection_method'] = method_details        
 
     return data_with_as
 

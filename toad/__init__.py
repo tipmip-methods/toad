@@ -1,8 +1,10 @@
 import logging
 from typing import Union
 import xarray as xr
+from xarray.core import dataset
 
 from .tsanalysis import asdetect
+from .clustering import dbscan
 
 from _version import __version__
 
@@ -10,6 +12,12 @@ from _version import __version__
 # maps the analysis to xr.DataArray 
 _detection_methods = {
     'asdetect': asdetect.detect
+} 
+
+# Each new clustering detection procedure needs to register the function which
+# maps the analysis to xr.DataArray 
+_clustering_methods = {
+    'dbscan': dbscan.cluster
 } 
 
 def detect(
@@ -91,7 +99,7 @@ def detect(
     )
 
     # Save gitversion to dataset
-    dataset_with_as.attrs[f'git_detect_{var}'] = __version__
+    dataset_with_as.attrs[f'{var}_git_detect'] = __version__
 
     # If True, dataset_with_as is merged into data.
     if keep_other_vars:
@@ -104,7 +112,30 @@ def detect(
 
     return dataset_with_as
 
-# TODO: implement
-def cluster():
-    print('clustering')
-    ...
+def cluster(
+        data: xr.Dataset,
+        var : str,
+        method : str,
+        method_kwargs = {}
+    ) -> xr.Dataset:
+    """
+    """
+    assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
+    assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
+    assert f'{var}_dts' in list(data.data_vars.keys()), \
+                                f'data lacks detection time series {var}_dts'
+
+    logging.info(f'looking up clusterer {method}')
+    clusterer = _clustering_methods[method]
+
+    logging.info(f'applying clusterer {method} to data')
+    dataset_with_clusterlabels = clusterer(
+        data=data, 
+        var=var,
+        **method_kwargs
+    )
+
+    # Save gitversion to dataset
+    dataset_with_clusterlabels.attrs[f'{var}_git_cluster'] = __version__
+
+    return dataset_with_clusterlabels

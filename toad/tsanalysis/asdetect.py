@@ -199,26 +199,18 @@ def map_dts_to_xarray(
 def detect(
     data: xr.DataArray,
     temporal_dim : str,
-    lmin: int = 5, lmax : int = None,
-    **dts_eval_kwargs,
+    lmin: int = 5, lmax : int = None
 ):
-    method_details = 'asdetect'
+    method_details = f'asdetect (lmin={lmin}, lmax={lmax}'
 
     # Compute the detection time series and add the result as dataarray to df,
     # unless that is explicitly not wished for 
     dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
-    dts = dts.rename(f'dts_{data.name}')
+    dts = dts.rename(f'{data.name}_dts')
 
-    # Return plain detection time series without further processing, which needs
-    # to be implemented if needed.
-    if not dts_eval_kwargs:
-        method_details += f' (plain dts: lmin={lmin}, lmax={lmax})'
-    # else:
-    #     method_details += ' (xxx.get('name'))'
-  
     # Return origindal timeseries together with the dts as joint xr.DataSet
     data_with_as = xr.merge([data, dts])
-    data_with_as.attrs['as_detection_method'] = method_details        
+    data_with_as.attrs[f'{data.name}_as_detection_method'] = method_details        
 
     return data_with_as
 

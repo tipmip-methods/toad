@@ -52,7 +52,7 @@ def cluster(
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
     dims = list(data.dims.keys())
     coords = df[dims]
-    vals = df[[f'{var}_dts']]
+    vals = np.abs(df[[f'{var}_dts']])
 
     print(df_dts)
 

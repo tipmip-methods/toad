@@ -46,15 +46,12 @@ def cluster(
     scaler : str = 'StandardScaler'
 ):
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
-    print(var)
 
     # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
     dims = list(data.dims.keys())
     coords = df[dims]
     vals = np.abs(df[[f'{var}_dts']])
-
-    print(df_dts)
 
     if scaler == 'StandardScaler':
         scaler = StandardScaler()

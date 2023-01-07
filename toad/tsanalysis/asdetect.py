@@ -99,7 +99,7 @@ def construct_detection_ts(
     detection_ts = np.zeros_like(values_1d)
 
     if np.isnan(values_1d).any():
-        print("you tried evaluating a ts with nan entries")
+        #print("you tried evaluating a ts with nan entries")
         return detection_ts
 
     # default to have at least three gradients (needed for grad distribution)
@@ -200,19 +200,30 @@ def detect(
     data: xr.DataArray,
     temporal_dim : str,
     lmin: int = 5, lmax : int = None
-):
+) -> xr.DataArray:
+    """ Callable function interfacing this module 
+    
+    Parameters:
+    -----------
+    data: 3d-xr.DataArray with shape (nt,nx,ny) and time index 'temporal_dim' 
+    temporal_dim: dimension in which to perform the as detection
+    lmin: smallest segment length (default = 5)
+    lmax: highest segment length (default = n/3)
+
+    Returns:
+    --------
+    dts: detection time series as 3d-xr.DataArray with shape (nt,nx,ny)
+    """
+    
     method_details = f'asdetect (lmin={lmin}, lmax={lmax}'
 
     # Compute the detection time series and add the result as dataarray to df,
     # unless that is explicitly not wished for 
     dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
     dts = dts.rename(f'{data.name}_dts')
+    dts.attrs[f'{data.name}_as_detection_method'] = method_details        
 
-    # Return origindal timeseries together with the dts as joint xr.DataSet
-    data_with_as = xr.merge([data, dts])
-    data_with_as.attrs[f'{data.name}_as_detection_method'] = method_details        
-
-    return data_with_as
+    return dts
 
 
 # Detection time series evaluation methods =====================================

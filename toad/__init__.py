@@ -92,23 +92,28 @@ def detect(
     #   as_var (<temporal_dim>, SD1, SD2)
     #   as_types_var (<temporal_dim>, SD1, SD2)
     logging.info(f'applying detector {method} to data')
-    dataset_with_as = detector(
+    data_array_dts = detector(
         data=data_array, 
         temporal_dim=temporal_dim,
         **method_kwargs
     )
 
     # Save gitversion to dataset
-    dataset_with_as.attrs[f'{var}_git_detect'] = __version__
+    data_array_dts.attrs[f'{var}_git_detect'] = __version__
 
-    # If True, dataset_with_as is merged into data.
+    # If True, dataset_with_as is merged into data. Else, only return dataarray
+    # with its dts together as one dataset.
     if keep_other_vars:
         assert type(data) == xr.Dataset, \
                 'Using keep_other_vars requires type(data) == xr.DataSet!'
-        logging.info(f'merging new variables as_{var} and as_types_{var}')
+        logging.info(f'merging new variable {var}_dts into dataset')
         dataset_with_as = xr.merge(
-            [data , dataset_with_as], combine_attrs='no_conflicts')
-        pass
+            [data, data_array_dts])
+    else:
+        logging.info(f'merging {var} and {var}_dts')
+        dataset_with_as = xr.merge(
+            [data_array , data_array_dts])
+        dataset_with_as.attrs = []
 
     return dataset_with_as
 

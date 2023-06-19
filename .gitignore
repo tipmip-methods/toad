@@ -1,6 +1,9 @@
 .vscode/
 *.egg-info/
+build/
 __pycache__/
 **/dask-worker-space/
 **/.ipynb_checkpoints/
-demo/data/
+data/
+
+*playground*

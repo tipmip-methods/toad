@@ -34,19 +34,13 @@ def construct_dataframe(
 
     return df_var, df_dts, df
 
-
-# Main function called from outside ============================================
-def cluster(
-    data: xr.DataArray,
-    var : str,
-    eps : float,
-    min_samples : int,
+def prepare_dataframe(
+    data: xr.Dataset,
+    var: str, 
     var_func : Callable[[float], bool] = None,
     dts_func : Callable[[float], bool] = None,
     scaler : str = 'StandardScaler'
 ):
-    method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
-
     # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
     dims = list(data.dims.keys())
@@ -60,11 +54,27 @@ def cluster(
     
     scaled_coords = scaler.fit_transform(coords)
 
+    return df_var, df_dts, df, dims, vals.values.flatten(), scaled_coords
+
+# Main function called from outside ============================================
+def cluster(
+    data: xr.DataArray,
+    var : str,
+    eps : float,
+    min_samples : int,
+    var_func : Callable[[float], bool] = None,
+    dts_func : Callable[[float], bool] = None,
+    scaler : str = 'StandardScaler'
+):
+    method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
+
+    df_var, df_dts, df, dims, weights, scaled_coords = prepare_dataframe(data, var, var_func, dts_func, scaler)
+
     # Clustering
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
     y_pred = dbscan.fit_predict(
                         scaled_coords, 
-                        sample_weight=vals.values.flatten()
+                        sample_weight=weights
                     )
     lbl_dbscan = dbscan.labels_.astype(float)
     labels = np.unique(lbl_dbscan)

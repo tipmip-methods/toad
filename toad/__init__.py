@@ -145,3 +145,117 @@ def cluster(
     dataset_with_clusterlabels.attrs[f'{var}_git_cluster'] = __version__
 
     return dataset_with_clusterlabels
+
+
+
+@xr.register_dataset_accessor("toad")
+class ToadAccessor:
+
+    def __init__(self, xarr_obj):
+        self._obj = xarr_obj
+
+    def _has_dts(self, var_name=None, strict=True):
+        """Check existence of a detection time series.
+
+        Default: Check if there is one variable named "*_dts".
+        
+        var_name: Name of variable to check for. Optional, if not provided then
+        returns True if there is one detection time series in the dataset
+
+        strict: If set, then returns True iff there is exactly one dts. 
+
+        """
+        # check if detection time series exists for that variable
+        if var_name:
+            if (var_name+'_dts') in list(self._obj.keys()):
+                return True 
+        # must include exactly one detection time series
+        elif ''.join(list(self._obj.keys())).count('dts')==1:
+            return True
+        # strict determines output when there are more than one dts 
+        elif ''.join(list(self._obj.keys())).count('dts')>1:
+            print('Warning: More than one detection time series.')
+            return False if strict else True
+        else:
+            return False
+
+    def _has_clusters(self, var_name=None, strict=True):
+        """Check existence of cluster labels.
+
+        Default: Check if there is one variable named "*_cluster".
+        
+        var_name: Name of variable to check for. Optional, if not provided then
+        returns True iff there is exactly one cluster label set
+
+        """
+        # check if cluster labels exists for that variable
+        if var_name:
+            if (var_name+'_cluster') in list(self._obj.keys()):
+                return True 
+        # must include exactly one cluster label set
+        elif ''.join(list(self._obj.keys())).count('cluster')==1:
+            return True
+        # strict determines output when there is more than one label set 
+        elif ''.join(list(self._obj.keys())).count('cluster')>1:
+            print('Warning: More than one set of cluster labels.')
+            return False if strict else True
+        else:
+            return False
+
+    def detect(
+        self,
+        temporal_dim: str,
+        method: str,
+        var: str = None,
+        keep_other_vars : bool = False, 
+        method_kwargs={}
+    ):
+        """ Provide toad.detect function as accessor
+        
+        I.e. allows to use
+
+            ds1 = ds.toad.detect(*args, **kwargs)
+        
+        alternatively to
+
+            ds1 = toad.detect(ds, *args, **kwargs)
+
+        """
+        return detect(
+            data = self._obj,
+            temporal_dim = temporal_dim,
+            method = method,
+            var = var,
+            keep_other_vars = keep_other_vars, 
+            method_kwargs = method_kwargs
+        )
+    
+
+    def cluster(
+        self,
+        var : str,
+        method : str,
+        method_kwargs = {}
+    ):
+        """ Provide toad.detect function as accessor
+        
+        I.e. allows to use
+
+            ds2 = ds1.toad.cluster(*args, **kwargs)
+        
+        alternatively to
+
+            ds2 = toad.cluster(ds1, *args, **kwargs)
+
+        """
+        assert self._has_dts(var_name=var), ' '
+        return cluster(
+            data = self._obj,
+            method = method,
+            var = var,
+            method_kwargs = method_kwargs
+        )
+        
+
+    # def __call__(self, idx=None):
+    #     pass

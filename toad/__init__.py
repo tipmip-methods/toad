@@ -81,6 +81,7 @@ def detect(
         logging.info(f'extracting variable {var} from Dataset')
         data_array = data.get(var) 
     else:
+        assert type(data) == xr.DataArray, 'Please provide var or an xr.DataArray!'
         data_array = data
 
     assert data_array.ndim == 3, 'data must be 3-dimensional!'

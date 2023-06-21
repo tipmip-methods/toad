@@ -5,6 +5,8 @@ from xarray.core import dataset
 
 from .tsanalysis import asdetect
 from .clustering import dbscan
+from .clustering.cluster import Clustering
+from .utils import infer_dims
 
 from _version import __version__
 
@@ -144,118 +146,168 @@ def cluster(
     # Save gitversion to dataset
     dataset_with_clusterlabels.attrs[f'{var}_git_cluster'] = __version__
 
-    return dataset_with_clusterlabels
+    return dataset_with_clusterlabels    
 
-
-
-@xr.register_dataset_accessor("toad")
+@xr.register_dataarray_accessor("toad")
 class ToadAccessor:
 
-    def __init__(self, xarr_obj):
-        self._obj = xarr_obj
+    def __init__(self, xarr_da):
+        self._da = xarr_da
 
-    def _has_dts(self, var_name=None, strict=True):
-        """Check existence of a detection time series.
-
-        Default: Check if there is one variable named "*_dts".
-        
-        var_name: Name of variable to check for. Optional, if not provided then
-        returns True if there is one detection time series in the dataset
-
-        strict: If set, then returns True iff there is exactly one dts. 
-
-        """
-        # check if detection time series exists for that variable
-        if var_name:
-            if (var_name+'_dts') in list(self._obj.keys()):
-                return True 
-        # must include exactly one detection time series
-        elif ''.join(list(self._obj.keys())).count('dts')==1:
-            return True
-        # strict determines output when there are more than one dts 
-        elif ''.join(list(self._obj.keys())).count('dts')>1:
-            print('Warning: More than one detection time series.')
-            return False if strict else True
+    def _apply_clustering(self, clustering, regions):
+        if clustering:
+            return clustering(self._da, regions)
         else:
-            return False
+            return self._da
+    
+    # def _infer_dims(self, tdim=None):
 
-    def _has_clusters(self, var_name=None, strict=True):
-        """Check existence of cluster labels.
+    #     # spatial dims are all non-temporal dims
+    #     if tdim:
+    #         sdims = list(self._da.dims)
+    #         assert tdim in self._da.dims, f"provided temporal dim '{tdim}' is not in the dimensions of the dataset!"
+    #         sdims.remove(tdim)
+    #         print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
+    #         return (tdim, sdims)
+    #     # check if one of the standard combinations in present and auto-infer
+    #     else:
+    #         for pair in [('x','y'),('lat','lon'),('latitude','longitude')]:
+    #             if all(i in list(self._da.dims) for i in pair):
+    #                 sdims = pair
+    #                 tdim = list(self._da.dims)
+    #                 for sd in sdims:
+    #                     tdim.remove(sd)
 
-        Default: Check if there is one variable named "*_cluster".
+    #                 print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
+    #                 return (tdim[0], sdims)
+
+    # def spatial_mask(self, clustering=None):
+    #     return self._apply_clustering(clustering, regions=True)
+
+    def timeseries(
+                self, 
+                clustering=None, 
+                regions=True,
+                how=('aggr'), 
+                temporal_dim=None
+            ):   
         
-        var_name: Name of variable to check for. Optional, if not provided then
-        returns True iff there is exactly one cluster label set
+        da = self._apply_clustering(clustering, regions)
+      
+        tdim, sdims = infer_dims(self._da, tdim=temporal_dim)
 
-        """
-        # check if cluster labels exists for that variable
-        if var_name:
-            if (var_name+'_cluster') in list(self._obj.keys()):
-                return True 
-        # must include exactly one cluster label set
-        elif ''.join(list(self._obj.keys())).count('cluster')==1:
-            return True
-        # strict determines output when there is more than one label set 
-        elif ''.join(list(self._obj.keys())).count('cluster')>1:
-            print('Warning: More than one set of cluster labels.')
-            return False if strict else True
-        else:
-            return False
-
-    def detect(
-        self,
-        temporal_dim: str,
-        method: str,
-        var: str = None,
-        keep_other_vars : bool = False, 
-        method_kwargs={}
-    ):
-        """ Provide toad.detect function as accessor
+        if 'aggr' in how:
+            timeseries = da.sum(sdims)
         
-        I.e. allows to use
+        if 'normalised' in how:
+            timeseries = timeseries / timeseries.isel({f'{tdim}':0})
 
-            ds1 = ds.toad.detect(*args, **kwargs)
+        return timeseries
+
         
-        alternatively to
 
-            ds1 = toad.detect(ds, *args, **kwargs)
+    # def _has_dts(self, var_name=None, strict=True):
+    #     """Check existence of a detection time series.
 
-        """
-        return detect(
-            data = self._obj,
-            temporal_dim = temporal_dim,
-            method = method,
-            var = var,
-            keep_other_vars = keep_other_vars, 
-            method_kwargs = method_kwargs
-        )
+    #     Default: Check if there is one variable named "*_dts".
+        
+    #     var_name: Name of variable to check for. Optional, if not provided then
+    #     returns True if there is one detection time series in the dataset
+
+    #     strict: If set, then returns True iff there is exactly one dts. 
+
+    #     """
+    #     # check if detection time series exists for that variable
+    #     if var_name:
+    #         if (var_name+'_dts') in list(self._obj.keys()):
+    #             return True 
+    #     # must include exactly one detection time series
+    #     elif ''.join(list(self._obj.keys())).count('dts')==1:
+    #         return True
+    #     # strict determines output when there are more than one dts 
+    #     elif ''.join(list(self._obj.keys())).count('dts')>1:
+    #         print('Warning: More than one detection time series.')
+    #         return False if strict else True
+    #     else:
+    #         return False
+
+    # def _has_clusters(self, var_name=None, strict=True):
+    #     """Check existence of cluster labels.
+
+    #     Default: Check if there is one variable named "*_cluster".
+        
+    #     var_name: Name of variable to check for. Optional, if not provided then
+    #     returns True iff there is exactly one cluster label set
+
+    #     """
+    #     # check if cluster labels exists for that variable
+    #     if var_name:
+    #         if (var_name+'_cluster') in list(self._obj.keys()):
+    #             return True 
+    #     # must include exactly one cluster label set
+    #     elif ''.join(list(self._obj.keys())).count('cluster')==1:
+    #         return True
+    #     # strict determines output when there is more than one label set 
+    #     elif ''.join(list(self._obj.keys())).count('cluster')>1:
+    #         print('Warning: More than one set of cluster labels.')
+    #         return False if strict else True
+    #     else:
+    #         return False
+
+    # def detect(
+    #     self,
+    #     temporal_dim: str,
+    #     method: str,
+    #     var: str = None,
+    #     keep_other_vars : bool = False, 
+    #     method_kwargs={}
+    # ):
+    #     """ Provide toad.detect function as accessor
+        
+    #     I.e. allows to use
+
+    #         ds1 = ds.toad.detect(*args, **kwargs)
+        
+    #     alternatively to
+
+    #         ds1 = toad.detect(ds, *args, **kwargs)
+
+    #     """
+    #     return detect(
+    #         data = self._obj,
+    #         temporal_dim = temporal_dim,
+    #         method = method,
+    #         var = var,
+    #         keep_other_vars = keep_other_vars, 
+    #         method_kwargs = method_kwargs
+    #     )
     
 
-    def cluster(
-        self,
-        var : str,
-        method : str,
-        method_kwargs = {}
-    ):
-        """ Provide toad.detect function as accessor
+    # def cluster(
+    #     self,
+    #     var : str,
+    #     method : str,
+    #     method_kwargs = {}
+    # ):
+    #     """ Provide toad.detect function as accessor
         
-        I.e. allows to use
+    #     I.e. allows to use
 
-            ds2 = ds1.toad.cluster(*args, **kwargs)
+    #         ds2 = ds1.toad.cluster(*args, **kwargs)
         
-        alternatively to
+    #     alternatively to
 
-            ds2 = toad.cluster(ds1, *args, **kwargs)
+    #         ds2 = toad.cluster(ds1, *args, **kwargs)
 
-        """
-        assert self._has_dts(var_name=var), ' '
-        return cluster(
-            data = self._obj,
-            method = method,
-            var = var,
-            method_kwargs = method_kwargs
-        )
+    #     """
+    #     assert self._has_dts(var_name=var), ' '
+    #     return cluster(
+    #         data = self._obj,
+    #         method = method,
+    #         var = var,
+    #         method_kwargs = method_kwargs
+    #     )
         
 
-    # def __call__(self, idx=None):
-    #     pass
+    # # def __call__(self, idx=None):
+    # #     pass

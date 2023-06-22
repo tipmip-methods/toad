@@ -19,8 +19,16 @@ the detection time series as auxiliary variable to a dataset. The git hash is
 additionally saved as an attribute.
 
 ## Repository information
-The active working branch is `develop`, with the release branch `main` only to
-be used for releases. Features are to be developed in [separate feature branches](https://nvie.com/posts/a-successful-git-branching-model/). 
+We use [trunk-based
+development](https://medium.com/@vafrcor2009/gitflow-vs-trunk-based-development-3beff578030b)
+for our git workflow. This means we all work on the same branch (main), the
+trunk, and push our code changes to it often. This way, we can keep our code up
+to date. We also avoid having too many branches that can get messy and hard to
+merge. We only create short-lived branches for small features or bug fixes, and
+we merge them back to main as soon as they are done. To this end, each developer
+issues pull-requests that are approved or rejected by the maintainer. Special
+versions of the code can be then dedicated releases with version tags, allowing
+others to use very specific versions of the code if needed.
 
 ---
 June 2022 ∙ [Sina Loriani](mailto:sina.loriani@pik-potsdam.de)

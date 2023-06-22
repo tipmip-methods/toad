@@ -1,5 +1,6 @@
 import logging
 from typing import Union
+import numpy as np
 import xarray as xr
 from xarray.core import dataset
 
@@ -155,12 +156,65 @@ class ToadAccessor:
         self._da = xarr_da
 
     def _apply_clustering(self, clustering, regions):
+
         if clustering:
+            print(regions)
             return clustering(self._da, regions)
         else:
             return self._da
-    
-    # def _infer_dims(self, tdim=None):
+        
+    def timeseries(
+                self, 
+                clustering=None, 
+                regions=None,
+                how=('aggr',), 
+                temporal_dim=None
+            ):   
+
+        if regions: assert clustering, 'region requires also clustering argument' 
+        da = self._apply_clustering(clustering, regions)
+      
+        tdim, sdims = infer_dims(self._da, tdim=temporal_dim)
+        if type(how)== str:
+            how = (how,)
+
+        if 'mean' in how:
+            timeseries = da.mean(dim=sdims, skipna=True)
+        elif 'median' in how:
+            timeseries = da.median(dim=sdims, skipna=True)
+        elif 'aggr' in how:
+            timeseries = da.sum(dim=sdims, skipna=True)
+        elif 'std' in how:
+            timeseries = da.std(dim=sdims, skipna=True)
+        elif 'perc' in how:
+            # takes the (first) numeric value to be found in how 
+            pval = [arg for arg in how if type(arg)==float][0]
+            timeseries = da.quantile(pval, dim=sdims, skipna=True)
+        elif 'per_gridcell' in how:
+            timeseries = da.stack(cell_xy=sdims).transpose().dropna(dim='cell_xy', how='all')
+        else:
+            raise ValueError('how needs to be one of mean, median, aggr, std, perc, per_gridcell')
+        
+        if 'normalised' in how:
+            if regions==False:
+                print('Warning: normalised currently does not work with regions')
+
+            # if regions==False:
+            #     da1 = self._apply_clustering(clustering, regions=True)
+            #     initial_value1 = da1.
+            #     self._da.isel({f'{tdim}':0})
+
+            # # if initial_value==np.nan : print('Warning, no initial value for this time series')
+            # else:
+            initial_value = timeseries.isel({f'{tdim}':0})
+            timeseries = timeseries / initial_value
+
+        return timeseries
+
+
+# attempt to use .toad for detection + clustering
+
+   # def _infer_dims(self, tdim=None):
 
     #     # spatial dims are all non-temporal dims
     #     if tdim:
@@ -184,27 +238,6 @@ class ToadAccessor:
     # def spatial_mask(self, clustering=None):
     #     return self._apply_clustering(clustering, regions=True)
 
-    def timeseries(
-                self, 
-                clustering=None, 
-                regions=True,
-                how=('aggr'), 
-                temporal_dim=None
-            ):   
-        
-        da = self._apply_clustering(clustering, regions)
-      
-        tdim, sdims = infer_dims(self._da, tdim=temporal_dim)
-
-        if 'aggr' in how:
-            timeseries = da.sum(sdims)
-        
-        if 'normalised' in how:
-            timeseries = timeseries / timeseries.isel({f'{tdim}':0})
-
-        return timeseries
-
-        
 
     # def _has_dts(self, var_name=None, strict=True):
     #     """Check existence of a detection time series.

@@ -178,6 +178,13 @@ class ToadAccessor:
         if type(how)== str:
             how = (how,)
 
+        if 'normalised' in how:
+            if regions==False:
+                print('Warning: normalised currently does not work with regions')
+            initial_da =  da.isel({f'{tdim}':0})
+            da = da / initial_da
+            da = da.where(np.isfinite(da))
+
         if 'mean' in how:
             timeseries = da.mean(dim=sdims, skipna=True)
         elif 'median' in how:
@@ -195,22 +202,36 @@ class ToadAccessor:
         else:
             raise ValueError('how needs to be one of mean, median, aggr, std, perc, per_gridcell')
         
-        if 'normalised' in how:
-            if regions==False:
-                print('Warning: normalised currently does not work with regions')
+        # if 'normalised' in how:
+        #     if regions==False:
+        #         print('Warning: normalised currently does not work with regions')
 
-            # if regions==False:
-            #     da1 = self._apply_clustering(clustering, regions=True)
-            #     initial_value1 = da1.
-            #     self._da.isel({f'{tdim}':0})
+        #     # if regions==False:
+        #     #     da1 = self._apply_clustering(clustering, regions=True)
+        #     #     initial_value1 = da1.
+        #     #     self._da.isel({f'{tdim}':0})
 
-            # # if initial_value==np.nan : print('Warning, no initial value for this time series')
-            # else:
-            initial_value = timeseries.isel({f'{tdim}':0})
-            timeseries = timeseries / initial_value
+        #     # # if initial_value==np.nan : print('Warning, no initial value for this time series')
+        #     # else:
+        #     initial_value = timeseries.isel({f'{tdim}':0})
+        #     timeseries = timeseries / initial_value
 
         return timeseries
+    
+    def compute_score(self, how='mean'):
 
+        tdim, _ = infer_dims(self._da)  
+        xvals = self._da.__getattr__(tdim).values
+        yvals = self.timeseries(how=how).values
+        (a,b) , res, _, _, _ = np.polyfit(xvals, yvals, 1, full=True)
+        
+        _score = res[0] 
+        _score_fit = b + a*xvals
+
+        return _score, _score_fit
+
+    def score(self, how='mean'):
+        return self.compute_score(how=how)[0]
 
 # attempt to use .toad for detection + clustering
 

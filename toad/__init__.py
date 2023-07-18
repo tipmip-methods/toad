@@ -155,29 +155,27 @@ class ToadAccessor:
     def __init__(self, xarr_da):
         self._da = xarr_da
 
-    def _apply_clustering(self, clustering, regions):
-
-        if clustering:
-            print(regions)
-            return clustering(self._da, regions)
-        else:
-            return self._da
-        
     def timeseries(
                 self, 
-                clustering=None, 
-                regions=None,
-                how=('aggr',), 
-                temporal_dim=None
-            ):   
+                clustering,
+                cluster_lbl,
+                masking = 'simple',
+                how=('aggr',)  # mean, median, std, perc, per_gridcell
+            ):
 
-        if regions: assert clustering, 'region requires also clustering argument' 
-        da = self._apply_clustering(clustering, regions)
-      
-        tdim, sdims = infer_dims(self._da, tdim=temporal_dim)
+        da = clustering._apply_mask_to(self._da, cluster_lbl, masking=masking)
+        tdim, sdims = infer_dims(self._da)
+
         if type(how)== str:
             how = (how,)
 
+        if 'normalised' in how:
+            if masking=='simple':
+                print('Warning: normalised currently does not work with simple masking')
+            initial_da =  da.isel({f'{tdim}':0})
+            da = da / initial_da
+            da = da.where(np.isfinite(da))
+    
         if 'mean' in how:
             timeseries = da.mean(dim=sdims, skipna=True)
         elif 'median' in how:
@@ -194,153 +192,30 @@ class ToadAccessor:
             timeseries = da.stack(cell_xy=sdims).transpose().dropna(dim='cell_xy', how='all')
         else:
             raise ValueError('how needs to be one of mean, median, aggr, std, perc, per_gridcell')
-        
-        if 'normalised' in how:
-            if regions==False:
-                print('Warning: normalised currently does not work with regions')
-
-            # if regions==False:
-            #     da1 = self._apply_clustering(clustering, regions=True)
-            #     initial_value1 = da1.
-            #     self._da.isel({f'{tdim}':0})
-
-            # # if initial_value==np.nan : print('Warning, no initial value for this time series')
-            # else:
-            initial_value = timeseries.isel({f'{tdim}':0})
-            timeseries = timeseries / initial_value
 
         return timeseries
 
+    def compute_score(
+                    self, 
+                    clustering,
+                    cluster_lbl, 
+                    how='mean'
+                ):
 
-# attempt to use .toad for detection + clustering
-
-   # def _infer_dims(self, tdim=None):
-
-    #     # spatial dims are all non-temporal dims
-    #     if tdim:
-    #         sdims = list(self._da.dims)
-    #         assert tdim in self._da.dims, f"provided temporal dim '{tdim}' is not in the dimensions of the dataset!"
-    #         sdims.remove(tdim)
-    #         print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
-    #         return (tdim, sdims)
-    #     # check if one of the standard combinations in present and auto-infer
-    #     else:
-    #         for pair in [('x','y'),('lat','lon'),('latitude','longitude')]:
-    #             if all(i in list(self._da.dims) for i in pair):
-    #                 sdims = pair
-    #                 tdim = list(self._da.dims)
-    #                 for sd in sdims:
-    #                     tdim.remove(sd)
-
-    #                 print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
-    #                 return (tdim[0], sdims)
-
-    # def spatial_mask(self, clustering=None):
-    #     return self._apply_clustering(clustering, regions=True)
-
-
-    # def _has_dts(self, var_name=None, strict=True):
-    #     """Check existence of a detection time series.
-
-    #     Default: Check if there is one variable named "*_dts".
+        tdim, _ = infer_dims(self._da)  
+        xvals = self._da.__getattr__(tdim).values
+        yvals = self.timeseries(clustering=clustering, cluster_lbl=cluster_lbl, masking='spatial', how=how).values
+        (a,b) , res, _, _, _ = np.polyfit(xvals, yvals, 1, full=True)
         
-    #     var_name: Name of variable to check for. Optional, if not provided then
-    #     returns True if there is one detection time series in the dataset
+        _score = res[0] 
+        _score_fit = b + a*xvals
 
-    #     strict: If set, then returns True iff there is exactly one dts. 
+        return _score, _score_fit
 
-    #     """
-    #     # check if detection time series exists for that variable
-    #     if var_name:
-    #         if (var_name+'_dts') in list(self._obj.keys()):
-    #             return True 
-    #     # must include exactly one detection time series
-    #     elif ''.join(list(self._obj.keys())).count('dts')==1:
-    #         return True
-    #     # strict determines output when there are more than one dts 
-    #     elif ''.join(list(self._obj.keys())).count('dts')>1:
-    #         print('Warning: More than one detection time series.')
-    #         return False if strict else True
-    #     else:
-    #         return False
-
-    # def _has_clusters(self, var_name=None, strict=True):
-    #     """Check existence of cluster labels.
-
-    #     Default: Check if there is one variable named "*_cluster".
-        
-    #     var_name: Name of variable to check for. Optional, if not provided then
-    #     returns True iff there is exactly one cluster label set
-
-    #     """
-    #     # check if cluster labels exists for that variable
-    #     if var_name:
-    #         if (var_name+'_cluster') in list(self._obj.keys()):
-    #             return True 
-    #     # must include exactly one cluster label set
-    #     elif ''.join(list(self._obj.keys())).count('cluster')==1:
-    #         return True
-    #     # strict determines output when there is more than one label set 
-    #     elif ''.join(list(self._obj.keys())).count('cluster')>1:
-    #         print('Warning: More than one set of cluster labels.')
-    #         return False if strict else True
-    #     else:
-    #         return False
-
-    # def detect(
-    #     self,
-    #     temporal_dim: str,
-    #     method: str,
-    #     var: str = None,
-    #     keep_other_vars : bool = False, 
-    #     method_kwargs={}
-    # ):
-    #     """ Provide toad.detect function as accessor
-        
-    #     I.e. allows to use
-
-    #         ds1 = ds.toad.detect(*args, **kwargs)
-        
-    #     alternatively to
-
-    #         ds1 = toad.detect(ds, *args, **kwargs)
-
-    #     """
-    #     return detect(
-    #         data = self._obj,
-    #         temporal_dim = temporal_dim,
-    #         method = method,
-    #         var = var,
-    #         keep_other_vars = keep_other_vars, 
-    #         method_kwargs = method_kwargs
-    #     )
-    
-
-    # def cluster(
-    #     self,
-    #     var : str,
-    #     method : str,
-    #     method_kwargs = {}
-    # ):
-    #     """ Provide toad.detect function as accessor
-        
-    #     I.e. allows to use
-
-    #         ds2 = ds1.toad.cluster(*args, **kwargs)
-        
-    #     alternatively to
-
-    #         ds2 = toad.cluster(ds1, *args, **kwargs)
-
-    #     """
-    #     assert self._has_dts(var_name=var), ' '
-    #     return cluster(
-    #         data = self._obj,
-    #         method = method,
-    #         var = var,
-    #         method_kwargs = method_kwargs
-    #     )
-        
-
-    # # def __call__(self, idx=None):
-    # #     pass
+    def score(
+            self, 
+            clustering,
+            cluster_lbl, 
+            how='mean'
+        ):
+        return self.compute_score(clustering, cluster_lbl, how)[0]

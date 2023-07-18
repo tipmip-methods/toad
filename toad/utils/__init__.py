@@ -6,7 +6,7 @@ def infer_dims(xr_da, tdim=None):
         assert tdim in xr_da.dims, f"provided temporal dim '{tdim}' is not in the dimensions of the dataset!"
         sdims.remove(tdim)
         sdims = sorted(sdims)
-        print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
+        # print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
         return (tdim, sdims)
     # check if one of the standard combinations in present and auto-infer
     else:
@@ -17,5 +17,5 @@ def infer_dims(xr_da, tdim=None):
                 for sd in sdims:
                     tdim.remove(sd)
 
-                print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
+                # print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
                 return (tdim[0], sdims)

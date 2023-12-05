@@ -13,23 +13,22 @@ from scipy import stats
 def centered_segmentation(
             l_tot: int, l_seg: int, verbose : bool = False
         ) -> np.ndarray:
-    """ Provide set of indices to divide a range into segments of equal length
+    ''' Provide set of indices to divide a range into segments of equal length.
 
-    The range of length l_arr is divided into segments of equal length l_seg,
-    with the remainder of the division being equally distributed between
-    beginning and end (with the end+1 for uneven division). 
-    
-    Parameters:
-    ----------- 
-    l_tot: total length of the range 
-    l_seg: length of one segment 
-    verbose (default False): if true, print segmentation indices 
+    The range of l_tot is divided into segments of equal length l_seg,
+    with the remainder of the division being equally truncated at the
+    beginning and end, with the end+1 for uneven division.
 
-    Returns:
-    --------
-    indcs: indices of the segmentation; indcs[i] is the first index of the ith
-           segment
-    """
+    :param l_tot:   Total length of the range to be segmented
+    :type l_tot:    int
+    :param l_seg:   Length of one segment.
+    :type l_seg:    int
+    :param verbose: If true, print segmentation indices.
+    :type verbose:  bool
+    :return:        List of indices of the segmentation; entry i are the first index of the ith segment.
+    :rtype:         numpy.ndarray[int]
+    '''
+
     # number of segments
     n_seg = int(l_tot/l_seg)
     # uncovered points

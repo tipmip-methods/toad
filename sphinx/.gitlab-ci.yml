@@ -8,9 +8,9 @@ pages:
     - apt-get update && apt-get install make --no-install-recommends -y
     - python -m pip install sphinx furo
   script:
-    - cd .. && make clean && make html
+    - make clean && make html
   after_script:
-    - mv ../build/html/ ../../public/
+    - mv build/html/ ../public/
   artifacts:
     paths:
     - public

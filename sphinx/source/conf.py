@@ -15,6 +15,7 @@ project = 'TOAD'
 copyright = '2023, Sina Loriani'
 author = 'Sina Loriani'
 release = '0.2'
+language = 'en'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -26,11 +27,11 @@ extensions = [
 	'sphinx.ext.viewcode',
 ]
 
-templates_path = ['../_templates']
+templates_path = ['_templates']
 master_doc = 'sitemap'		# master toctree document
 exclude_patterns = []
 pygments_style = 'sphinx'	# syntax highlighting
-modindex_common_prefix = ['toad']
+modindex_common_prefix = ['toad.']	# ignored prefixes for module index sorting
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -38,7 +39,7 @@ modindex_common_prefix = ['toad']
 
 html_theme = 'python_docs_theme'
 #html_theme = 'classic'
-html_static_path = ['../_static']
+html_static_path = ['_static']
 html_sidebars = {
 	'**': [
 		'globaltoc.html',

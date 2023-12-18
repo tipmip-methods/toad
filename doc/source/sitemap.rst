@@ -10,4 +10,4 @@ Sitemap
 	index
 	tutorials
 	api_doc
-	publications
+	references

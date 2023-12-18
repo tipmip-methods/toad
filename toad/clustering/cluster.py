@@ -3,6 +3,7 @@ import xarray as xr
 from ..utils import infer_dims
 
 class Clustering():
+    """ Test String """
 
     def __init__(
             self,
@@ -34,7 +35,7 @@ class Clustering():
     ):
         """ Apply mask to an xarray object.
 
-        Could directly be used as_
+        Could directly be used as
             clustering = Clustering(clustered_ds, masking='spatial)
             other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
             other_ds_clustered.mean()
@@ -45,7 +46,7 @@ class Clustering():
                 cluster_lbl = [0,2,3]
                 masking='spatial',
                 how=('mean')
-            )
+                )
         
         """
         if type(cluster_lbl) is not list: cluster_lbl = [ cluster_lbl ]

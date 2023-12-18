@@ -1,6 +1,6 @@
 
-Publications
-############
+References
+##########
 
 Referenced to peer-reviewed publications, theses and reports describing the applied
 methods implemented in ``toad``.

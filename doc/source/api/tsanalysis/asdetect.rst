@@ -2,5 +2,5 @@
 tsanalysis.asdetect
 ===================
 
-.. automodule:: tsanalysis.asdetect
+.. automodule:: toad.tsanalysis.asdetect
 	:members:

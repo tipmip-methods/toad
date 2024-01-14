@@ -40,6 +40,7 @@ modindex_common_prefix = ['toad.']	# ignored prefixes for module index sorting
 html_theme = 'python_docs_theme'
 #html_theme = 'classic'
 html_static_path = ['_static']
+#html_css_files = ['default.css']       # specify path to custom .css file in html_static_path
 html_sidebars = {
 	'**': [
 		'globaltoc.html',
@@ -88,3 +89,25 @@ latex_logo = '_static/logo.png'
 
 # If true, show URL addresses after external links.
 latex_show_urls = 'inline'
+
+
+# -- Options for manual page output ---------------------------------------
+
+# One entry per manual page. List of tuples
+# (source start file, name, description, authors, manual section).
+man_pages = [
+    (master_doc, 'toad', u'toad Documentation',
+     [author], 1)
+]
+
+
+# -- Options for Texinfo output -------------------------------------------
+
+# Grouping the document tree into Texinfo files. List of tuples
+# (source start file, target name, title, author,
+#  dir menu entry, description, category)
+texinfo_documents = [
+    (master_doc, 'toad', u'toad Documentation',
+     author, 'toad', 'One line description of project.',
+     'Miscellaneous'),
+]

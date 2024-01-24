@@ -1,3 +1,4 @@
+import inspect          # needed in linkcode py-function to connect documentation to source link
 import os
 import sys
 module_path=os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
@@ -24,7 +25,7 @@ extensions = [
 	'sphinx.ext.doctest',
 	'sphinx.ext.autodoc',
 	'sphinx.ext.autosummary',
-	'sphinx.ext.viewcode',
+    'sphinx.ext.linkcode',
 ]
 
 templates_path = ['_templates']
@@ -111,3 +112,46 @@ texinfo_documents = [
      author, 'toad', 'One line description of project.',
      'Miscellaneous'),
 ]
+
+
+# -- Function for sphinx extention linkcode -------------------------------
+
+# Look at xarray documentation for a more elaborate example.
+
+def linkcode_resolve(domain, info):
+    """
+    Determine the URL corresponding to Python object.
+    The implementation is based on xarray doc/source/conf.py.
+    """
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    
+    modname = info["module"]
+    fullname = info["fullname"]
+
+    submod = sys.modules.get(modname)
+    if submod is None:
+        return None
+
+    obj = submod
+    for part in fullname.split("."):
+        try:
+            obj = getattr(obj, part)
+        except AttributeError:
+            return None
+                
+    try:
+        source, lineno = inspect.getsourcelines(obj)
+    except OSError:
+        lineno = None
+
+    # identify start and end line number of code in source file
+    if lineno:
+        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
+    else:
+        linespec = ""
+
+    filename = info['module'].replace('.', '/')
+    return "https://gitlab.pik-potsdam.de/sinal/toad/-/blob/main/%s.py%s" % (filename,linespec)

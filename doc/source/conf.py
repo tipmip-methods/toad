@@ -1,3 +1,4 @@
+import inspect          # needed in linkcode py-function to connect documentation to source link
 import os
 import sys
 module_path=os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
@@ -24,7 +25,7 @@ extensions = [
 	'sphinx.ext.doctest',
 	'sphinx.ext.autodoc',
 	'sphinx.ext.autosummary',
-	'sphinx.ext.viewcode',
+    'sphinx.ext.linkcode',
 ]
 
 templates_path = ['_templates']
@@ -40,6 +41,7 @@ modindex_common_prefix = ['toad.']	# ignored prefixes for module index sorting
 html_theme = 'python_docs_theme'
 #html_theme = 'classic'
 html_static_path = ['_static']
+#html_css_files = ['default.css']       # specify path to custom .css file in html_static_path
 html_sidebars = {
 	'**': [
 		'globaltoc.html',
@@ -88,3 +90,68 @@ latex_logo = '_static/logo.png'
 
 # If true, show URL addresses after external links.
 latex_show_urls = 'inline'
+
+
+# -- Options for manual page output ---------------------------------------
+
+# One entry per manual page. List of tuples
+# (source start file, name, description, authors, manual section).
+man_pages = [
+    (master_doc, 'toad', u'toad Documentation',
+     [author], 1)
+]
+
+
+# -- Options for Texinfo output -------------------------------------------
+
+# Grouping the document tree into Texinfo files. List of tuples
+# (source start file, target name, title, author,
+#  dir menu entry, description, category)
+texinfo_documents = [
+    (master_doc, 'toad', u'toad Documentation',
+     author, 'toad', 'One line description of project.',
+     'Miscellaneous'),
+]
+
+
+# -- Function for sphinx extention linkcode -------------------------------
+
+# Look at xarray documentation for a more elaborate example.
+
+def linkcode_resolve(domain, info):
+    """
+    Determine the URL corresponding to Python object.
+    The implementation is based on xarray doc/source/conf.py.
+    """
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    
+    modname = info["module"]
+    fullname = info["fullname"]
+
+    submod = sys.modules.get(modname)
+    if submod is None:
+        return None
+
+    obj = submod
+    for part in fullname.split("."):
+        try:
+            obj = getattr(obj, part)
+        except AttributeError:
+            return None
+                
+    try:
+        source, lineno = inspect.getsourcelines(obj)
+    except OSError:
+        lineno = None
+
+    # identify start and end line number of code in source file
+    if lineno:
+        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
+    else:
+        linespec = ""
+
+    filename = info['module'].replace('.', '/')
+    return "https://gitlab.pik-potsdam.de/sinal/toad/-/blob/main/%s.py%s" % (filename,linespec)

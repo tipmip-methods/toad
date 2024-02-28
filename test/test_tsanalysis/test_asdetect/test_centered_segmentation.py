@@ -3,21 +3,21 @@ import numpy as np
 import os
 import sys
 
-# change current dir to dir conatining the running script file
+# change current dir to dir containing the running script file
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # append relative path to find library
 sys.path.append('./../../../toad/tsanalysis/')
 import asdetect as ad
 
-
 """
 Things to test:
     - test if output is numpy.array
     - test simple example case
-    - test truncation of remainder for
-        ... even division
-        ... uneven division
+    - test truncation of division with
+        ... even remainder
+        ... uneven remainder
 """
+
 
 def test_output_type():
     """
@@ -49,7 +49,7 @@ def test_simple_case():
 
 def test_truncation_case():
     """
-    Test case examples with even and uneven truncation.
+    Test case examples with of truncation of even and uneven remainder.
 
     **even Example**
 
@@ -57,7 +57,7 @@ def test_truncation_case():
     array([ 1, 5, 9])
     # -> segmented list: [0,[1,2,3,4],[5,6,7,8],9];     0,9 is truncated
     """
-    # even truncation
+    # even remainder truncation
     l_tot = 10
     l_seg = 4
     out = ad.centered_segmentation(l_tot,l_seg)
@@ -70,7 +70,7 @@ def test_truncation_case():
     array([ 0, 3, 6, 9])
     # -> segmented list: [[0,1,2],[3,4,5],[6,7,8],9];   9 is truncated
     """
-    # uneven truncation
+    # uneven remainder truncation
     l_tot = 10
     l_seg = 3
     out = ad.centered_segmentation(l_tot,l_seg)

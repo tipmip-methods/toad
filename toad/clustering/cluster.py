@@ -133,7 +133,7 @@ class Clustering():
             xarr_obj,
             cluster_lbl = None,
     ):
-        self._apply_mask(cluster_lbl, xarr_obj)
+        return self._apply_mask_to(xarr_obj,cluster_lbl)
         #
 
 

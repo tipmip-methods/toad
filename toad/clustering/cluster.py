@@ -88,7 +88,10 @@ class Clustering():
             return dimT.std().values
         elif 'perc' in how:
             # takes the (first) numeric value to be found in how 
-            pval = [arg for arg in how if type(arg)==float][0]
+            try:
+                pval = [arg for arg in how if type(arg)==float][0]
+            except IndexError:
+                raise ValueError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
             return dimT.quantile(pval, skipna=True)
         elif 'dist' in how:
             return dimT
@@ -117,8 +120,11 @@ class Clustering():
             return dimA.std().values, dimB.std().values
         elif 'perc' in how:
             # takes the (first) numeric value to be found in how 
-            pval = [arg for arg in how if type(arg)==float][0]
-            return dimA.quantile(pval, skipna=True), dimB.quantile(pval, skipna=True)
+            try:
+                pval = [arg for arg in how if type(arg)==float][0]
+                return dimA.quantile(pval, skipna=True).values, dimB.quantile(pval, skipna=True).values
+            except IndexError:
+                raise ValueError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
         elif 'dist' in how:
             return dimA, dimB
 

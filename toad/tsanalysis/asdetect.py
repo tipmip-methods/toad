@@ -13,23 +13,28 @@ from scipy import stats
 def centered_segmentation(
             l_tot: int, l_seg: int, verbose : bool = False
         ) -> np.ndarray:
-    """ Provide set of indices to divide a range into segments of equal length
+    """ Provide set of indices to divide a range into segments of equal length.
 
-    The range of length l_arr is divided into segments of equal length l_seg,
-    with the remainder of the division being equally distributed between
-    beginning and end (with the end+1 for uneven division). 
-    
-    Parameters:
-    ----------- 
-    l_tot: total length of the range 
-    l_seg: length of one segment 
-    verbose (default False): if true, print segmentation indices 
+    The range of l_tot is divided into segments of equal length l_seg,
+    with the remainder of the division being equally truncated at the
+    beginning and end, with the end+1 for uneven division.
 
-    Returns:
-    --------
-    indcs: indices of the segmentation; indcs[i] is the first index of the ith
-           segment
+    :param l_tot:   Total length of the range to be segmented
+    :type l_tot:    int
+    :param l_seg:   Length of one segment.
+    :type l_seg:    int
+    :param verbose: If true, print segmentation indices.
+    :type verbose:  bool
+    :return:        List of indices of the segmentation; entry i are the first index of the ith segment.
+    :rtype:         numpy.ndarray[int]
+
+    **Example**
+
+    >>> tsanalysis.asdetect.centered_segmentation(l_tot=103, l_seg=10)
+    array([  1,  11,  21,  31,  41,  51,  61,  71,  81,  91, 101])
+
     """
+
     # number of segments
     n_seg = int(l_tot/l_seg)
     # uncovered points
@@ -73,27 +78,26 @@ def centered_segmentation(
 def construct_detection_ts(
         values_1d : np.ndarray, times_1d: np.ndarray,
         lmin : int = 5, lmax : int = None) -> np.ndarray:
-    """ Construct a detection time series (asdetect algorithm)
+    """ Construct a detection time series (asdetect algorithm).
 
-    Following [Boulton & Lenton, F1000Research 2019, 8:746 2019], the time 
-    series (ts) is divided into segments of length l, for each of which the 
-    gradient is computed. Segments with gradients > 3 MAD of the gradients 
-    distribution are marked. Averaging over many segmentation choices (i.e.
-    values of l) results in a detection time series that indicates the points
-    of largest relative gradients.
+    Following [Boulton+Lenton2019]_, the time series (ts) is divided into
+    segments of length l, for each of which the gradient is computed. Segments
+    with gradients > 3 MAD of the gradients distribution are marked. Averaging
+    over many segmentation choices (i.e. values of l) results in a detection
+    time series that indicates the points of largest relative gradients.
 
-    Parameters:
-    -----------
-    values_1d: timeseries as 1d-np.array with shape (n,)
-    times_1d : times as 1d-np.array with shape (n,) and same length as values_1d
-    lmin: smallest segment length (default = 5)
-    lmax: highest segment length (default = n/3)
-
-    Returns:
-    --------
-    det_ts_1d: detection time series as 1d-np.array with shape (n,)
-
+    :param values_1d:   time series, shape (n,)
+    :type values_1d:    1d-numpy.ndarray
+    :param times_1d:    times, shape (n,), same length as values_1d
+    :type times_1d:     1d-numpy.ndarray
+    :param lmin:        smallest segment length, default = 5
+    :type lmin:         int
+    :param lmax:        largest segment length, default = n/3
+    :type lmax:         int
+    :return:            detection time series, shape (n,)
+    :rtype:             1d-numpy.ndarray
     """
+
     n_tot = len(values_1d)
 
     detection_ts = np.zeros_like(values_1d)
@@ -144,19 +148,20 @@ def construct_detection_ts(
 def map_dts_to_ndarray(
         values_3d : np.ndarray, times_1d: np.ndarray,
         lmin : int = 5, lmax : int = None):
-    """ Compute the detection time series for each grid cell 
+    """ Compute the detection time series for each grid cell. 
     
-    Parameters:
-    -----------
-    values_3d: data as 3d-np.array with shape (nt,nx,ny), assuming t at index 0
-    times_1d : times as 1d-np.array with shape (nt,)
-    lmin: smallest segment length (default = 5)
-    lmax: highest segment length (default = n/3)
-
-    Returns:
-    --------
-    det_ts_3d: detection time series as 3d-np.array with shape (nt,nx,ny)
+    :param values_3d:   data, shape(nt,nx,ny), assuming t at ix=0
+    :type values_3d:    3d-numpy.ndarray
+    :param times_1d:    times, shape (nt,)
+    :type times_1d:     1d-numpy.ndarray
+    :param lmin:        smallest segment length, default = 5
+    :type lmin:         int
+    :param lmax:        largest segment length, default = n/3 (each dim. indep.)
+    :type lmax:         int
+    :return:            detection time series, shape (nt,nx,ny)
+    :rtype:             3d-numpy.ndarray
     """
+
     return np.apply_along_axis(
             func1d=construct_detection_ts,
             axis=0,
@@ -170,18 +175,18 @@ def map_dts_to_xarray(
         values_3d : xr.DataArray,
         temporal_dim: str,
         lmin : int = 5, lmax : int = None):
-    """ Compute the detection time series for each grid cell 
+    """ Compute the detection time series for each grid cell.
     
-    Parameters:
-    -----------
-    values_3d: data as 3d-xr.DataArray with shape (nt,nx,ny) and time index 't' 
-    lmin: smallest segment length (default = 5)
-    lmax: highest segment length (default = n/3)
-
-    Returns:
-    --------
-    det_ts_3d: detection time series as 3d-xr.DataArray with shape (nt,nx,ny)
+    :param values_3d:   data, shape (nt,nx,ny), time index 't'
+    :type values_3d:    3d-xarray.DataArray
+    :param lmin:        smallest segment length, default = 5
+    :type lmin:         int
+    :param lmax:        largest segment length, defautl = n/3 (each dim. indep.)
+    :type lmax:         int
+    :return:            detection time series, shape (nt,nx,ny)
+    :rtype:             3d-xarray.DataArray
     """
+
     return xr.apply_ufunc(
         construct_detection_ts,
         values_3d,
@@ -201,18 +206,18 @@ def detect(
     temporal_dim : str,
     lmin: int = 5, lmax : int = None
 ) -> xr.DataArray:
-    """ Callable function interfacing this module 
-    
-    Parameters:
-    -----------
-    data: 3d-xr.DataArray with shape (nt,nx,ny) and time index 'temporal_dim' 
-    temporal_dim: dimension in which to perform the as detection
-    lmin: smallest segment length (default = 5)
-    lmax: highest segment length (default = n/3)
+    """ Callable function interfacing this module.
 
-    Returns:
-    --------
-    dts: detection time series as 3d-xr.DataArray with shape (nt,nx,ny)
+    :param data:    data, shape (nt,nx,ny), time index 'temporal_dim'
+    :type data:     3d-xarray.DataArray
+    :temporal_dim:  dimension in which to perform the as detection
+    :temporal_dim:  str
+    :param lmin:    smallest segment length, default = 5
+    :type lmin:     int
+    :param lmax:    largest segment length, default = n/3 (each dim. indep.)
+    :type lmax:     int
+    :return:        detection time series, shape (nt,nx,ny)
+    :rtype:         3d-xarray.DataArray
     """
     
     method_details = f'asdetect (lmin={lmin}, lmax={lmax}'

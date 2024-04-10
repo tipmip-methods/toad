@@ -58,11 +58,8 @@ class Clustering():
             raise ValueError('masking must be either simple or spatial')
         return xarr_obj.where(_mask)
 
-    def simple_mask(self, cluster_lbl, exclusive=False):
-        if exclusive:
-            pass #todo
-        else:
-            return self._cluster_labels.isin(cluster_lbl)
+    def simple_mask(self, cluster_lbl):
+        return self._cluster_labels.isin(cluster_lbl)
 
     def spatial_mask(self, cluster_lbl):
         return self.simple_mask(cluster_lbl).any(dim=self.tdim)
@@ -87,12 +84,12 @@ class Clustering():
         elif 'std' in how:
             return dimT.std().values
         elif 'perc' in how:
-            # takes the (first) numeric value to be found in how 
             try:
+                # takes the (first) numeric value to be found in how 
                 pval = [arg for arg in how if type(arg)==float][0]
+                return dimT.quantile(pval, skipna=True)
             except IndexError:
-                raise ValueError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
-            return dimT.quantile(pval, skipna=True)
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
         elif 'dist' in how:
             return dimT
 
@@ -119,12 +116,12 @@ class Clustering():
         elif 'std' in how:
             return dimA.std().values, dimB.std().values
         elif 'perc' in how:
-            # takes the (first) numeric value to be found in how 
             try:
+                # takes the (first) numeric value to be found in how 
                 pval = [arg for arg in how if type(arg)==float][0]
                 return dimA.quantile(pval, skipna=True).values, dimB.quantile(pval, skipna=True).values
             except IndexError:
-                raise ValueError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
         elif 'dist' in how:
             return dimA, dimB
 
@@ -134,44 +131,3 @@ class Clustering():
             cluster_lbl = None,
     ):
         return self._apply_mask_to(xarr_obj,cluster_lbl)
-        #
-
-
-        #     def __init__(self, mask, temporal_dim):
-#         self.mask = mask
-#         self.temporal_dim = temporal_dim
-#         self.spatial_mask = self.mask.any(dim=self.temporal_dim)
-#         _, (self.sdimA, self.sdimB) = infer_dims(self.mask, tdim=self.temporal_dim)
-
-
-#         # Coordinate properties of the cluster selection
-#         self.dimT = xr.where( self.mask, self.mask.__getattr__(self.temporal_dim), np.nan)
-#         self.meanT = self.dimT.mean().values
-#         self.stdT = self.dimT.mean().values
-#         self.medianT = self.dimT.median().values
-
-#         self.dimA = xr.where( self.mask, self.mask.__getattr__(self.sdimA), np.nan)
-#         self.meanA = self.dimA.mean().values
-#         self.stdA = self.dimA.mean().values
-#         self.medianA = self.dimA.median().values
-
-#         self.dimB = xr.where( self.mask, self.mask.__getattr__(self.sdimB), np.nan)
-#         self.meanB = self.dimB.mean().values
-#         self.stdB = self.dimB.mean().values
-#         self.medianB = self.dimB.median().values
-
-#     def percT(self, percentile=0.02):
-#         return self.dimT.quantile(percentile).values
-
-#     def percA(self, percentile=0.02):
-#         return self.dimA.quantile(percentile).values
-    
-#     def percB(self, percentile=0.02):
-#         return self.dimB.quantile(percentile).values
-
-#     def __call__(self, xarr_obj, regions=True):
-#         """ Just apply mask to other xarray object"""
-#         if regions:
-#             return xr.where( self.spatial_mask, xarr_obj, np.nan)
-#         else:
-#             return xr.where( self.mask, xarr_obj, np.nan)

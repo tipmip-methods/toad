@@ -71,16 +71,38 @@ class Clustering():
         return xarr_obj.where(_mask)
 
     def simple_mask(self, cluster_lbl):
+        """ Create a simple mask for a cluster label by simply applying the 3D mask to the 3D dataarray.
+
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        
+        """
         return self._cluster_labels.isin(cluster_lbl)
 
     def spatial_mask(self, cluster_lbl):
+        """ Create a spatial mask for a cluster label by reducing the 3D mask in the temporal dimension.
+        
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+
+        """
         return self.simple_mask(cluster_lbl).any(dim=self.tdim)
 
     def tprops(
             self, 
             cluster_lbl, 
             how=('mean',) # median, std, perc, dist
-        ):
+            ):
+        """ Calculate temporal properties of a cluster label.
+        
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param how:             how to calculate the temporal properties
+        :type how:              tuple
+        :return:                temporal properties of the cluster label
+        :rtype:                 ...
+
+        """
         if type(how)== str:
             how = (how,)
     
@@ -110,7 +132,24 @@ class Clustering():
             cluster_lbl,
             masking = 'spatial',
             how=('mean',) # median, std, perc, dist
-        ):
+            ):
+        """ Calculate spatial properties of a cluster label.
+
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param masking:         type of masking to apply
+
+                                    * simple: apply the 3D mask to a 3D dataarray
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters 
+        
+        :type masking:          str, optional
+        :param how:             how to calculate the spatial properties
+        :type how:              tuple
+        :return:                spatial properties of the cluster label
+        :rtype:                 ...
+
+        """
         if type(how)== str:
             how = (how,)
     
@@ -141,5 +180,12 @@ class Clustering():
             self,
             xarr_obj,
             cluster_lbl = None,
-    ):
+            ):
+        """ Apply mask to an xarray object.
+
+        :param xarr_obj:        xarray object to apply the mask to
+        :type xarr_obj:         xarray.DataArray
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        """
         return self._apply_mask_to(xarr_obj,cluster_lbl)

@@ -3,6 +3,9 @@ API
 
 :Date: |today|
 
+.. automodule:: toad
+	:members:
+
 tsanalysis
 ----------
 

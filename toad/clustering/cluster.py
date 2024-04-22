@@ -3,27 +3,24 @@ import xarray as xr
 from ..utils import infer_dims
 
 class Clustering():
-    """ Test String """
+    """ Handle clusterings to allow simplified operation.
+
+    :param cluster_label_ds:    dataarray with cluster label variable, cluster labels should be processed:
+
+                                    * simple: apply the 3D mask to a 3D dataarray
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+
+    :type cluster_label_ds:     xarray.DataArray
+    :param temporal_dim:        Dimension in which the abrupt shifts have been detected. Automatically inferred if not provided.
+    :type temporal_dim:         str, optional
+    """
 
     def __init__(
             self,
             cluster_label_da,
             temporal_dim=None,
-    ):
-        """ Handle clusterings to allow simplified operation.
-
-        cluster_label_ds: dataarray with cluster label variable masking: how the
-
-        cluster labels should be processed
-            simple: apply the 3D mask to a 3D dataarray 
-            spatial: reduce in the temporal dimension
-            strict: same as spactial, but create new cluster labels for regions
-            that lie in the spatial overlap of multiple clusters 
-            
-        temporal_dim: Dimension in which the abrupt shifts have been detected. 
-        Automatically inferred if not provided.
-
-        """
+            ):
         self.tdim, self.sdims = infer_dims(cluster_label_da, tdim=temporal_dim)
         self._cluster_labels = cluster_label_da
 
@@ -32,21 +29,35 @@ class Clustering():
             xarr_obj,
             cluster_lbl,
             masking='simple' # spatial, strict
-    ):
+            ):
         """ Apply mask to an xarray object.
 
+        :param xarr_obj:        xarray object to apply the mask to
+        :type xarr_obj:         xarray.DataArray
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param masking:         type of masking to apply
+
+                                    * simple: apply the 3D mask to a 3D dataarray 
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+
+        :type masking:          str, optional
+
+        **Examples**
+
         Could directly be used as
-            clustering = Clustering(clustered_ds, masking='spatial)
-            other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
-            other_ds_clustered.mean()
+            >>> clustering = Clustering(clustered_ds, masking='spatial)
+            >>> other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
+            >>> other_ds_clustered.mean()
 
         But usually will be wrapped in toad accessor, allowing
-            other_ds.toad.timeseries(
-                clustering = Clustering(clustered_ds),
-                cluster_lbl = [0,2,3]
-                masking='spatial',
-                how=('mean')
-                )
+            >>> other_ds.toad.timeseries(
+            >>>     clustering = Clustering(clustered_ds),
+            >>>     cluster_lbl = [0,2,3]
+            >>>     masking='spatial',
+            >>>     how=('mean')
+            >>>     )
         
         """
         if type(cluster_lbl) is not list: cluster_lbl = [ cluster_lbl ]

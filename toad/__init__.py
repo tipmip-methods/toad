@@ -34,46 +34,31 @@ def detect(
     """Map an abrupt shift detection algorithm to the dataset in the temporal
     dimension.
 
-    Parameters
-    ----------
-    data : xr.Dataset or xr.DataArray
-        Data with two spatial and one temporal dimension. If `data` is an
-        xr.Dataset, `var` needs to be provided.
-    temporal_dim : str
-        Specifies the dimension along which the one-dimensional time-series
-        analysis for abrupt shifts is executed. Usually the time axis but could
-        also be the forcing.
-    method : {'asdetect'} 
-        One-dimensional time-series analysis algorithm to use.
-    var : str, optional
-        Must be used in combination with `data` being an xr.Dataset. Since the
-        algorithms work on xr.DataArrays, it is needed to specify here which
-        variable to extract from the xr.Dataset.
-    keep_other_vars : bool, optional
-        Can be provided if `data` is an xr.Dataset. If True, the resulting
-        xr.DataArray is appended to the xr.Dataset. Defaults to False, such that
-        the xr.Dataset variables which are not analysed (i.e. all others than
-        `var`) are discarded from the resulting xr.Dataset.
-    method_kwargs : dict, optional
-        Kwargs that need to be specifically passed to the analysing algorithm.
+    :param data:                Data with two spatial and one temporal dimension. If `data` is an xr.Dataset, `var` needs to be provided.
+    :type data:                 xr.Dataset or xr.DataArray
+    :param temporal_dim:        Specifies the dimension along which the one-dimensional time-series analysis for abrupt shifts is executed. Usually the time axis but could also be the forcing.
+    :type temporal_dim:         str
+    :param method:              One-dimensional time-series analysis algorithm to use.
+    :type method:               str
+    :param var:                 Must be used in combination with `data` being an xr.Dataset. Since the algorithms work on xr.DataArrays, it is needed to specify here which variable to extract from the xr.Dataset.
+    :type var:                  str, optional
+    :param keep_other_vars:     Can be provided if `data` is an xr.Dataset. If True, the resulting xr.DataArray is appended to the xr.Dataset. Defaults to False, such that the xr.Dataset variables which are not analysed (i.e. all others than `var`) are discarded from the resulting xr.Dataset.
+    :type keep_other_vars:      bool, optional
+    :param method_kwargs:       Kwargs that need to be specifically passed to the analysing algorithm.
+    :type method_kwargs:        dict, optional
+    :return:                    Dataset with (at least) these variables of same dimensions and lengths:
+                                    * `var` : original variable data,
+                                    * `as_var` : Nonzero values denote an AS with the value corresponding to its magnitude,
+                                The attributes are
+                                    * `as_detection_method` : details on the used as detection method
+                                If `keep_other_vars` is True, then these results are complemented by the unprocessed variables and attributes of the original `data`.
+    :rtype:                     xr.Dataset
 
-    Returns
-    -------
-    dataset_with_as : xr.Dataset
-        Dataset with (at least) these variables of same dimensions and lengths: 
-            * `var` : original variable data, 
-            * `as_var` : Nonzero values denote an AS with the value
-              corresponding to its magnitude,
-        The attributes are
-            * `as_detection_method` : details on the used as detection method
-        If `keep_other_vars` is True, then these results are complemented by the
-        unprocessed variables and attributes of the original `data`.
 
-    See also
-    --------
+    **See also**
+
     toad.tsanalysis : Collection of abrupt shift detection algorithms 
     toad.clustering: Clustering algorithms using the results of the detection
-
     """
     logging.info(f'looking up detector {method}')
     detector = _detection_methods[method]

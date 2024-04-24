@@ -5,6 +5,7 @@ API
 
 .. automodule:: toad
 	:members:
+	:member-order: bysource
 
 tsanalysis
 ----------

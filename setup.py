@@ -26,6 +26,5 @@ setup(
         'ipykernel',
         'dask',
         'distributed',
-        'pytest'
     ]
 )

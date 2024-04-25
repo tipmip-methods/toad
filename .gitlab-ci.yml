@@ -3,7 +3,7 @@ default:
     before_script:
        - apt-get update
        - apt-get install -y python3-pip
-       - pip install ./setup.py
+       - pip install .
 stages:
     - test
     - finsih

@@ -25,6 +25,7 @@ setup(
         'netcdf4',
         'ipykernel',
         'dask',
-        'distributed'
+        'distributed',
+        'pytest'
     ]
 )

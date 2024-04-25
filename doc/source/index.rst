@@ -19,6 +19,6 @@ can be found `here <https://tipmip.pik-potsdam.de>`_.
 - Ricarda Winkelmann    (`PIK page <https://www.pik-potsdam.de/members/ricardaw>`_)
 - Sina Loriani          (`PIK page <https://www.pik-potsdam.de/members/sinal>`_)
 - Jonathan Donges       (`PIK page <https://www.pik-potsdam.de/members/donges>`_)
-- Donovan Dennis        (`PIK page <https://www.pik-potsdam.de/members/dennis>`_)
+- Donovan Dennis        (`PIK page <https://www.pik-potsdam.de/members/donovand>`_)
 - Karoline Ramin        (`PIK page <https://www.pik-potsdam.de/members/karoline/homepage>`_)
 - Lukas Röhrich         (`eMail <mailto:lukasro@pik-potsdam.de>`_)

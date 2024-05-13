@@ -13,24 +13,19 @@ Introduction
 project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). The TIPMIP project page
 can be found `here <https://tipmip.pik-potsdam.de>`_.
 
-The TOAD science and code development is led by Sina Loriani, with support from
-Karoline Ramin and Lukas Röhrich. Past and ongoing contributions on the
-scientific 
-
-
 **Contributors:**
-- Sina Loriani: TOAD science and code development lead
+* Sina Loriani: TOAD science and code development lead
 
 *Developer team and student projects* 
-- Karoline Ramin: Student assistant for codebase support
-- Lukas Röhrich: Student assistant for codebase support
-- Vincent Overbeck: MSc 2023, scoring and optimisation loop
-- Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
-- Ann Sophie Messerschmidt: MSc 2022, clustering methods 
+* Karoline Ramin: Student assistant for codebase support
+* Lukas Röhrich: Student assistant for codebase support
+* Vincent Overbeck: MSc 2023, scoring and optimisation loop
+* Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
+* Ann Sophie Messerschmidt: MSc 2022, clustering methods 
 
 *Scientific discussions*
-- Boris Sakschewski: Conceptualisation, biosphere
-- Julius Garbe: Ice Sheets, conceptualisation
-- Jonathan Donges: Conceptualisation
-- Ann Kristin Klose: Ice Sheets, conceptualisation
-- Ricarda Winkelmann: Ice Sheets, conceptualisation
+* Boris Sakschewski: Conceptualisation, biosphere
+* Julius Garbe: Ice Sheets, conceptualisation
+* Jonathan Donges: Conceptualisation
+* Ann Kristin Klose: Ice Sheets, conceptualisation
+* Ricarda Winkelmann: Ice Sheets, conceptualisation

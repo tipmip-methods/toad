@@ -14,9 +14,11 @@ project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). The TIPMIP p
 can be found `here <https://tipmip.pik-potsdam.de>`_.
 
 **Contributors:**
+
 * Sina Loriani: TOAD science and code development lead
 
 *Developer team and student projects* 
+
 * Karoline Ramin: Student assistant for codebase support
 * Lukas Röhrich: Student assistant for codebase support
 * Vincent Overbeck: MSc 2023, scoring and optimisation loop
@@ -24,6 +26,7 @@ can be found `here <https://tipmip.pik-potsdam.de>`_.
 * Ann Sophie Messerschmidt: MSc 2022, clustering methods 
 
 *Scientific discussions*
+
 * Boris Sakschewski: Conceptualisation, biosphere
 * Julius Garbe: Ice Sheets, conceptualisation
 * Jonathan Donges: Conceptualisation

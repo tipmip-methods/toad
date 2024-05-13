@@ -31,49 +31,35 @@ def detect(
         keep_other_vars : bool = False, 
         method_kwargs={}
     ) -> xr.Dataset :
-    """Map an abrupt shift detection algorithm to the dataset in the temporal
-    dimension.
+    """Map an abrupt shift detection algorithm to the dataset in the temporal dimension.
 
-    Parameters
-    ----------
-    data : xr.Dataset or xr.DataArray
-        Data with two spatial and one temporal dimension. If `data` is an
-        xr.Dataset, `var` needs to be provided.
-    temporal_dim : str
-        Specifies the dimension along which the one-dimensional time-series
-        analysis for abrupt shifts is executed. Usually the time axis but could
-        also be the forcing.
-    method : {'asdetect'} 
-        One-dimensional time-series analysis algorithm to use.
-    var : str, optional
-        Must be used in combination with `data` being an xr.Dataset. Since the
-        algorithms work on xr.DataArrays, it is needed to specify here which
-        variable to extract from the xr.Dataset.
-    keep_other_vars : bool, optional
-        Can be provided if `data` is an xr.Dataset. If True, the resulting
-        xr.DataArray is appended to the xr.Dataset. Defaults to False, such that
-        the xr.Dataset variables which are not analysed (i.e. all others than
-        `var`) are discarded from the resulting xr.Dataset.
-    method_kwargs : dict, optional
-        Kwargs that need to be specifically passed to the analysing algorithm.
+    :param data:                Data with two spatial and one temporal dimension. If `data` is an xr.Dataset, `var` needs to be provided.
+    :type data:                 xr.Dataset or xr.DataArray
+    :param temporal_dim:        Specifies the dimension along which the one-dimensional time-series analysis for abrupt shifts is executed. Usually the time axis but could also be the forcing.
+    :type temporal_dim:         str
+    :param method:              One-dimensional time-series analysis algorithm to use.
+    :type method:               str
+    :param var:                 Must be used in combination with `data` being an xr.Dataset. Since the algorithms work on xr.DataArrays, it is needed to specify here which variable to extract from the xr.Dataset.
+    :type var:                  str, optional
+    :param keep_other_vars:     Can be provided if `data` is an xr.Dataset. If True, the resulting xr.DataArray is appended to the xr.Dataset. Defaults to False, such that the xr.Dataset variables which are not analysed (i.e. all others than `var`) are discarded from the resulting xr.Dataset.
+    :type keep_other_vars:      bool, optional
+    :param method_kwargs:       Kwargs that need to be specifically passed to the analysing algorithm.
+    :type method_kwargs:        dict, optional
+    :return:                    Dataset with (at least) these variables of same dimensions and lengths:
+                                    * `var` : original variable data,
+                                    * `as_var` : Nonzero values denote an AS with the value corresponding to its magnitude,
 
-    Returns
-    -------
-    dataset_with_as : xr.Dataset
-        Dataset with (at least) these variables of same dimensions and lengths: 
-            * `var` : original variable data, 
-            * `as_var` : Nonzero values denote an AS with the value
-              corresponding to its magnitude,
-        The attributes are
-            * `as_detection_method` : details on the used as detection method
-        If `keep_other_vars` is True, then these results are complemented by the
-        unprocessed variables and attributes of the original `data`.
+                                The attributes are
+                                    * `as_detection_method` : details on the used as detection method
+                                    
+                                If `keep_other_vars` is True, then these results are complemented by the unprocessed variables and attributes of the original `data`.
+    :rtype:                     xr.Dataset
 
-    See also
-    --------
+
+    **See also**
+
     toad.tsanalysis : Collection of abrupt shift detection algorithms 
     toad.clustering: Clustering algorithms using the results of the detection
-
     """
     logging.info(f'looking up detector {method}')
     detector = _detection_methods[method]
@@ -128,6 +114,16 @@ def cluster(
         method_kwargs = {}
     ) -> xr.Dataset:
     """
+    Map a clustering algorithm to the dataset in the temporal dimension.
+
+    :param data:            Data with two spatial and one temporal dimension.
+    :type data:             xr.Dataset
+    :param var:             Variable to cluster.
+    :type var:              str
+    :param method:          Clustering algorithm to use.
+    :type method:           str
+    :param method_kwargs:   Kwargs that need to be specifically passed to the clustering algorithm.
+    :type method_kwargs:    dict, optional
     """
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
     assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
@@ -151,6 +147,11 @@ def cluster(
 
 @xr.register_dataarray_accessor("toad")
 class ToadAccessor:
+    """ Accessor for the toad package.
+    
+    :param xarr_da:     xarray DataArray
+    :type xarr_da:      xr.DataArray
+    """
 
     def __init__(self, xarr_da):
         self._da = xarr_da
@@ -161,8 +162,29 @@ class ToadAccessor:
                 cluster_lbl,
                 masking = 'simple',
                 how=('aggr',)  # mean, median, std, perc, per_gridcell
-            ):
-
+                ):
+        """Extracts the time series of a cluster label.
+        
+        :param clustering:      Clustering object
+        :type clustering:       toad.clustering.cluster.Clustering
+        :param cluster_lbl:     Cluster label to extract the time series from.
+        :type cluster_lbl:      int, list
+        :param masking:         Type of masking to apply.
+                                    * simple: apply the 3D mask to a 3D dataarray 
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+        :type masking:          str, optional
+        :param how:             How to aggregate the time series.
+                                    * mean: mean value
+                                    * median: median value
+                                    * aggr: sum of values
+                                    * std: standard deviation
+                                    * perc: percentile value
+                                    * per_gridcell: time series for each grid cell
+        :type how:              str, tuple
+        :return:                Time series of the cluster label.
+        :rtype:                 xr.DataArray
+        """
         da = clustering._apply_mask_to(self._da, cluster_lbl, masking=masking)
         tdim, sdims = infer_dims(self._da)
 
@@ -201,6 +223,20 @@ class ToadAccessor:
                     cluster_lbl, 
                     how='mean'
                 ):
+        """Compute the score of a cluster label.
+        
+        :param clustering:      Clustering object
+        :type clustering:       toad.clustering.cluster.Clustering
+        :param cluster_lbl:     Cluster label to compute the score for.
+        :type cluster_lbl:      int, list
+        :param how:             How to compute the score.
+                                    * mean: mean value
+                                    * median: median value
+                                    * aggr: sum of values
+                                    * std: standard deviation
+                                    * perc: percentile value
+                                    * per_gridcell: time series for each grid cell
+        """
 
         tdim, _ = infer_dims(self._da)  
         xvals = self._da.__getattr__(tdim).values
@@ -217,5 +253,21 @@ class ToadAccessor:
             clustering,
             cluster_lbl, 
             how='mean'
-        ):
+            ):
+        """Return the score of a cluster label.
+        
+        :param clustering:      Clustering object
+        :type clustering:       toad.clustering.cluster.Clustering
+        :param cluster_lbl:     Cluster label to compute the score for.
+        :type cluster_lbl:      int, list
+        :param how:             How to compute the score.
+                                    * mean: mean value
+                                    * median: median value
+                                    * aggr: sum of values
+                                    * std: standard deviation
+                                    * perc: percentile value
+                                    * per_gridcell: time series for each grid cell
+        :return:                Score of the cluster label.
+        :rtype:                 float
+        """
         return self.compute_score(clustering, cluster_lbl, how)[0]

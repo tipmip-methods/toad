@@ -3,6 +3,10 @@ API
 
 :Date: |today|
 
+.. automodule:: toad
+	:members:
+	:member-order: bysource
+
 tsanalysis
 ----------
 

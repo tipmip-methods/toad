@@ -4,13 +4,16 @@
 {% block rootrellink %}
         <li><a href="{{ pathto('index') }}">home</a>|&nbsp;</li>
         <li><a href="{{ pathto('search') }}">search</a>|&nbsp;</li>
+        <li><a href="https://gitlab.pik-potsdam.de/sinal/toad"><img src="{{
+        pathto("_static/gitlab-logo.png", 1) }}" border="0" alt="gitlab repository"
+        width="45" height="10"/></a>|&nbsp;</li>
 {% endblock %}
 
 {% block relbar1 %}
 
 <div style="background-color: white; text-align: left; padding: 10px 10px 15px 15px">
 <a href="{{ pathto('index') }}"><img src="{{
-pathto("_static/logo.png", 1) }}" border="0" alt="py4sci"/></a>
+pathto("_static/logo.png", 1) }}" border="0" alt="TOAD"/></a>
 </div>
 {{ super() }}
 {% endblock %}

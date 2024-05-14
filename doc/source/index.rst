@@ -10,8 +10,8 @@ Introduction
 
 
 ``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python module within the *TIPMIP* research
-project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). The TIPMIP project page
-can be found `here <https://tipmip.pik-potsdam.de>`_.
+project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). See also the `TIPMIP project page <https://tipmip.pik-potsdam.de>`_
+and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 
 **Contributors:**
 

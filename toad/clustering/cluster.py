@@ -3,27 +3,24 @@ import xarray as xr
 from ..utils import infer_dims
 
 class Clustering():
-    """ Test String """
+    """ Handle clusterings to allow simplified operation.
+
+    :param cluster_label_ds:    dataarray with cluster label variable, cluster labels should be processed:
+
+                                    * simple: apply the 3D mask to a 3D dataarray
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+
+    :type cluster_label_ds:     xarray.DataArray
+    :param temporal_dim:        Dimension in which the abrupt shifts have been detected. Automatically inferred if not provided.
+    :type temporal_dim:         str, optional
+    """
 
     def __init__(
             self,
             cluster_label_da,
             temporal_dim=None,
-    ):
-        """ Handle clusterings to allow simplified operation.
-
-        cluster_label_ds: dataarray with cluster label variable masking: how the
-
-        cluster labels should be processed
-            simple: apply the 3D mask to a 3D dataarray 
-            spatial: reduce in the temporal dimension
-            strict: same as spactial, but create new cluster labels for regions
-            that lie in the spatial overlap of multiple clusters 
-            
-        temporal_dim: Dimension in which the abrupt shifts have been detected. 
-        Automatically inferred if not provided.
-
-        """
+            ):
         self.tdim, self.sdims = infer_dims(cluster_label_da, tdim=temporal_dim)
         self._cluster_labels = cluster_label_da
 
@@ -32,21 +29,35 @@ class Clustering():
             xarr_obj,
             cluster_lbl,
             masking='simple' # spatial, strict
-    ):
+            ):
         """ Apply mask to an xarray object.
 
+        :param xarr_obj:        xarray object to apply the mask to
+        :type xarr_obj:         xarray.DataArray
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param masking:         type of masking to apply
+
+                                    * simple: apply the 3D mask to a 3D dataarray 
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+
+        :type masking:          str, optional
+
+        **Examples**
+
         Could directly be used as
-            clustering = Clustering(clustered_ds, masking='spatial)
-            other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
-            other_ds_clustered.mean()
+            >>> clustering = Clustering(clustered_ds, masking='spatial)
+            >>> other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
+            >>> other_ds_clustered.mean()
 
         But usually will be wrapped in toad accessor, allowing
-            other_ds.toad.timeseries(
-                clustering = Clustering(clustered_ds),
-                cluster_lbl = [0,2,3]
-                masking='spatial',
-                how=('mean')
-                )
+            >>> other_ds.toad.timeseries(
+            >>>     clustering = Clustering(clustered_ds),
+            >>>     cluster_lbl = [0,2,3]
+            >>>     masking='spatial',
+            >>>     how=('mean')
+            >>>     )
         
         """
         if type(cluster_lbl) is not list: cluster_lbl = [ cluster_lbl ]
@@ -59,20 +70,39 @@ class Clustering():
             raise ValueError('masking must be either simple or spatial')
         return xarr_obj.where(_mask)
 
-    def simple_mask(self, cluster_lbl, exclusive=False):
-        if exclusive:
-            pass #todo
-        else:
-            return self._cluster_labels.isin(cluster_lbl)
+    def simple_mask(self, cluster_lbl):
+        """ Create a simple mask for a cluster label by simply applying the 3D mask to the 3D dataarray.
+
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        
+        """
+        return self._cluster_labels.isin(cluster_lbl)
 
     def spatial_mask(self, cluster_lbl):
+        """ Create a spatial mask for a cluster label by reducing the 3D mask in the temporal dimension.
+        
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+
+        """
         return self.simple_mask(cluster_lbl).any(dim=self.tdim)
 
     def tprops(
             self, 
             cluster_lbl, 
             how=('mean',) # median, std, perc, dist
-        ):
+            ):
+        """ Calculate temporal properties of a cluster label.
+        
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param how:             how to calculate the temporal properties
+        :type how:              tuple
+        :return:                temporal properties of the cluster label
+        :rtype:                 ...
+
+        """
         if type(how)== str:
             how = (how,)
     
@@ -88,9 +118,12 @@ class Clustering():
         elif 'std' in how:
             return dimT.std().values
         elif 'perc' in how:
-            # takes the (first) numeric value to be found in how 
-            pval = [arg for arg in how if type(arg)==float][0]
-            return dimT.quantile(pval, skipna=True)
+            try:
+                # takes the (first) numeric value to be found in how 
+                pval = [arg for arg in how if type(arg)==float][0]
+                return dimT.quantile(pval, skipna=True)
+            except IndexError:
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
         elif 'dist' in how:
             return dimT
 
@@ -99,7 +132,24 @@ class Clustering():
             cluster_lbl,
             masking = 'spatial',
             how=('mean',) # median, std, perc, dist
-        ):
+            ):
+        """ Calculate spatial properties of a cluster label.
+
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        :param masking:         type of masking to apply
+
+                                    * simple: apply the 3D mask to a 3D dataarray
+                                    * spatial: reduce in the temporal dimension
+                                    * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters 
+        
+        :type masking:          str, optional
+        :param how:             how to calculate the spatial properties
+        :type how:              tuple
+        :return:                spatial properties of the cluster label
+        :rtype:                 ...
+
+        """
         if type(how)== str:
             how = (how,)
     
@@ -117,9 +167,12 @@ class Clustering():
         elif 'std' in how:
             return dimA.std().values, dimB.std().values
         elif 'perc' in how:
-            # takes the (first) numeric value to be found in how 
-            pval = [arg for arg in how if type(arg)==float][0]
-            return dimA.quantile(pval, skipna=True), dimB.quantile(pval, skipna=True)
+            try:
+                # takes the (first) numeric value to be found in how 
+                pval = [arg for arg in how if type(arg)==float][0]
+                return dimA.quantile(pval, skipna=True).values, dimB.quantile(pval, skipna=True).values
+            except IndexError:
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
         elif 'dist' in how:
             return dimA, dimB
 
@@ -127,46 +180,12 @@ class Clustering():
             self,
             xarr_obj,
             cluster_lbl = None,
-    ):
-        self._apply_mask(cluster_lbl, xarr_obj)
-        #
+            ):
+        """ Apply mask to an xarray object.
 
-
-        #     def __init__(self, mask, temporal_dim):
-#         self.mask = mask
-#         self.temporal_dim = temporal_dim
-#         self.spatial_mask = self.mask.any(dim=self.temporal_dim)
-#         _, (self.sdimA, self.sdimB) = infer_dims(self.mask, tdim=self.temporal_dim)
-
-
-#         # Coordinate properties of the cluster selection
-#         self.dimT = xr.where( self.mask, self.mask.__getattr__(self.temporal_dim), np.nan)
-#         self.meanT = self.dimT.mean().values
-#         self.stdT = self.dimT.mean().values
-#         self.medianT = self.dimT.median().values
-
-#         self.dimA = xr.where( self.mask, self.mask.__getattr__(self.sdimA), np.nan)
-#         self.meanA = self.dimA.mean().values
-#         self.stdA = self.dimA.mean().values
-#         self.medianA = self.dimA.median().values
-
-#         self.dimB = xr.where( self.mask, self.mask.__getattr__(self.sdimB), np.nan)
-#         self.meanB = self.dimB.mean().values
-#         self.stdB = self.dimB.mean().values
-#         self.medianB = self.dimB.median().values
-
-#     def percT(self, percentile=0.02):
-#         return self.dimT.quantile(percentile).values
-
-#     def percA(self, percentile=0.02):
-#         return self.dimA.quantile(percentile).values
-    
-#     def percB(self, percentile=0.02):
-#         return self.dimB.quantile(percentile).values
-
-#     def __call__(self, xarr_obj, regions=True):
-#         """ Just apply mask to other xarray object"""
-#         if regions:
-#             return xr.where( self.spatial_mask, xarr_obj, np.nan)
-#         else:
-#             return xr.where( self.mask, xarr_obj, np.nan)
+        :param xarr_obj:        xarray object to apply the mask to
+        :type xarr_obj:         xarray.DataArray
+        :param cluster_lbl:     cluster label to apply the mask for
+        :type cluster_lbl:      int, list
+        """
+        return self._apply_mask_to(xarr_obj,cluster_lbl)

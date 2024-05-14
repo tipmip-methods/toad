@@ -1,0 +1,2 @@
+sphinx
+python_docs_theme

@@ -1,7 +1,5 @@
 .. TOAD documentation master file, created by
-   sphinx-quickstart on Mon Dec  4 18:05:02 2023.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+   Lukas Röhrich, November 2023
 
 Introduction
 ============
@@ -14,3 +12,23 @@ Introduction
 ``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python module within the *TIPMIP* research
 project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). The TIPMIP project page
 can be found `here <https://tipmip.pik-potsdam.de>`_.
+
+**Contributors:**
+
+* Sina Loriani: TOAD science and code development lead
+
+*Developer team and student projects* 
+
+* Karoline Ramin: Student assistant for codebase support
+* Lukas Röhrich: Student assistant for codebase support
+* Vincent Overbeck: MSc 2023, scoring and optimisation loop
+* Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
+* Ann Sophie Messerschmidt: MSc 2022, clustering methods 
+
+*Scientific discussions*
+
+* Boris Sakschewski: Conceptualisation, biosphere
+* Julius Garbe: Ice Sheets, conceptualisation
+* Jonathan Donges: Conceptualisation
+* Ann Kristin Klose: Ice Sheets, conceptualisation
+* Ricarda Winkelmann: Ice Sheets, conceptualisation

@@ -18,7 +18,20 @@ def construct_dataframe(
     var : str,
     var_func : Callable[[float], bool] = None,
     dts_func : Callable[[float], bool] = None,
-):
+    ):
+    """Construct a dataframe from the data and apply the given functions.
+    
+    :param data:        xarray dataset
+    :type data:         xr.Dataset
+    :param var:         ...
+    :type var:          str
+    :param var_func:    ...
+    :type var_func:     Callable[[float], bool]
+    :param dts_func:    ...
+    :type dts_func:     Callable[[float], bool]
+    :return:            ...
+    :rtype:             ...
+    """
     df_var = data.get(var).to_dataframe().reset_index()
     df_dts = data.get(f'{var}_dts').to_dataframe().reset_index()
 
@@ -40,7 +53,23 @@ def prepare_dataframe(
     var_func : Callable[[float], bool] = None,
     dts_func : Callable[[float], bool] = None,
     scaler : str = 'StandardScaler'
-):
+    ):
+
+    """Prepare the dataframe for clustering.
+
+    :param data:        xarray dataset
+    :type data:         xr.Dataset
+    :param var:         ...
+    :type var:          str
+    :param var_func:    ...
+    :type var_func:     Callable[[float], bool]
+    :param dts_func:    ...
+    :type dts_func:     Callable[[float], bool]
+    :param scaler:      ...
+    :type scaler:       str
+    :return:            ...
+    :rtype:             ...
+    """
     # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
     dims = list(data.dims.keys())
@@ -65,7 +94,25 @@ def cluster(
     var_func : Callable[[float], bool] = None,
     dts_func : Callable[[float], bool] = None,
     scaler : str = 'StandardScaler'
-):
+    ):
+    """Cluster the data using the DBSCAN algorithm.
+
+    :param data:        xarray dataset
+    :type data:         xr.Dataset
+    :param var:         ...
+    :type var:          str
+    :param eps:         ...
+    :type eps:          float
+    :param min_samples: ...
+    :type min_samples:  int
+    :param var_func:    ...
+    :type var_func:     Callable[[float], bool]
+    :param dts_func:    ...
+    :type dts_func:     Callable[[float], bool]
+    :param scaler:      ...
+    :type scaler:       str
+    """
+
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
 
     df_var, df_dts, df, dims, weights, scaled_coords = prepare_dataframe(data, var, var_func, dts_func, scaler)

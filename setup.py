@@ -17,7 +17,7 @@ setup(
         'numpy',
         'matplotlib',
         'scipy',
-        'sklearn',
+        'scikit-learn',
         'xarray',
         'scipy',
         'seaborn',

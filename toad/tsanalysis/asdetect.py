@@ -171,45 +171,85 @@ def map_dts_to_ndarray(
             lmax=lmax           # kwarg of func1d
         )
 
+# MULTIVARIATE VERSION: FOR XR.DATASETS
+
 def map_dts_to_xarray(
-        values_3d : xr.DataArray,
+        dataset: xr.Dataset, #Change to dataset
         temporal_dim: str,
         lmin : int = 5, lmax : int = None):
-    """ Compute the detection time series for each grid cell.
+    """ Compute the detection time series for each grid cell and for each variable.
     
-    :param values_3d:   data, shape (nt,nx,ny), time index 't'
-    :type values_3d:    3d-xarray.DataArray
+    :param dataset:   data, shape (nt,nx,ny), time index 't'
+    :type dataset:    3d-xarray.Dataset
     :param lmin:        smallest segment length, default = 5
     :type lmin:         int
     :param lmax:        largest segment length, defautl = n/3 (each dim. indep.)
     :type lmax:         int
     :return:            detection time series, shape (nt,nx,ny)
-    :rtype:             3d-xarray.DataArray
+    :rtype:             3d-xarray.Dataset
     """
 
-    return xr.apply_ufunc(
-        construct_detection_ts,
-        values_3d,
-        kwargs=dict(
-                times_1d=values_3d[temporal_dim].values,
+    dts_dataset = xr.Dataset()
+
+    for var_name, data_array in dataset.data_vars.items():
+        dts = xr.apply_ufunc(
+            construct_detection_ts,
+            data_array,
+            kwargs=dict(
+                times_1d=dataset[temporal_dim].values,
                 lmin=lmin, lmax=lmax
             ),
-        input_core_dims=[[temporal_dim]],
-        output_core_dims=[[temporal_dim]],
-        vectorize=True
-    ).transpose(*values_3d.dims)
+            input_core_dims=[[temporal_dim]],
+            output_core_dims=[[temporal_dim]],
+            vectorize=True
+        ).transpose(*data_array.dims)
 
+    
+    dts_dataset[var_name + '_dts'] = dts
+    dts_dataset[var_name + '_dts'].attrs[f'{var_name}_as_detection_method'] = f'asdetect (lmin={lmin}, lmax={lmax})'
+
+    return dts_dataset
+
+# ORIGINAL
+# def map_dts_to_xarray(
+#         values_3d : xr.DataArray,
+#         temporal_dim: str,
+#         lmin : int = 5, lmax : int = None):
+#     """ Compute the detection time series for each grid cell.
+    
+#     :param values_3d:   data, shape (nt,nx,ny), time index 't'
+#     :type values_3d:    3d-xarray.DataArray
+#     :param lmin:        smallest segment length, default = 5
+#     :type lmin:         int
+#     :param lmax:        largest segment length, defautl = n/3 (each dim. indep.)
+#     :type lmax:         int
+#     :return:            detection time series, shape (nt,nx,ny)
+#     :rtype:             3d-xarray.DataArray
+#     """
+
+#     return xr.apply_ufunc(
+#         construct_detection_ts,
+#         values_3d,
+#         kwargs=dict(
+#                 times_1d=values_3d[temporal_dim].values,
+#                 lmin=lmin, lmax=lmax
+#             ),
+#         input_core_dims=[[temporal_dim]],
+#         output_core_dims=[[temporal_dim]],
+#         vectorize=True
+#     ).transpose(*values_3d.dims)
 
 # Main function called from outside ============================================
+
 def detect(
-    data: xr.DataArray,
+    data: xr.Dataset,
     temporal_dim : str,
     lmin: int = 5, lmax : int = None
-) -> xr.DataArray:
+) -> xr.Dataset:
     """ Callable function interfacing this module.
 
     :param data:    data, shape (nt,nx,ny), time index 'temporal_dim'
-    :type data:     3d-xarray.DataArray
+    :type data:     3d-xarray.Dataset
     :temporal_dim:  dimension in which to perform the as detection
     :temporal_dim:  str
     :param lmin:    smallest segment length, default = 5
@@ -217,7 +257,7 @@ def detect(
     :param lmax:    largest segment length, default = n/3 (each dim. indep.)
     :type lmax:     int
     :return:        detection time series, shape (nt,nx,ny)
-    :rtype:         3d-xarray.DataArray
+    :rtype:         3d-xarray.Dataset
     """
     
     method_details = f'asdetect (lmin={lmin}, lmax={lmax}'
@@ -229,6 +269,36 @@ def detect(
     dts.attrs[f'{data.name}_as_detection_method'] = method_details        
 
     return dts
+
+# ORIGINAL
+# def detect(
+#     data: xr.DataArray,
+#     temporal_dim : str,
+#     lmin: int = 5, lmax : int = None
+# ) -> xr.DataArray:
+#     """ Callable function interfacing this module.
+
+#     :param data:    data, shape (nt,nx,ny), time index 'temporal_dim'
+#     :type data:     3d-xarray.DataArray
+#     :temporal_dim:  dimension in which to perform the as detection
+#     :temporal_dim:  str
+#     :param lmin:    smallest segment length, default = 5
+#     :type lmin:     int
+#     :param lmax:    largest segment length, default = n/3 (each dim. indep.)
+#     :type lmax:     int
+#     :return:        detection time series, shape (nt,nx,ny)
+#     :rtype:         3d-xarray.DataArray
+#     """
+    
+#     method_details = f'asdetect (lmin={lmin}, lmax={lmax}'
+
+#     # Compute the detection time series and add the result as dataarray to df,
+#     # unless that is explicitly not wished for 
+#     dts = map_dts_to_xarray(data, temporal_dim, lmin, lmax)
+#     dts = dts.rename(f'{data.name}_dts')
+#     dts.attrs[f'{data.name}_as_detection_method'] = method_details        
+
+#     return dts
 
 
 # Detection time series evaluation methods =====================================

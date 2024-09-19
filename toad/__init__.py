@@ -25,33 +25,46 @@ _clustering_methods = {
 
 # Adapted for multivariate TOAD
 def detect(
-        data: xr.Dataset,
+        data: Union[xr.Dataset, xr.DataArray],
         temporal_dim: str,
         method: str,
+        vars: Union[str, List[str]] = None,
+        keep_other_vars: bool = False, 
         method_kwargs={}
-    ) -> xr.Dataset :
+    ) -> xr.Dataset:
     """Map an abrupt shift detection algorithm to the dataset in the temporal
     dimension.
 
     Parameters
     ----------
-    data : xr.Dataset
-        Data with two spatial and one temporal dimension.
+    data : xr.Dataset or xr.DataArray
+        Data with two spatial and one temporal dimension. If `data` is an
+        xr.Dataset, `vars` needs to be provided.
     temporal_dim : str
         Specifies the dimension along which the one-dimensional time-series
         analysis for abrupt shifts is executed. Usually the time axis but could
         also be the forcing.
     method : {'asdetect'} 
         One-dimensional time-series analysis algorithm to use.
+    vars : str or list of str, optional
+        Must be used in combination with `data` being an xr.Dataset. Since the
+        algorithms work on xr.DataArrays, it is needed to specify here which
+        variable(s) to extract from the xr.Dataset. Can be a single variable
+        name or a list of variable names.
+    keep_other_vars : bool, optional
+        Can be provided if `data` is an xr.Dataset. If True, the resulting
+        xr.DataArray is appended to the xr.Dataset. Defaults to False, such that
+        the xr.Dataset variables which are not analyzed (i.e. all others than
+        `vars`) are discarded from the resulting xr.Dataset.
     method_kwargs : dict, optional
-        Kwargs that need to be specifically passed to the analysing algorithm.
+        Kwargs that need to be specifically passed to the analyzing algorithm.
 
     Returns
     -------
     dataset_with_as : xr.Dataset
         Dataset with (at least) these variables of same dimensions and lengths: 
-            * `var` : original variable data, 
-            * `as_var` : Nonzero values denote an AS with the value
+            * `vars` : original variable data, 
+            * `as_vars` : Nonzero values denote an AS with the value
               corresponding to its magnitude,
         The attributes are
             * `as_detection_method` : details on the used as detection method
@@ -67,27 +80,45 @@ def detect(
     logging.info(f'looking up detector {method}')
     detector = _detection_methods[method]
 
-    assert type(data) == xr.Dataset, 'Please provide xr.Dataset!'
+    # Ensure vars is a list
+    if isinstance(vars, str):
+        vars = [vars]
 
-    assert dataset.ndim == 3, 'data must be 3-dimensional!'
+    results = []
+    
+    # Iterate over the variables to process each one
+    for var in vars:
+        if var:
+            assert type(data) == xr.Dataset, \
+                     'Using vars requires type(data) == xr.Dataset!'
+            logging.info(f'extracting variable {var} from Dataset')
+            data_array = data.get(var)
+        else:
+            assert type(data) == xr.DataArray, 'Please provide vars or an xr.DataArray!'
+            data_array = data
 
-    # Application of a detector results in an xr.DataArray with 
-    # coords = (<temporal_dim>, 2 spatial dimensions)
-    # variables
-    #   var (<temporal_dim>, SD1, SD2)
-    #   as_var (<temporal_dim>, SD1, SD2)
-    #   as_types_var (<temporal_dim>, SD1, SD2)
-    logging.info(f'applying detector {method} to data')
-    dataset_dts = detector(
-        data=dataset, 
-        temporal_dim=temporal_dim,
-        **method_kwargs
-    )
+        assert data_array.ndim == 3, 'data must be 3-dimensional!'
 
-    # Save gitversion to dataset
-    #data_array_dts.attrs[f'{var}_git_detect'] = __version__
+        logging.info(f'applying detector {method} to data variable {var}')
+        data_array_dts = detector(
+            data=data_array, 
+            temporal_dim=temporal_dim,
+            **method_kwargs
+        )
 
-    return dataset_dts
+        # Rename the detection result to avoid overwriting when merging
+        data_array_dts = data_array_dts.rename(f'{var}_dts')
+        results.append(data_array_dts)
+
+    # Merge results into a dataset
+    dataset_with_as = xr.merge([data] + results) if keep_other_vars else xr.merge(results)
+    
+    # Clean up attributes if not keeping other variables
+    if not keep_other_vars:
+        dataset_with_as.attrs = []
+
+    return dataset_with_as
+
 
 # ORIGINAL
 # def detect(

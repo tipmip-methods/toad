@@ -238,7 +238,7 @@ def cluster(
     logging.info(f'applying clusterer {method} to data')
     dataset_with_clusterlabels = clusterer(
         data=data, 
-        var=vars,
+        vars=vars,
         **method_kwargs
     )
 

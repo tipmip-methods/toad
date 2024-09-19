@@ -1,5 +1,5 @@
 import logging
-from typing import Union
+from typing import List, Union
 import numpy as np
 import xarray as xr
 from xarray.core import dataset

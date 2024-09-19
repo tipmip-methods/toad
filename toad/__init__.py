@@ -29,7 +29,7 @@ def detect(
         temporal_dim: str,
         method: str,
         vars: Union[str, List[str]] = None,
-        keep_other_vars: bool = False, 
+        keep_other_vars: bool = True, 
         method_kwargs={}
     ) -> xr.Dataset:
     """Map an abrupt shift detection algorithm to the dataset in the temporal
@@ -53,9 +53,9 @@ def detect(
         name or a list of variable names.
     keep_other_vars : bool, optional
         Can be provided if `data` is an xr.Dataset. If True, the resulting
-        xr.DataArray is appended to the xr.Dataset. Defaults to False, such that
+        xr.DataArray is appended to the xr.Dataset. Defaults to True, such that
         the xr.Dataset variables which are not analyzed (i.e. all others than
-        `vars`) are discarded from the resulting xr.Dataset.
+        `vars`) are still available in the resulting xr.Dataset.
     method_kwargs : dict, optional
         Kwargs that need to be specifically passed to the analyzing algorithm.
 

@@ -221,16 +221,16 @@ def detect(
 
 def cluster(
         data: xr.Dataset,
-        var : str,
+        vars : List[str],  # List of variables
         method : str,
         method_kwargs = {}
     ) -> xr.Dataset:
     """
     """
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
-    assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
-    assert f'{var}_dts' in list(data.data_vars.keys()), \
-                                f'data lacks detection time series {var}_dts'
+    #assert data.get(vars).ndim == 3, 'data must be 3-dimensional!'
+    #assert f'{vars}_dts' in list(data.data_vars.keys()), \
+                                #f'data lacks detection time series {var}_dts'
 
     logging.info(f'looking up clusterer {method}')
     clusterer = _clustering_methods[method]
@@ -238,7 +238,7 @@ def cluster(
     logging.info(f'applying clusterer {method} to data')
     dataset_with_clusterlabels = clusterer(
         data=data, 
-        var=var,
+        var=vars,
         **method_kwargs
     )
 

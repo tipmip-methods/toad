@@ -27,6 +27,8 @@ def construct_dataframe(
 ):
     df_vars = []
     df_dts_vars = []
+    combined_var_mask = None # initialise this variable
+    combined_dts_mask = None # initialise this variable 
 
     for idx, var in enumerate(vars): # for each variable
         df_var = data.get(var).to_dataframe().reset_index() # Convert time series to pandas
@@ -154,6 +156,8 @@ def cluster(
     lbl_dbscan = dbscan.labels_.astype(float)
     labels = np.unique(lbl_dbscan)
 
+    datasets = [] # Empty list to store all xr.datasets for each variable
+
     # Writing to dataset (for each variable, store clustering results as attribute)
     for i, var in enumerate(vars):
         # Create a new column in the dataframe ({var}_cluster) to store the cluster labels.
@@ -162,14 +166,19 @@ def cluster(
         df_vars[i][[f'{var}_dts']] = df_dts_vars[i][[f'{var}_dts']]
         # Store/update the cluster labels
         df_vars[i].loc[:, f'{var}_cluster'] = lbl_dbscan
+        # Transfer to xarray dataset
+        df_var_xarray = df_vars[i].set_index(dims).to_xarray()
+        # Append to datasets 
+        datasets.append(df_var_xarray)
 
-    # Convert the dataframe with cluster labels back to an xarray.Dataset format, with the dimensions from the original dataset.
-    combined_cluster_labels = df_vars[0].set_index(dims).to_xarray() 
+    # Combine the different variable datasets 
+    cluster_dataset = xr.merge(datasets)
+    
     # The cluster labels and method details (DBSCAN parameters) are also saved as attributes in the resulting dataset.
-    combined_cluster_labels.attrs[f'{vars}_clusters'] = labels
-    combined_cluster_labels.attrs[f'{vars}_clustering_method'] = method_details
+    cluster_dataset.attrs[f'{vars}_clusters'] = labels
+    cluster_dataset.attrs[f'{vars}_clustering_method'] = method_details
 
-    return combined_cluster_labels
+    return cluster_dataset 
 
 ## ORIGINAL CODE FOR UNIVARIATE ANALYSIS BELOW:
 # def construct_dataframe(

@@ -86,10 +86,9 @@ def construct_dataframe(
     combined_mask = combined_var_mask & combined_dts_mask
 
     # Apply the combined mask across all variables
-    df_vars_masked = [df_var.loc[combined_mask] for df_var in df_vars]
     df_dts_vars_masked = [df_dts.loc[combined_mask] for df_dts in df_dts_vars]
 
-    return df_vars_masked, df_dts_vars_masked # List which contains for each variable the masked pandas dataframes
+    return df_vars, df_dts_vars, df_dts_vars_masked #Unmasked vars, unmasked dts, masked dts
 
 def prepare_dataframe(
     data: xr.Dataset,
@@ -101,7 +100,7 @@ def prepare_dataframe(
     scaler: str = 'StandardScaler'
 ):
     # Construct dataframes for all variables
-    df_vars, df_dts_vars = construct_dataframe(data, vars, var_funcs, dts_funcs, driver_var, driver_dts_func)
+    df_vars, df_dts_vars, df_dts_vars_masked = construct_dataframe(data, vars, var_funcs, dts_funcs, driver_var, driver_dts_func)
 
     # Collect all dimensions (common across all variables)
     dims = list(data.dims.keys())
@@ -110,7 +109,7 @@ def prepare_dataframe(
     combined_coords = []
     combined_vals = []
     for i in range(len(vars)): # loop over all variables
-        df = df_dts_vars[i] # get the variable 
+        df = df_dts_vars_masked[i] # get the variable 
         coords = df[dims]
         vals = np.abs(df[[f'{vars[i]}_dts']])
         combined_coords.append(coords)
@@ -128,7 +127,7 @@ def prepare_dataframe(
     scaled_coords = scaler.fit_transform(stacked_coords) # perform scaling (normalisation)
     scaled_vals = scaler.fit_transform(stacked_vals)  # Scale the combined values for clustering
 
-    return df_vars, df_dts_vars, dims, scaled_vals, scaled_coords
+    return df_vars, df_dts_vars, df_dts_vars_masked, dims, scaled_vals, scaled_coords
 
 def cluster(
     data: xr.Dataset,  # Use xr.Dataset instead of xr.DataArray
@@ -144,7 +143,7 @@ def cluster(
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
 
     # Prepare the combined dataframe with multiple variables
-    df_vars, df_dts_vars, dims, scaled_vals, scaled_coords = prepare_dataframe(
+    df_vars, df_dts_vars, df_dts_vars_masked, dims, scaled_vals, scaled_coords = prepare_dataframe(
         data, vars, var_funcs, dts_funcs, driver_var, driver_dts_func, scaler
     )
 

@@ -163,8 +163,10 @@ def cluster(
         df_vars[i][[f'{var}_cluster']] = -1 # Initialise with -1 for unclustered points
         # keep detection series
         df_vars[i][[f'{var}_dts']] = df_dts_vars[i][[f'{var}_dts']]
-        # Store/update the cluster labels
+        # Store the cluster labels
         df_vars[i].loc[df_dts_vars_masked[i].index, f'{var}_cluster'] = lbl_dbscan
+        # Preserve the original time series data by making sure it's not overwritten:
+        df_vars[i][f'{var}'] = df_vars[i][f'{var}'].fillna(df_vars[i][f'{var}'])  # This ensures the original values stay intact
         # Transfer to xarray dataset
         df_var_xarray = df_vars[i].set_index(dims).to_xarray()
         # Append to datasets 

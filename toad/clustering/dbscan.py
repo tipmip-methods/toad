@@ -104,6 +104,7 @@ def prepare_dataframe(
 
     # Collect all dimensions (common across all variables)
     dims = list(data.dims.keys())
+    #coords = df_dts_vars_masked[0][dims]
 
     # Collect all coordinates and values across variables
     combined_coords = []
@@ -111,7 +112,7 @@ def prepare_dataframe(
     for i in range(len(vars)): # loop over all variables
         df = df_dts_vars_masked[i] # get the variable 
         coords = df[dims]
-        vals = np.abs(df[[f'{vars[i]}_dts']])
+        vals = np.abs(df[[f'{vars[i]}_dts']]) # take absolute value of abruptness series 
         combined_coords.append(coords)
         combined_vals.append(vals.values.flatten())
 
@@ -124,10 +125,10 @@ def prepare_dataframe(
     elif scaler == 'MinMaxScaler':
         scaler = MinMaxScaler() 
 
-    scaled_coords = scaler.fit_transform(stacked_coords) # perform scaling (normalisation)
+    scaled_coords = scaler.fit_transform(coords) # perform scaling (normalisation)
     scaled_vals = scaler.fit_transform(stacked_vals)  # Scale the combined values for clustering
 
-    return df_vars, df_dts_vars, df_dts_vars_masked, dims, scaled_vals, scaled_coords
+    return df_vars, df_dts_vars, df_dts_vars_masked, dims, stacked_vals, scaled_vals, scaled_coords
 
 def cluster(
     data: xr.Dataset,  # Use xr.Dataset instead of xr.DataArray
@@ -138,23 +139,93 @@ def cluster(
     dts_funcs: Callable[[float], bool] = None,
     driver_var: str = None,  # Driver variable name
     driver_dts_func: Callable[[float], bool] = None,  # Masking function for driver variable
-    scaler: str = 'StandardScaler'
+    scaler: str = 'StandardScaler',
+    weights: str = "avg", # no: without weights; max: takes maximum abruptness among vars; avg: takes average abruptness across vars; driver: includes driver abruptness in avg weights
+    multidimensional: str = "no", # no: only coordinate distances; all: include all vars; var_name: include only this var on top of coordinates
 ):
-    method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
+    method_details = f'dbscan (eps={eps}, min_samples={min_samples}, driver_var = {driver_var}, {scaler}, weights = {weights}, multidimenstional = {multidimensional})'
 
     # Prepare the combined dataframe with multiple variables
-    df_vars, df_dts_vars, df_dts_vars_masked, dims, scaled_vals, scaled_coords = prepare_dataframe(
+    df_vars, df_dts_vars, df_dts_vars_masked, dims, stacked_vals, scaled_vals, scaled_coords = prepare_dataframe(
         data, vars, var_funcs, dts_funcs, driver_var, driver_dts_func, scaler
     )
 
     # Perform DBSCAN clustering
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-    # Call fit_predict on the scaled coordinates to assign cluster labels (y_pred). 
-    # DBSCAN returns -1 for noise points and a unique integer for each cluster.
-    y_pred = dbscan.fit_predict(np.hstack([scaled_coords, scaled_vals]))  # Combine coords and values for clustering
+    if weights == "no":
+         if multidimensional == "all":
+             # Call fit_predict on the scaled coordinates to assign cluster labels (y_pred). 
+            # DBSCAN returns -1 for noise points and a unique integer for each cluster.
+            y_pred = dbscan.fit_predict(np.hstack([scaled_coords, scaled_vals]))  # Combine coords and values for clustering
+            lbl_dbscan = dbscan.labels_.astype(float)
+            labels = np.unique(lbl_dbscan)
+
+    elif weights == "max":
+         # Calculate max weights for each sample based on scaled_vals
+         weights = np.max(stacked_vals, axis=1).flatten()
+         if multidimensional == "no":
+             y_pred = dbscan.fit_predict(
+                         scaled_coords, 
+                        sample_weight=weights
+                     )
+
+             
+         elif multidimensional == "all":
+             y_pred = dbscan.fit_predict(
+                         np.hstack([scaled_coords, scaled_vals]), 
+                        sample_weight=weights
+                     )
+
+    elif weights == "avg":
+         # Calculate avg weights for each sample based on scaled_vals
+         weights = np.mean(stacked_vals, axis=1).flatten() 
+         if multidimensional == "no":
+             y_pred = dbscan.fit_predict(
+                         scaled_coords, 
+                        sample_weight=weights
+                     )
+
+         elif multidimensional == "all":
+             y_pred = dbscan.fit_predict(
+                         np.hstack([scaled_coords, scaled_vals]), 
+                        sample_weight=weights
+                     )
+
+    elif weights == "driver":
+         # Apply the driver variable mask if provided
+         driver_values_df = None  # Initialize variable for driver values DataFrame
+         if driver_var:    
+                # Convert the driver variable's detection series to a DataFrame
+                driver_dts_df = data.get(f'{driver_var}_dts').to_dataframe().reset_index()  # Convert driver variable's dts to pandas
+
+                # Use combined mask to filter the driver DataFrame
+                combined_mask = np.zeros(len(driver_dts_df), dtype=bool)  # Initialize combined mask
+                for df_mask in df_dts_vars_masked:
+                    combined_mask |= df_mask.index.isin(driver_dts_df.index)  # Combine masks
+
+                # Apply combined mask to keep only relevant driver variable points
+                driver_values_df = driver_dts_df[combined_mask]
+
+                vals = np.abs(driver_values_df[[f'{driver_var}_dts']]).values.flatten() 
+
+                stacked_vals_driver = np.column_stack(stacked_vals, vals)
+
+                weights = np.mean(stacked_vals_driver, axis=1).flatten()
+    
+                if multidimensional == "no":
+                    y_pred = dbscan.fit_predict(
+                                scaled_coords, 
+                                sample_weight=weights
+                            )
+
+                elif multidimensional == "all":
+                    y_pred = dbscan.fit_predict(
+                                np.hstack([scaled_coords, scaled_vals]), 
+                                sample_weight=weights
+                            )
+    
     lbl_dbscan = dbscan.labels_.astype(float)
     labels = np.unique(lbl_dbscan)
-
     datasets = [] # Empty list to store all xr.datasets for each variable
 
     # Writing to dataset (for each variable, store clustering results as attribute)

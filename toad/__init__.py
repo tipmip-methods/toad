@@ -6,6 +6,8 @@ from xarray.core import dataset
 
 from .tsanalysis import asdetect
 from .clustering import dbscan
+from .aggregation import diffusive
+from .aggregation import cspa
 from .clustering.cluster import Clustering
 from .utils import infer_dims
 
@@ -21,6 +23,13 @@ _detection_methods = {
 # maps the analysis to xr.DataArray 
 _clustering_methods = {
     'dbscan': dbscan.cluster
+} 
+
+# Each new aggregation procedure needs to register the function which
+# maps the analysis to xr.DataArray 
+_aggregation_methods = {
+    'diffusive': diffusive.aggregate,
+    'cspa': cspa.aggregate,
 } 
 
 # Adapted for multivariate TOAD
@@ -246,6 +255,29 @@ def cluster(
     #dataset_with_clusterlabels.attrs[f'{var}_git_cluster'] = __version__
 
     return dataset_with_clusterlabels    
+
+def aggregate(
+        data: xr.Dataset, # give an xr.Dataset where each variable contains the clustering labels
+        method: str, # two methods: diffusive or consensus
+        method_kwargs = {}
+    ) -> xr.Dataset:
+    """
+    """
+    assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
+
+    logging.info(f'looking up aggregator {method}')
+    aggregator = _aggregation_methods[method]
+
+    logging.info(f'applying aggregator {method} to data')
+    aggregated_dataset = aggregator(  # keep also the individual clusterings in the dataset
+        data=data, 
+        **method_kwargs
+    )
+
+    # Save gitversion to dataset
+    #dataset_with_clusterlabels.attrs[f'{var}_git_cluster'] = __version__
+
+    return aggregated_dataset  
 
 @xr.register_dataarray_accessor("toad")
 class ToadAccessor:

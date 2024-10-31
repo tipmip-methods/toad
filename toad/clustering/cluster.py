@@ -66,8 +66,10 @@ class Clustering():
             _mask = self.simple_mask(cluster_lbl)
         elif masking=='spatial':
             _mask = self.spatial_mask(cluster_lbl)
+        elif masking=='always_in_cluster':
+            _mask = self.always_in_cluster_mask(cluster_lbl)
         else:
-            raise ValueError('masking must be either simple or spatial')
+            raise ValueError('masking must be either simple or spatial or always_in_cluster')
         return xarr_obj.where(_mask)
 
     def simple_mask(self, cluster_lbl):
@@ -87,6 +89,10 @@ class Clustering():
 
         """
         return self.simple_mask(cluster_lbl).any(dim=self.tdim)
+
+    def always_in_cluster_mask(self, cluster_lbl):
+        """ Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1)"""
+        return (self._cluster_labels == cluster_lbl).all(dim=self.tdim)
 
     def tprops(
             self, 

@@ -110,7 +110,8 @@ def detect(
 def cluster(
         data: xr.Dataset,
         var : str,
-        method : str,
+        method : str = None,
+        method_func : callable = None,
         method_kwargs = {}
     ) -> xr.Dataset:
     """
@@ -130,8 +131,14 @@ def cluster(
     assert f'{var}_dts' in list(data.data_vars.keys()), \
                                 f'data lacks detection time series {var}_dts'
 
-    logging.info(f'looking up clusterer {method}')
-    clusterer = _clustering_methods[method]
+    assert method or method_func, 'Please provide either a method or a method_func'
+
+    # If a custom clustering function is provided, use it
+    if(method_func):
+        clusterer = method_func
+    else:
+        logging.info(f'looking up clusterer {method}')
+        clusterer = _clustering_methods[method]
 
     logging.info(f'applying clusterer {method} to data')
     dataset_with_clusterlabels = clusterer(

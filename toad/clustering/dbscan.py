@@ -72,7 +72,7 @@ def prepare_dataframe(
     """
     # Data preparation: Transform into a dataframe and rescale the coordinates 
     df_var, df_dts, df = construct_dataframe(data, var, var_func, dts_func)
-    dims = list(data.dims.keys())
+    dims = list(data.sizes.keys())
     coords = df[dims]
     vals = np.abs(df[[f'{var}_dts']])
 

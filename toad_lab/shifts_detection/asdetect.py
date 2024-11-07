@@ -145,32 +145,6 @@ def construct_detection_ts(
     return detection_ts
 
 # Map to multi-dimensional datasets ============================================
-def map_dts_to_ndarray(
-        values_3d : np.ndarray, times_1d: np.ndarray,
-        lmin : int = 5, lmax : int = None):
-    """ Compute the detection time series for each grid cell. 
-    
-    :param values_3d:   data, shape(nt,nx,ny), assuming t at ix=0
-    :type values_3d:    3d-numpy.ndarray
-    :param times_1d:    times, shape (nt,)
-    :type times_1d:     1d-numpy.ndarray
-    :param lmin:        smallest segment length, default = 5
-    :type lmin:         int
-    :param lmax:        largest segment length, default = n/3 (each dim. indep.)
-    :type lmax:         int
-    :return:            detection time series, shape (nt,nx,ny)
-    :rtype:             3d-numpy.ndarray
-    """
-
-    return np.apply_along_axis(
-            func1d=construct_detection_ts,
-            axis=0,
-            arr=values_3d,
-            times_1d=times_1d,  # arg of func1d 
-            lmin=lmin,          # kwarg of func1d
-            lmax=lmax           # kwarg of func1d
-        )
-
 def map_dts_to_xarray(
         values_3d : xr.DataArray,
         temporal_dim: str,
@@ -300,16 +274,15 @@ def detect(
 
 
 # demo zone ===================================================================
-if __name__=='__main__':
-    nt, nx, ny = 30,3,3
-    arr3d = np.arange(nt*nx*ny).reshape(nt,nx,ny).astype(float)
-    arr1d = arr3d[:,0,0]
-    times = np.arange(nt)
-    darr3d = xr.DataArray(
-        data=arr3d, dims=['t','x','y'],
-        coords = [ np.arange(nt), np.arange(nx), np.arange(ny) ]
-    )
+# if __name__=='__main__':
+#     nt, nx, ny = 30,3,3
+#     arr3d = np.arange(nt*nx*ny).reshape(nt,nx,ny).astype(float)
+#     arr1d = arr3d[:,0,0]
+#     times = np.arange(nt)
+#     darr3d = xr.DataArray(
+#         data=arr3d, dims=['t','x','y'],
+#         coords = [ np.arange(nt), np.arange(nx), np.arange(ny) ]
+#     )
 
-    res1d = construct_detection_ts(arr1d, times)
-    res3d = map_dts_to_ndarray(arr3d, times)
-    resxd = map_dts_to_xarray(darr3d, temporal_dim='t')    
+#     res1d = construct_detection_ts(arr1d, times)
+#     resxd = map_dts_to_xarray(darr3d, temporal_dim='t')    

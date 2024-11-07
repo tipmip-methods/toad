@@ -6,7 +6,7 @@ def readme():
         return f.read()
 
 setup(
-    name='toad',
+    name='toad-lab',
     version=__version__,
     description='Tipping and other abrupt events detector',
     long_description=readme(),

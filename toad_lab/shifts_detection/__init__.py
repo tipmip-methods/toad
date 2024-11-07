@@ -13,6 +13,8 @@ def compute_shifts(
         var: str,
         temporal_dim: str = "time",
         method: Union [str, callable] = "asdetect",
+        output_label: str = None,
+        overwrite: bool = False,
         **method_kwargs
     ) -> xr.Dataset :
     """Map an abrupt shift detection algorithm to the dataset in the temporal dimension.
@@ -46,7 +48,7 @@ def compute_shifts(
     toad.clustering: Clustering algorithms using the results of the detection
     """
     
-    # Get the shifts method
+    # 1. Get the shifts method
     if callable(method):
         detector = method
     elif type(method) == str:
@@ -55,53 +57,36 @@ def compute_shifts(
     else:
         raise ValueError('method must be a string or a callable') 
 
+    # 2. Check if the output_label is already in the data
+    default_name = f'{var}_dts'
+    output_label = output_label or default_name
+    if output_label in data:
+        if overwrite:
+            logging.warning(f'overwriting variable {output_label} in data')
+            data = data.drop_vars(output_label)
+        else:
+            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or pass overwrite=True')
+
+    # 3. Get var from data
     logging.info(f'extracting variable {var} from Dataset')
     data_array = data.get(var) 
-
     assert data_array.ndim == 3, 'data must be 3-dimensional!'
 
-    # Application of a detector results in an xr.DataArray with 
-    # coords = (<temporal_dim>, 2 spatial dimensions)
-    # variables
-    #   var (<temporal_dim>, SD1, SD2)
-    #   as_var (<temporal_dim>, SD1, SD2)
-    #   as_types_var (<temporal_dim>, SD1, SD2)
+    # 4. Apply the detector
     logging.info(f'applying detector {method} to data')
-    data_array_dts = detector(
+    shifts, method_details = detector(
         data=data_array, 
         temporal_dim=temporal_dim,
         **method_kwargs
     )
 
-    # Save gitversion to dataset
-    data_array_dts.attrs[f'{var}_git_detect'] = __version__
+    # 5. Rename the output variable
+    shifts = shifts.rename(output_label)
+
+    # 6. Save details as attributes
+    shifts.attrs.update({
+        f'{output_label}_git_version': __version__,
+        f'{output_label}_shifts_method': method_details
+    })
     
-    return data_array_dts
-
-
-@deprecated("detect is deprecated. Please use compute_shifts instead.")
-def detect(
-        data: Union[xr.Dataset, xr.DataArray],
-        temporal_dim: str,
-        method: str,
-        var: str = None,
-        keep_other_vars : bool = False, 
-        **method_kwargs
-    ) -> xr.Dataset :
-    
-    data_array = data.get(var) 
-    data_array_dts = compute_shifts(data, var, temporal_dim, method, keep_other_vars, **method_kwargs)
-
-    # If True, dataset_with_as is merged into data. Else, only return dataarray
-    # with its dts together as one dataset.
-    if keep_other_vars:
-        # assert type(data) == xr.Dataset, 'Using keep_other_vars requires type(data) == xr.DataSet!'
-        logging.info(f'merging new variable {var}_dts into dataset')
-        dataset_with_as = xr.merge([data, data_array_dts])
-    else:
-        logging.info(f'merging {var} and {var}_dts')
-        dataset_with_as = xr.merge([data_array , data_array_dts])
-        dataset_with_as.attrs = []
-    return dataset_with_as
-
-
+    return shifts

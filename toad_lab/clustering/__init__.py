@@ -18,6 +18,7 @@ def compute_clusters(
         dts_func: Callable[[float], bool] = None,
         scaler: str = 'StandardScaler',
         output_label: str = None,
+        overwrite: bool = False,
         **method_kwargs
     ) -> xr.Dataset:
     """
@@ -33,6 +34,7 @@ def compute_clusters(
     :type method_kwargs:    dict, optional
 
     TODO: Fix: should also return auxillary coordinates. For now only returns coords in dims. 
+    TODO: coordinates are sometimes flipped in the output. 
     """
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
     assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
@@ -48,16 +50,27 @@ def compute_clusters(
     else:
         raise ValueError('method must be a string or a callable') 
 
-    # 2. Preprocessing
+    # 2. Check if the output_label is already in the data
+    default_name = f'{var}_cluster'
+    output_label = output_label or default_name
+    if output_label in data:
+        if overwrite:
+            logging.warning(f'overwriting variable {output_label} in data')
+            data = data.drop_vars(output_label)
+        else:
+            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or pass overwrite=True')
+
+    # 3. Preprocessing
     # Set a default abruptness filter if no custom dts_func provided
     dts_func = dts_func if dts_func else lambda x: np.abs(x) > min_abruptness
 
     # Prepare the data for clustering
+    # filtered_data is a pandas df that contains the indeces of the data that passed the filters (var_func and dts_func)
     filtered_data, dims, importance_weights, scaled_coords = prepare_dataframe(
         data, var, var_func, dts_func, scaler
     )
 
-    # 3. Perform clustering
+    # 4. Perform clustering
     logging.info(f'applying clusterer {method} to data')
     clusters, method_details = clusterer(
         coords=scaled_coords, 
@@ -65,25 +78,21 @@ def compute_clusters(
         **method_kwargs
     )
 
-    # 4. Convert back to xarray DataArray
-    output_label = output_label if output_label else f'{var}_cluster'
+    # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
     df_dims[output_label] = -1                              # Initialize cluster column with -1
     df_dims.loc[filtered_data.index, output_label] = clusters # Assign cluster labels to the dataframe
-    cluster_labels = df_dims.set_index(dims).to_xarray()    # Convert dataframe to xarray DataArray
-
-    # 5. Save details as attributes
-    # Save gitversion to dataset : TODO add this to _clustering_method attr? 
-    cluster_labels.attrs[f'{var}_git_cluster'] = __version__
-
-    # Convert to xarray DataArray and add attributes
-    # make this attr dynamic if data already has a clustering method
+    cluster_labels = df_dims.set_index(dims).to_xarray()    # Convert dataframe to xarray (DataSet)
+    cluster_labels = cluster_labels[output_label]           # select only cluster labels
+    
+    # 6. Save details as attributes
     cluster_labels.attrs.update({
-        f'{var}_clusters': np.unique(clusters),
-        f'{var}_clustering_method': f'{method_details} {scaler}'
+        f'{output_label}_clusters': np.unique(clusters),
+        f'{output_label}_clustering_method': f'{method_details} with {scaler} and min_abruptness={min_abruptness}',
+        f'{output_label}_git_version': __version__
     })
 
-    return cluster_labels[output_label]
+    return cluster_labels
 
 
 def prepare_dataframe(
@@ -155,15 +164,3 @@ def prepare_dataframe(
     importance_weights = np.abs(filtered_data_pandas[f'{var}_dts'].to_numpy())
 
     return filtered_data_pandas, dims, importance_weights, scaled_coords
-
-
-@deprecated("cluster is deprecated. Please use compute_clusters instead.")
-def cluster(
-        data: xr.Dataset,
-        var : str,
-        method : str = None,
-        method_func : callable = None,
-        method_kwargs = {}
-    ) -> xr.Dataset:
-    return compute_clusters(data, var, method, method_func, method_kwargs)
-    

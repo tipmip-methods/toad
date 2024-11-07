@@ -91,6 +91,7 @@ def cluster(
     var : str,
     eps : float,
     min_samples : int,
+    min_abruptness : float,
     var_func : Callable[[float], bool] = None,
     dts_func : Callable[[float], bool] = None,
     scaler : str = 'StandardScaler'
@@ -113,27 +114,37 @@ def cluster(
     :type scaler:       str
     """
 
+    # Define method details for logging
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, {scaler})'
 
+    # Define default dts_func if not provided and min_abruptness is specified
+    if dts_func is None and min_abruptness:
+        dts_func = lambda x : np.abs(x) > min_abruptness
+
+    # Prepare the dataframe for clustering
     df_var, df_dts, df, dims, weights, scaled_coords = prepare_dataframe(data, var, var_func, dts_func, scaler)
 
-    # Clustering
+    # Fit clusters with DBSCAN
     dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-    y_pred = dbscan.fit_predict(
-                        scaled_coords, 
-                        sample_weight=weights
-                    )
+    dbscan.fit_predict(scaled_coords, sample_weight=weights)
+    
+    # Get the labels from the DBSCAN clustering
     lbl_dbscan = dbscan.labels_.astype(float)
-    labels = np.unique(lbl_dbscan)
-
-    # Writing to dataset
-    df_var[[f'{var}_cluster']] = -1
-    df_var[[f'{var}_dts']] = df_dts[[f'{var}_dts']]
+    
+    # Initialize cluster column with -1
+    df_var[f'{var}_cluster'] = -1
+    
+    # Assign cluster labels to the dataframe
     df_var.loc[df.index, f'{var}_cluster'] = lbl_dbscan
+    
+    # Convert the dataframe back to xarray dataset
+    clusters = df_var.set_index(dims).to_xarray()
+    
+    # Add identified cluster labels to dataset attributes
+    clusters.attrs[f'{var}_clusters'] = np.unique(lbl_dbscan)
 
-    dataset_with_clusterlabels = df_var.set_index(dims).to_xarray()
-    dataset_with_clusterlabels.attrs[f'{var}_clusters'] = labels
+    # Add clustering method details to dataset attributes
+    clusters.attrs[f'{var}_clustering_method'] = method_details
 
-    dataset_with_clusterlabels.attrs[f'{var}_clustering_method'] = method_details
-
-    return dataset_with_clusterlabels
+    # Return the dataset with cluster labels
+    return clusters[[f'{var}_cluster']]

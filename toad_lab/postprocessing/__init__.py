@@ -1,6 +1,125 @@
-import numpy as np
-import xarray as xr
+from ..utils import deprecated
 from ..utils import infer_dims
+import numpy as np
+
+
+@deprecated("timeseries is deprecated. Please use get_timeseries_for_cluster instead.")
+def timeseries(
+        dataframe, 
+        clustering,
+        cluster_lbl,
+        masking = 'simple',
+        how=('aggr',)  # mean, median, std, perc, per_gridcell
+    ):
+    """Extracts the time series of a cluster label.
+    
+    :param clustering:      Clustering object
+    :type clustering:       toad.clustering.cluster.Clustering
+    :param cluster_lbl:     Cluster label to extract the time series from.
+    :type cluster_lbl:      int, list
+    :param masking:         Type of masking to apply.
+                                * simple: apply the 3D mask to a 3D dataarray 
+                                * spatial: reduce in the temporal dimension
+                                * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+    :type masking:          str, optional
+    :param how:             How to aggregate the time series.
+                                * mean: mean value
+                                * median: median value
+                                * aggr: sum of values
+                                * std: standard deviation
+                                * perc: percentile value
+                                * per_gridcell: time series for each grid cell
+    :type how:              str, tuple
+    :return:                Time series of the cluster label.
+    :rtype:                 xr.DataArray
+    """
+    da = clustering._apply_mask_to(dataframe, cluster_lbl, masking=masking)
+    tdim, sdims = infer_dims(dataframe)
+
+    if type(how)== str:
+        how = (how,)
+
+    if 'normalised' in how:
+        if masking=='simple':
+            print('Warning: normalised currently does not work with simple masking')
+        initial_da =  da.isel({f'{tdim}':0})
+        da = da / initial_da
+        da = da.where(np.isfinite(da))
+
+    if 'mean' in how:
+        timeseries = da.mean(dim=sdims, skipna=True)
+    elif 'median' in how:
+        timeseries = da.median(dim=sdims, skipna=True)
+    elif 'aggr' in how:
+        timeseries = da.sum(dim=sdims, skipna=True)
+    elif 'std' in how:
+        timeseries = da.std(dim=sdims, skipna=True)
+    elif 'perc' in how:
+        # takes the (first) numeric value to be found in how 
+        pval = [arg for arg in how if type(arg)==float][0]
+        timeseries = da.quantile(pval, dim=sdims, skipna=True)
+    elif 'per_gridcell' in how:
+        timeseries = da.stack(cell_xy=sdims).transpose().dropna(dim='cell_xy', how='all')
+    else:
+        raise ValueError('how needs to be one of mean, median, aggr, std, perc, per_gridcell')
+
+    return timeseries
+
+def compute_score(
+        dataframe, 
+        clustering,
+        cluster_lbl, 
+        how='mean'
+    ):
+    """Compute the score of a cluster label.
+    
+    :param clustering:      Clustering object
+    :type clustering:       toad.clustering.cluster.Clustering
+    :param cluster_lbl:     Cluster label to compute the score for.
+    :type cluster_lbl:      int, list
+    :param how:             How to compute the score.
+                                * mean: mean value
+                                * median: median value
+                                * aggr: sum of values
+                                * std: standard deviation
+                                * perc: percentile value
+                                * per_gridcell: time series for each grid cell
+    """
+
+    tdim, _ = infer_dims(dataframe)  
+    xvals = dataframe.__getattr__(tdim).values
+    yvals = timeseries(dataframe, clustering=clustering, cluster_lbl=cluster_lbl, masking='spatial', how=how).values
+    (a,b) , res, _, _, _ = np.polyfit(xvals, yvals, 1, full=True)
+    
+    _score = res[0] 
+    _score_fit = b + a*xvals
+
+    return _score, _score_fit
+
+def score(
+        dataframe, 
+        clustering,
+        cluster_lbl, 
+        how='mean'
+        ):
+    """Return the score of a cluster label.
+    
+    :param clustering:      Clustering object
+    :type clustering:       toad.clustering.cluster.Clustering
+    :param cluster_lbl:     Cluster label to compute the score for.
+    :type cluster_lbl:      int, list
+    :param how:             How to compute the score.
+                                * mean: mean value
+                                * median: median value
+                                * aggr: sum of values
+                                * std: standard deviation
+                                * perc: percentile value
+                                * per_gridcell: time series for each grid cell
+    :return:                Score of the cluster label.
+    :rtype:                 float
+    """
+    return compute_score(dataframe, clustering, cluster_lbl, how)[0]
+
 
 class Clustering():
     """ Handle clusterings to allow simplified operation.

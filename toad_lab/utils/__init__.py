@@ -1,4 +1,6 @@
-def infer_dims(xr_da, tdim=None):
+import xarray as xr
+
+def infer_dims(xr_da: xr.DataArray, tdim=None):
     """
     Infers the temporal and spatial dimensions from an xarray DataArray.
 

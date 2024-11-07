@@ -7,6 +7,7 @@ import os
 
 from . import shifts_detection
 from . import clustering
+from .utils import deprecated
 from _version import __version__
 
 class TOAD:
@@ -25,11 +26,6 @@ class TOAD:
         elif type(data) is xr.Dataset or type(data) is xr.DataArray:
             self.data = data  # Original data
         
-    
-        # TODO should be made at computation time
-        self.shift_params = {}  # Store shift detection parameters
-        self.cluster_params = {}  # Store clustering parameters
-
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")
         self.set_log_level(log_level) 
@@ -71,15 +67,53 @@ class TOAD:
     @wraps(shifts_detection.compute_shifts)  # copies docstring // doesn't work in vs code though..
     def compute_shifts(self, *args, **kwargs):
         shifts = shifts_detection.compute_shifts(self.data, *args, **kwargs)
-        self.data = xr.merge([self.data, shifts])
+        self.data = xr.merge([self.data, shifts], combine_attrs="no_conflicts")
         return self
     
     
     @wraps(shifts_detection.compute_shifts)  # copies docstring
     def compute_clusters(self, *args, **kwargs):
         clusteres = clustering.compute_clusters(self.data, *args, **kwargs)
-        self.data = xr.merge([self.data, clusteres])
+        self.data = xr.merge([self.data, clusteres], combine_attrs="no_conflicts")
         return self
 
+
+
+
+# ================================================
+#               Legacy entry points
+# ================================================
+
+@deprecated("detect is deprecated. Please use compute_shifts instead.")
+def detect(
+        data: Union[xr.Dataset, xr.DataArray],
+        temporal_dim: str,
+        method: str,
+        var: str = None,
+        keep_other_vars : bool = False, 
+        **method_kwargs
+    ) -> xr.Dataset :
+    """Legacy function for the compute_shifts function."""
+    
+    data_array_dts = shifts_detection.compute_shifts(data=data, var=var, temporal_dim=temporal_dim, method=method, **method_kwargs)
+
+    # If keep_other_vars is True, merge the original data with the detected shifts. Otherwise, return only the detected shifts.
+    to_merge = data if keep_other_vars else data[var]
+    return xr.merge([to_merge , data_array_dts], combine_attrs="no_conflicts")
+
+
+
+@deprecated("cluster is deprecated. Please use compute_clusters instead.")
+def cluster(
+        data: xr.Dataset,
+        var : str,
+        method : str = "dbscan",
+        method_kwargs = {}
+    ) -> xr.Dataset:
+    """ Legacy function for compute_clusters """
+
+    clusters = clustering.compute_clusters(data=data, var=var, method=method, **method_kwargs)
+    return xr.merge([data, clusters], combine_attrs="no_conflicts")
+    
 
     

@@ -26,7 +26,7 @@ def aggregate(data: xr.Dataset,
     
     Parameters:
     - data: xarray.Dataset containing multiple clusterings and with 3 dimensions
-    - similarity_threshold: threshold for co-cluster occurrence matrix (default: 0.5)
+    - coocurrence_threshold: threshold for co-cluster occurrence matrix (default: 0.5)
     - distance_threshold: maximum distance for hierarchical clustering merges (default: 0.5)
     - plot_dendrogram: whether to plot the dendrogram to help guide distance_threshold
     - first_dim: name of the first dimension
@@ -37,55 +37,62 @@ def aggregate(data: xr.Dataset,
     Returns:
     - xr.Dataset: Updated dataset with CSPA clustering as a new variable
     """
-    # Determine clustering variables
+    # Determine clusterings
     cluster_vars = list(data.data_vars)
-    
-    # Get dimensions
-    num_first = data.dims[first_dim]
-    num_second = data.dims[second_dim]
-    num_third = data.dims[third_dim]
-    
-    # Total number of samples (time * lat * lon)
-    num_samples = num_first * num_second * num_third
-    
-    # Initialize a sparse matrix for co-occurrence using DOK format for incremental updates
-    co_occurrence_matrix = dok_matrix((num_samples, num_samples), dtype=np.float32)
-    
-    # Process data in blocks to reduce memory overhead
+
+    # Create a mask to identify points that have at least one valid cluster across all variables
+    combined_mask = np.zeros(data[cluster_vars[0]].shape, dtype=bool)
     for var in cluster_vars:
-        cluster_labels = data[var].values  # Get the clustering labels for each variable
-        cluster_labels_flat = cluster_labels.reshape(-1)  # Flatten the 3D data
-        
+        combined_mask |= (data[var].values != -1)  # Assuming -1 represents unclustered/no cluster
+
+    # Flatten the mask to get valid data points
+    valid_indices = np.where(combined_mask.flatten())[0]
+    
+    if valid_indices.size == 0:
+        raise ValueError("No valid data points found with co-occurrence across the clusterings.")
+    
+    # Filter the data array to only include valid data points
+    num_samples = valid_indices.size
+
+    # Initialize a sparse matrix for co-occurrence using DOK format
+    co_occurrence_matrix = dok_matrix((num_samples, num_samples), dtype=np.float32)
+
+    # Process the data in blocks to reduce memory overhead
+    for var in cluster_vars:
+        cluster_labels = data[var].values.flatten()  # Flatten the 3D data
+
+        # Filter out invalid points
+        filtered_cluster_labels = cluster_labels[valid_indices]
+
         # Process the data in blocks of block_size
         for i in range(0, num_samples, block_size):
             end_i = min(i + block_size, num_samples)
             
-            # Process the samples in block i:end_i
             for j in range(i, end_i):
                 # Find all matches for the current sample's cluster label
-                mask = (cluster_labels_flat == cluster_labels_flat[j])
+                mask = (filtered_cluster_labels == filtered_cluster_labels[j])
                 matching_indices = np.where(mask)[0]
-                
+
                 # Increment the co-occurrence matrix at the matching positions
                 for idx in matching_indices:
                     co_occurrence_matrix[j, idx] += 1
-    
-    # Normalize to get similarity matrix
+
+    # Normalize to get the similarity matrix
     similarity_matrix = co_occurrence_matrix / len(cluster_vars)
-    
+
     # Convert to CSR format for efficient slicing
     similarity_matrix = similarity_matrix.tocsr()
-    
-    # Binarize the similarity matrix based on threshold
+
+    # Binarize the similarity matrix based on the threshold
     similarity_matrix.data[similarity_matrix.data < coocurrence_threshold] = 0
     similarity_matrix.eliminate_zeros()  # Remove elements below the threshold
-    
+
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix.toarray()
-    
+
     # Perform hierarchical clustering on the dissimilarity matrix using linkage from scipy
     linkage_matrix = linkage(dissimilarity_matrix, method='average')
-    
+
     # Plot dendrogram if requested
     if plot_dendrogram:
         plt.figure(figsize=(10, 7))
@@ -94,25 +101,31 @@ def aggregate(data: xr.Dataset,
         plt.xlabel("Sample index")
         plt.ylabel("Dissimilarity")
         plt.show()
-    
+
     # Perform hierarchical clustering using sklearn with the distance threshold
     clustering_model = AgglomerativeClustering(
         n_clusters=None,
         affinity='precomputed',
         linkage='average',
-        distance_threshold=distance_threshold  # Use the provided distance threshold
+        distance_threshold=distance_threshold
     )
-    
+
     # Fit the model on the dissimilarity matrix
     cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
+
+    # Create an output array filled with -1 (indicating invalid points)
+    output_labels = np.full(data[first_dim].size * data[second_dim].size * data[third_dim].size, -1)
     
+    # Assign the cluster labels back to the valid indices
+    output_labels[valid_indices] = cluster_labels
+
     # Reshape the labels back to the original dimensions
-    cspa_labels = cluster_labels.reshape(num_first, num_second, num_third)
-    
+    cspa_labels = output_labels.reshape(data[first_dim].size, data[second_dim].size, data[third_dim].size)
+
     # Create a new xr.Dataset including the original variables and CSPA result
     cspa_dataset = data.copy()
     cspa_dataset['cspa_clustering'] = ((first_dim, second_dim, third_dim), cspa_labels)
-    
+
     return cspa_dataset
 
 

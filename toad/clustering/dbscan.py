@@ -195,18 +195,28 @@ def cluster(
          # Calculate avg weights for each sample based on scaled_vals
          # Here, we're going to use the absolute value of each variable as the weight for these means.
          weights = np.abs(stacked_vals)  # Take absolute values for each variable as the weight
-         # Now calculate the weighted mean for each sample across all variables
-         weighted_mean = np.sum(stacked_vals * weights, axis=1).flatten() / np.sum(weights, axis=1).flatten() 
+
+         # Calculate the sum of weights for each sample (across variables)
+         sum_weights = np.sum(weights, axis=1)
+         # Avoid division by zero by adding a small epsilon value
+         epsilon = 1e-10  # Small value to prevent division by zero
+         sum_weights = np.where(sum_weights == 0, epsilon, sum_weights)  # Replace zero sums with epsilon
+
+          #Calculate the weighted mean
+         weighted_mean = np.sum(stacked_vals * weights, axis=1) / sum_weights 
+
+         # Flatten the result for use as sample weights in DBSCAN
+         weights = weighted_mean.flatten()  # This gives the final weights for each sample
          if multidimensional == "no":
              y_pred = dbscan.fit_predict(
                          scaled_coords, 
-                        sample_weight=weighted_mean
+                        sample_weight=weights
                      )
 
          elif multidimensional == "all":
              y_pred = dbscan.fit_predict(
                          np.hstack([scaled_coords, scaled_vals]), 
-                        sample_weight=weighted_mean
+                        sample_weight=weights
                      )
 
     elif weights == "driver":

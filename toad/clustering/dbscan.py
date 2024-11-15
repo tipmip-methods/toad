@@ -140,7 +140,7 @@ def cluster(
     driver_var: str = None,  # Driver variable name
     driver_dts_func: Callable[[float], bool] = None,  # Masking function for driver variable
     scaler: str = 'StandardScaler',
-    weights: str = "avg", # no: without weights; max: takes maximum abruptness among vars; avg: takes average abruptness across vars; driver: includes driver abruptness in avg weights
+    weights: str = "avg", # no: without weights; max: takes maximum abruptness among vars; avg: takes average abruptness across vars; weighted:, takes weighted mean, favoring bigger values; driver: includes driver abruptness in avg weights
     multidimensional: str = "no", # no: only coordinate distances; all: include all vars; var_name: include only this var on top of coordinates
 ):
     method_details = f'dbscan (eps={eps}, min_samples={min_samples}, driver_var = {driver_var}, {scaler}, weights = {weights}, multidimenstional = {multidimensional})'
@@ -189,6 +189,24 @@ def cluster(
              y_pred = dbscan.fit_predict(
                          np.hstack([scaled_coords, scaled_vals]), 
                         sample_weight=weights
+                     )
+             
+    elif weights == "weighted":
+         # Calculate avg weights for each sample based on scaled_vals
+         # Here, we're going to use the absolute value of each variable as the weight for these means.
+         weights = np.abs(stacked_vals)  # Take absolute values for each variable as the weight
+         # Now calculate the weighted mean for each sample across all variables
+         weighted_mean = np.sum(stacked_vals * weights, axis=1).flatten() / np.sum(weights, axis=1).flatten() 
+         if multidimensional == "no":
+             y_pred = dbscan.fit_predict(
+                         scaled_coords, 
+                        sample_weight=weighted_mean
+                     )
+
+         elif multidimensional == "all":
+             y_pred = dbscan.fit_predict(
+                         np.hstack([scaled_coords, scaled_vals]), 
+                        sample_weight=weighted_mean
                      )
 
     elif weights == "driver":

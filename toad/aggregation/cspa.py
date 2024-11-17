@@ -70,10 +70,10 @@ def aggregate(data: xr.Dataset,
 
     # Normalize to get the similarity matrix
     similarity_matrix = co_occurrence_matrix / len(cluster_vars)
+    similarity_matrix = similarity_matrix.toarray()
 
-    # Binarize the similarity matrix based on the threshold
-    similarity_matrix.data[similarity_matrix.data < coocurrence_threshold] = 0
-    similarity_matrix.eliminate_zeros()  # Remove elements below the threshold
+    # Threshold the data
+    similarity_matrix[similarity_matrix < coocurrence_threshold] = 0
 
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix

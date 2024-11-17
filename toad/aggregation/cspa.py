@@ -68,19 +68,15 @@ def aggregate(data: xr.Dataset,
     # This creates a (num_samples, num_samples) matrix of co-occurrence counts
     co_occurrence_matrix = np.dot(label_matrix, label_matrix.T)  # This is a dense matrix
 
-
     # Normalize to get the similarity matrix
     similarity_matrix = co_occurrence_matrix / len(cluster_vars)
-
-    # Convert to CSR format for efficient slicing
-    similarity_matrix = similarity_matrix.tocsr()
 
     # Binarize the similarity matrix based on the threshold
     similarity_matrix.data[similarity_matrix.data < coocurrence_threshold] = 0
     similarity_matrix.eliminate_zeros()  # Remove elements below the threshold
 
     # Convert similarity to dissimilarity (1 - similarity)
-    dissimilarity_matrix = 1 - similarity_matrix.toarray()
+    dissimilarity_matrix = 1 - similarity_matrix
 
     # Perform hierarchical clustering on the dissimilarity matrix using linkage from scipy
     linkage_matrix = linkage(dissimilarity_matrix, method='average')

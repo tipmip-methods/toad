@@ -13,13 +13,16 @@ from scipy.sparse import dok_matrix
 from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import dendrogram, linkage
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 
 def aggregate(data: xr.Dataset, 
               coocurrence_threshold: float = 0.5, 
+              cluster_method: str = 'kmeans',
+              num_clusters: int = 1,
               distance_threshold: float = 0.5, 
               plot_dendrogram: bool = True,
               first_dim: str = "time", second_dim: str = "latitude", third_dim: str = "longitude", 
-              block_size: int = 1000) -> xr.Dataset:
+              ) -> xr.Dataset:
     """
     Perform Cluster-based Similarity Partitioning Algorithm (CSPA) on an xarray.Dataset
     with multiple clustering results and optionally plot the dendrogram.
@@ -27,12 +30,14 @@ def aggregate(data: xr.Dataset,
     Parameters:
     - data: xarray.Dataset containing multiple clusterings and with 3 dimensions
     - coocurrence_threshold: threshold for co-cluster occurrence matrix (default: 0.5)
+    - method: Clustering method to use ('hierarchical' or 'kmeans')
+    - num_clusters: Number of clusters to form (used in KMeans but can also be used for hierarchical clustering)
     - distance_threshold: maximum distance for hierarchical clustering merges (default: 0.5)
     - plot_dendrogram: whether to plot the dendrogram to help guide distance_threshold
     - first_dim: name of the first dimension
     - second_dim: name of the second dimension
     - third_dim: name of the third dimension
-    - block_size: number of samples to process in each block for memory efficiency (default: 1000)
+
     
     Returns:
     - xr.Dataset: Updated dataset with CSPA clustering as a new variable
@@ -77,28 +82,37 @@ def aggregate(data: xr.Dataset,
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix
 
-    # Perform hierarchical clustering on the dissimilarity matrix using linkage from scipy
-    linkage_matrix = linkage(dissimilarity_matrix, method='average')
+    # Choose clustering method
+    if cluster_method == 'hierarchical':
+        # Perform hierarchical clustering
+        linkage_matrix = linkage(dissimilarity_matrix, method='average')
+        
+        if plot_dendrogram:
+            plt.figure(figsize=(10, 7))
+            dendrogram(linkage_matrix)
+            plt.title("Dendrogram for CSPA Clustering")
+            plt.xlabel("Sample index")
+            plt.ylabel("Dissimilarity")
+            plt.show()
 
-    # Plot dendrogram if requested
-    if plot_dendrogram:
-        plt.figure(figsize=(10, 7))
-        dendrogram(linkage_matrix, no_labels=True)
-        plt.title("Dendrogram for CSPA Clustering")
-        plt.xlabel("Sample index")
-        plt.ylabel("Dissimilarity")
-        plt.show()
+        clustering_model = AgglomerativeClustering(
+            #n_clusters=num_clusters if num_clusters else None,
+            affinity='precomputed',
+            linkage='average',
+            distance_threshold=distance_threshold #if not num_clusters else None
+        )
+        cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
 
-    # Perform hierarchical clustering using sklearn with the distance threshold
-    clustering_model = AgglomerativeClustering(
-        n_clusters=None,
-        affinity='precomputed',
-        linkage='average',
-        distance_threshold=distance_threshold
-    )
+    elif cluster_method == 'kmeans':
+        if not num_clusters:
+            raise ValueError("Please specify `num_clusters` for KMeans.")
+        
+        clustering_model = KMeans(n_clusters=num_clusters, random_state=42)
+        cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
 
-    # Fit the model on the dissimilarity matrix
-    cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
+    else:
+        raise ValueError("Invalid method specified. Use 'hierarchical' or 'kmeans'.")
+
 
     # Create an output array filled with -1 (indicating invalid points)
     output_labels = np.full(data[first_dim].size * data[second_dim].size * data[third_dim].size, -1)

@@ -51,31 +51,23 @@ def aggregate(data: xr.Dataset,
     if valid_indices.size == 0:
         raise ValueError("No valid data points found with co-occurrence across the clusterings.")
     
-    # Filter the data array to only include valid data points
-    num_samples = valid_indices.size
 
-    # Initialize a sparse matrix for co-occurrence using DOK format
-    co_occurrence_matrix = dok_matrix((num_samples, num_samples), dtype=np.float32)
+    # Initialize a list to store cluster labels for each variable (flattened)
+    all_labels = []
 
-    # Process the data in blocks to reduce memory overhead
     for var in cluster_vars:
-        cluster_labels = data[var].values.flatten()  # Flatten the 3D data
+        # Flatten the 3D data to a 1D array
+        cluster_labels = data[var].values.flatten()
+        filtered_labels = cluster_labels[valid_indices]
+        all_labels.append(filtered_labels)
 
-        # Filter out invalid points
-        filtered_cluster_labels = cluster_labels[valid_indices]
+    # Stack the cluster labels into a 2D matrix where each column is a flattened clustering variable
+    label_matrix = np.vstack(all_labels).T  # Shape: (num_samples, num_clusters)
 
-        # Process the data in blocks of block_size
-        for i in range(0, num_samples, block_size):
-            end_i = min(i + block_size, num_samples)
-            
-            for j in range(i, end_i):
-                # Find all matches for the current sample's cluster label
-                mask = (filtered_cluster_labels == filtered_cluster_labels[j])
-                matching_indices = np.where(mask)[0]
+    # Compute the co-occurrence matrix using dot product
+    # This creates a (num_samples, num_samples) matrix of co-occurrence counts
+    co_occurrence_matrix = np.dot(label_matrix, label_matrix.T)  # This is a dense matrix
 
-                # Increment the co-occurrence matrix at the matching positions
-                for idx in matching_indices:
-                    co_occurrence_matrix[j, idx] += 1
 
     # Normalize to get the similarity matrix
     similarity_matrix = co_occurrence_matrix / len(cluster_vars)

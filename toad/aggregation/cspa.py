@@ -14,12 +14,13 @@ from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import dendrogram, linkage
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
+from sklearn.cluster import SpectralClustering
 
 def aggregate(data: xr.Dataset, 
-              coocurrence_threshold: float = 0.5, 
+              coocurrence_threshold: float = 0.0, 
               cluster_method: str = 'kmeans',
               num_clusters: int = 1,
-              distance_threshold: float = 0.5, 
+              #distance_threshold: float = 0.5, 
               plot_dendrogram: bool = True,
               first_dim: str = "time", second_dim: str = "latitude", third_dim: str = "longitude", 
               ) -> xr.Dataset:
@@ -30,9 +31,8 @@ def aggregate(data: xr.Dataset,
     Parameters:
     - data: xarray.Dataset containing multiple clusterings and with 3 dimensions
     - coocurrence_threshold: threshold for co-cluster occurrence matrix (default: 0.5)
-    - method: Clustering method to use ('hierarchical' or 'kmeans')
-    - num_clusters: Number of clusters to form (used in KMeans but can also be used for hierarchical clustering)
-    - distance_threshold: maximum distance for hierarchical clustering merges (default: 0.5)
+    - method: Clustering method to use ('hierarchical' or 'kmeans' or 'spectral' )
+    - num_clusters: Number of clusters to form 
     - plot_dendrogram: whether to plot the dendrogram to help guide distance_threshold
     - first_dim: name of the first dimension
     - second_dim: name of the second dimension
@@ -96,10 +96,10 @@ def aggregate(data: xr.Dataset,
             plt.show()
 
         clustering_model = AgglomerativeClustering(
-            #n_clusters=num_clusters if num_clusters else None,
+            n_clusters=num_clusters, #if num_clusters else None,
             affinity='precomputed',
             linkage='average',
-            distance_threshold=distance_threshold #if not num_clusters else None
+           # distance_threshold=distance_threshold #if not num_clusters else None
         )
         cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
 
@@ -109,6 +109,13 @@ def aggregate(data: xr.Dataset,
         
         clustering_model = KMeans(n_clusters=num_clusters, random_state=42)
         cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
+
+    elif cluster_method == 'spectral':
+        if not num_clusters:
+            raise ValueError("Please specify `num_clusters` for KMeans.")
+        
+        sc = SpectralClustering(num_clusters, affinity='precomputed', n_init=100, assign_labels='discretize')
+        cluster_labels = sc.fit_predict(similarity_matrix)
 
     else:
         raise ValueError("Invalid method specified. Use 'hierarchical' or 'kmeans'.")

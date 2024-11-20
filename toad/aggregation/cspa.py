@@ -9,17 +9,20 @@ October 24
 """
 import xarray as xr
 import numpy as np
+from sklearn.manifold import MDS
 from scipy.sparse import dok_matrix
 from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import dendrogram, linkage
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.cluster import SpectralClustering
+from sklearn.cluster import BisectingKMeans
 
 def aggregate(data: xr.Dataset, 
               coocurrence_threshold: float = 0.0, 
               cluster_method: str = 'kmeans',
               num_clusters: int = 1,
+              n_reduction: int = 2,
               #distance_threshold: float = 0.5, 
               plot_dendrogram: bool = True,
               first_dim: str = "time", second_dim: str = "latitude", third_dim: str = "longitude", 
@@ -31,8 +34,9 @@ def aggregate(data: xr.Dataset,
     Parameters:
     - data: xarray.Dataset containing multiple clusterings and with 3 dimensions
     - coocurrence_threshold: threshold for co-cluster occurrence matrix (default: 0.5)
-    - method: Clustering method to use ('hierarchical' or 'kmeans' or 'spectral' )
+    - method: Clustering method to use ('hierarchical' or 'kmeans' or 'bissecting kmeans' or 'spectral')
     - num_clusters: Number of clusters to form 
+    - n_reduction: to how many dimensions do we perform MDS
     - plot_dendrogram: whether to plot the dendrogram to help guide distance_threshold
     - first_dim: name of the first dimension
     - second_dim: name of the second dimension
@@ -82,6 +86,10 @@ def aggregate(data: xr.Dataset,
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix
 
+    # Apply MDS for dimensionality reduction (3D or 2D depending on your need)
+    mds = MDS(n_components= n_reduction, dissimilarity='precomputed', random_state=42)
+    mds_features = mds.fit_transform(dissimilarity_matrix)
+
     # Choose clustering method
     if cluster_method == 'hierarchical':
         # Perform hierarchical clustering
@@ -108,7 +116,15 @@ def aggregate(data: xr.Dataset,
             raise ValueError("Please specify `num_clusters` for KMeans.")
         
         clustering_model = KMeans(n_clusters=num_clusters, random_state=42)
-        cluster_labels = clustering_model.fit_predict(dissimilarity_matrix)
+        cluster_labels = clustering_model.fit_predict(mds_features)
+
+    elif cluster_method == 'bissecting_kmeans':
+        if not num_clusters:
+            raise ValueError("Please specify `num_clusters` for KMeans.")
+        
+        clustering_model = BisectingKMeans(n_clusters=num_clusters)
+        cluster_labels = clustering_model.fit_predict(mds_features)
+
 
     elif cluster_method == 'spectral':
         if not num_clusters:

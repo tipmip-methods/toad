@@ -57,7 +57,7 @@ def compute_shifts(
     else:
         raise ValueError('method must be a string or a callable') 
 
-    # 2. Check if the output_label is already in the data
+    # 2. Set output label
     default_name = f'{var}_dts'
     output_label = output_label or default_name
     if output_label in data:

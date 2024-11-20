@@ -12,6 +12,7 @@ from ..utils import deprecated
 def compute_clusters(
         data: xr.Dataset,
         var : str,
+        var_dts: str = None,
         min_abruptness: float = None,
         method : Union [str, callable] = "hdbscan",
         var_func: Callable[[float], bool] = None,
@@ -26,7 +27,9 @@ def compute_clusters(
 
     :param data:            Data with two spatial and one temporal dimension.
     :type data:             xr.Dataset
-    :param var:             Variable to cluster.
+    :param var:             Original variable to cluster.
+    :type var:              str
+    :param var_dts:         Variable containing shifts computed with a custom output_label, defaults to {var}_dts.
     :type var:              str
     :param method:          Clustering algorithm to use.
     :type method:           str
@@ -38,8 +41,12 @@ def compute_clusters(
     """
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
     assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
-    assert f'{var}_dts' in list(data.data_vars.keys()), f'data lacks detection time series {var}_dts'
     assert min_abruptness is not None or dts_func is not None, 'either min_abruptness or dts_func must be provided'
+
+    # Check shifts var
+    all_vars = list(data.data_vars.keys())
+    var_dts = var_dts if var_dts else f'{var}_dts'  # default to {var}_dts
+    assert var_dts in all_vars, f'Please run shifts on {var} first, or provide a custom "shifts" variable'
 
     # 1. Get the clustering method
     if callable(method):
@@ -67,7 +74,7 @@ def compute_clusters(
     # Prepare the data for clustering
     # filtered_data is a pandas df that contains the indeces of the data that passed the filters (var_func and dts_func)
     filtered_data, dims, importance_weights, scaled_coords = prepare_dataframe(
-        data, var, var_func, dts_func, scaler
+        data, var, var_dts, var_func, dts_func, scaler
     )
 
     # 4. Perform clustering
@@ -88,7 +95,7 @@ def compute_clusters(
     # 6. Save details as attributes
     cluster_labels.attrs.update({
         f'{output_label}_clusters': np.unique(clusters),
-        f'{output_label}_clustering_method': f'{method_details} with {scaler} and min_abruptness={min_abruptness}',
+        f'{output_label}_method': f'{method_details} with {scaler} and min_abruptness={min_abruptness}',
         f'{output_label}_git_version': __version__
     })
 
@@ -98,6 +105,7 @@ def compute_clusters(
 def prepare_dataframe(
         data: xr.Dataset,
         var: str, 
+        var_dts: str,
         var_func: Callable[[float], bool] = None,
         dts_func: Callable[[float], bool] = None,
         scaler: str = 'StandardScaler'
@@ -137,7 +145,7 @@ def prepare_dataframe(
     
     # Convert the specified variables to Pandas DataFrames
     var_data = data[var].to_dataframe().reset_index()
-    dts_data = data[f'{var}_dts'].to_dataframe().reset_index()
+    dts_data = data[var_dts].to_dataframe().reset_index()
 
     # Apply filtering functions, defaulting to keeping all values if not provided
     var_func = var_func if var_func else lambda x: True
@@ -145,7 +153,7 @@ def prepare_dataframe(
 
     # Use vectorized filtering to create masks
     var_mask = np.vectorize(var_func)(var_data[var])
-    dts_mask = np.vectorize(dts_func)(dts_data[f'{var}_dts'])
+    dts_mask = np.vectorize(dts_func)(dts_data[var_dts])
     filtered_data_pandas = dts_data.loc[var_mask & dts_mask]
 
     # throw error if no data left
@@ -161,6 +169,6 @@ def prepare_dataframe(
     scaled_coords = scaler_instance.fit_transform(coords)
 
     # Compute importance weights as the absolute values of the dts variable
-    importance_weights = np.abs(filtered_data_pandas[f'{var}_dts'].to_numpy())
+    importance_weights = np.abs(filtered_data_pandas[var_dts].to_numpy())
 
     return filtered_data_pandas, dims, importance_weights, scaled_coords

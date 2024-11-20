@@ -86,7 +86,7 @@ def aggregate(data: xr.Dataset,
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix
 
-    # Apply MDS for dimensionality reduction (3D or 2D depending on your need)
+    # Apply MDS for dimensionality reduction to Euclidean feature space
     mds = MDS(n_components= n_reduction, dissimilarity='precomputed', random_state=42)
     mds_features = mds.fit_transform(dissimilarity_matrix)
 

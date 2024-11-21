@@ -9,6 +9,8 @@ from _version import __version__
 from .method_dictionary import clustering_methods
 from ..utils import deprecated
 
+logger = logging.getLogger("TOAD")
+
 def compute_clusters(
         data: xr.Dataset,
         var : str,
@@ -20,24 +22,64 @@ def compute_clusters(
         scaler: str = 'StandardScaler',
         output_label: str = None,
         overwrite: bool = False,
+        merge_input: bool = True,
+        transpose_output: bool = False,
         **method_kwargs
     ) -> xr.Dataset:
     """
-    Map a clustering algorithm to the dataset in the temporal dimension.
+    Apply a clustering algorithm to the dataset along the temporal dimension.
 
-    :param data:            Data with two spatial and one temporal dimension.
-    :type data:             xr.Dataset
-    :param var:             Original variable to cluster.
-    :type var:              str
-    :param var_dts:         Variable containing shifts computed with a custom output_label, defaults to {var}_dts.
-    :type var:              str
-    :param method:          Clustering algorithm to use.
-    :type method:           str
-    :param method_kwargs:   Kwargs that need to be specifically passed to the clustering algorithm.
-    :type method_kwargs:    dict, optional
+    This function clusters data points in the temporal dimension using a specified clustering algorithm 
+    (default is HDBSCAN). It filters the data using specified conditions on the primary variable and its 
+    computed shifts before performing clustering. Results are returned as a new xarray.DataArray containing 
+    the cluster labels.
 
-    TODO: Fix: should also return auxillary coordinates. For now only returns coords in dims. 
-    TODO: coordinates are sometimes flipped in the output. 
+    :param data: Data with two spatial and one temporal dimension. Must be an `xarray.Dataset`.
+    :type data: xr.Dataset
+    :param var: The name of the variable in the dataset to cluster.
+    :type var: str
+    :param var_dts: The name of the variable containing precomputed shifts (e.g., `{var}_dts`). Defaults to `{var}_dts` if not provided.
+    :type var_dts: str, optional
+    :param min_abruptness: Minimum threshold for abruptness to filter shifts. Must be provided if `dts_func` is not supplied.
+    :type min_abruptness: float, optional
+    :param method: The clustering algorithm to use, either a string referring to a predefined method or a callable. 
+                   Default is "hdbscan".
+    :type method: Union[str, callable]
+    :param var_func: A callable to filter the primary variable before clustering. Defaults to `None`.
+    :type var_func: Callable[[float], bool], optional
+    :param dts_func: A callable to filter the shifts before clustering. Defaults to `None`.
+    :type dts_func: Callable[[float], bool], optional
+    :param scaler: The scaling method to apply to the data before clustering. Default is 'StandardScaler'.
+    :type scaler: str
+    :param output_label: The name of the variable in the dataset to store the clustering results. 
+                         Defaults to `{var}_cluster` if not provided.
+    :type output_label: str, optional
+    :param overwrite: Whether to overwrite the existing variable in the dataset if `output_label` already exists. 
+                      Default is `False`.
+    :type overwrite: bool
+    :param merge_input: Whether to merge the clustering results back into the original dataset. Default is `True`.
+    :type merge_input: bool
+    :param transpose_output: Whether to transpose the output DataArray. Sometimes needed... Default is `False`.
+    :type transpose_output: bool
+    :param method_kwargs: Additional keyword arguments specific to the clustering algorithm.
+    :type method_kwargs: dict, optional
+    :return: An xarray.DataArray containing cluster labels for the data points.
+    :rtype: xr.DataArray
+
+    :raises AssertionError: If `data` is not an `xarray.Dataset`, if `data` does not have three dimensions, 
+                             or if neither `min_abruptness` nor `dts_func` is provided.
+    :raises ValueError: If `var_dts` is not found in the dataset, if `method` is invalid, or if `output_label`
+                        conflicts with an existing variable and `overwrite` is `False`.
+
+    Notes:
+    - The `method` can either be a string referring to a predefined clustering method or a custom callable. 
+      Predefined methods are stored in the `clustering_methods` dictionary.
+    - If both `var_func` and `dts_func` are provided, data points must pass both filters to be included in clustering.
+    - The function automatically applies scaling to the data based on the specified `scaler`.
+
+    TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
+    TODO: (2) coordinates are sometimes flipped in the output. 
+    TODO: (3) Find out why transpose_output is needed for antarctica data. Related to (2)? 
     """
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
     assert data.get(var).ndim == 3, 'data must be 3-dimensional!'
@@ -52,7 +94,7 @@ def compute_clusters(
     if callable(method):
         clusterer = method
     elif type(method) == str:
-        logging.info(f'looking up clusterer {method}')
+        logger.info(f'looking up clusterer {method}')
         clusterer = clustering_methods[method]
     else:
         raise ValueError('method must be a string or a callable') 
@@ -60,12 +102,13 @@ def compute_clusters(
     # 2. Check if the output_label is already in the data
     default_name = f'{var}_cluster'
     output_label = output_label or default_name
-    if output_label in data:
+    if output_label in data and merge_input:
         if overwrite:
-            logging.warning(f'overwriting variable {output_label} in data')
+            logger.warning(f'Overwriting variable {output_label}')
             data = data.drop_vars(output_label)
         else:
-            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or pass overwrite=True')
+            logger.warning(f'{output_label} already exists. Please pass overwrite=True to overwrite it.')
+            return data
 
     # 3. Preprocessing
     # Set a default abruptness filter if no custom dts_func provided
@@ -78,12 +121,15 @@ def compute_clusters(
     )
 
     # 4. Perform clustering
-    logging.info(f'applying clusterer {method} to data')
+    logger.info(f'applying clusterer {method} to data')
     clusters, method_details = clusterer(
         coords=scaled_coords, 
         weights=importance_weights,
         **method_kwargs
     )
+
+    if transpose_output:
+        clusters = clusters.transpose()
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
@@ -94,12 +140,16 @@ def compute_clusters(
     
     # 6. Save details as attributes
     cluster_labels.attrs.update({
-        f'{output_label}_clusters': np.unique(clusters),
-        f'{output_label}_method': f'{method_details} with {scaler} and min_abruptness={min_abruptness}',
-        f'{output_label}_git_version': __version__
+        f'clusters': np.unique(clusters).astype(int),
+        f'method': f'{method_details} with {scaler} and min_abruptness={min_abruptness}',
+        f'_git_version': __version__
     })
 
-    return cluster_labels
+    # 7. Merge the cluster labels back into the original data
+    if merge_input:
+        return xr.merge([data, cluster_labels], combine_attrs="override")
+    else:
+        return cluster_labels
 
 
 def prepare_dataframe(
@@ -113,8 +163,8 @@ def prepare_dataframe(
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 
     This function converts the specified variables from an xarray Dataset to Pandas
-    DataFrames, applies optional filtering functions, and scales the coordinates 
-    for clustering. It also calculates importance weights based on the detection 
+    DataFrames, applies optional filtering functions and scales the coordinates 
+    for clustering. It also calculates importance weights based on the detection
     time series (dts) variable.
 
     Args:
@@ -161,7 +211,8 @@ def prepare_dataframe(
         raise ValueError('No data left after filtering.')
 
     # Extract dimension names and coordinates
-    dims = list(data.sizes.keys())
+    # dims = list(data.sizes.keys())
+    dims = list(data[var].dims) # take var dims instead of dataset dims, as they may not be the same.
     coords = filtered_data_pandas[dims].to_numpy()
 
     # Choose the scaler and scale the coordinates

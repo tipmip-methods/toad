@@ -15,37 +15,54 @@ def compute_shifts(
         method: Union [str, callable] = "asdetect",
         output_label: str = None,
         overwrite: bool = False,
+        merge_input = True,
         **method_kwargs
     ) -> xr.Dataset :
-    """Map an abrupt shift detection algorithm to the dataset in the temporal dimension.
+    """
+    Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
-    :param data:                Data with two spatial and one temporal dimension. If `data` is an xr.Dataset, `var` needs to be provided.
-    :type data:                 xr.Dataset or xr.DataArray
-    :param temporal_dim:        Specifies the dimension along which the one-dimensional time-series analysis for abrupt shifts is executed. Usually the time axis but could also be the forcing.
-    :type temporal_dim:         str
-    :param method:              Reference an in-built shifts algorithm such as 'asdetect' or pass your own function. If a custom function is provided, it should have the signature `def custom_detector(data: xr.DataArray, temporal_dim: str, **method_kwargs) -> xr.DataArray`.
-    :type method:               str or callable
-    :param var:                 Must be used in combination with `data` being an xr.Dataset. Since the algorithms work on xr.DataArrays, it is needed to specify here which variable to extract from the xr.Dataset.
-    :type var:                  str, optional
-    :param keep_other_vars:     Can be provided if `data` is an xr.Dataset. If True, the resulting xr.DataArray is appended to the xr.Dataset. Defaults to False, such that the xr.Dataset variables which are not analysed (i.e. all others than `var`) are discarded from the resulting xr.Dataset.
-    :type keep_other_vars:      bool, optional
-    :param method_kwargs:       Kwargs that need to be specifically passed to the analysing algorithm.
-    :type method_kwargs:        dict, optional
-    :return:                    Dataset with (at least) these variables of same dimensions and lengths:
-                                    * `var` : original variable data,
-                                    * `as_var` : Nonzero values denote an AS with the value corresponding to its magnitude,
+    This function detects abrupt shifts in the specified variable of a dataset using a chosen detection 
+    algorithm. It processes the variable along the temporal dimension and returns an updated dataset 
+    with the detected shifts and associated metadata.
 
-                                The attributes are
-                                    * `as_detection_method` : details on the used as detection method
-                                    
-                                If `keep_other_vars` is True, then these results are complemented by the unprocessed variables and attributes of the original `data`.
-    :rtype:                     xr.Dataset
+    :param data: Dataset with two spatial and one temporal dimension. Must be an `xarray.Dataset`.
+    :type data: xr.Dataset
+    :param var: Name of the variable in the dataset to analyze for abrupt shifts.
+    :type var: str
+    :param temporal_dim: Dimension along which the one-dimensional time-series analysis for abrupt shifts is executed. 
+                         Typically the time axis but could also represent another forcing axis. Default is "time".
+    :type temporal_dim: str, optional
+    :param method: Abrupt shift detection algorithm to use. Can be a string referring to a predefined method 
+                   (e.g., "asdetect") or a custom callable. Custom callables must have the signature 
+                   `def custom_detector(data: xr.DataArray, temporal_dim: str, **method_kwargs) -> xr.DataArray`.
+    :type method: Union[str, callable]
+    :param output_label: Name of the variable in the dataset to store the shift detection results. 
+                         Defaults to `{var}_dts` if not provided.
+    :type output_label: str, optional
+    :param overwrite: Whether to overwrite an existing variable in the dataset with the same name as `output_label`. 
+                      Default is `False`.
+    :type overwrite: bool
+    :param merge_input: Whether to merge the detected shifts with the original data. If False, only the detected shifts 
+                        are returned. Default is `True`.
+    :type merge_input: bool
+    :param method_kwargs: Additional keyword arguments specific to the detection algorithm.
+    :type method_kwargs: dict, optional
+    :return: An xarray.Dataset containing the following variables:
+                - `{var}`: Original variable data.
+                - `{output_label}`: Nonzero values denote detected abrupt shifts, with the values corresponding 
+                  to their magnitude.
+             The returned dataset also includes attributes detailing the detection method used.
+    :rtype: xr.Dataset
 
+    :raises AssertionError: If `data` is not an `xarray.Dataset`, if the dataset does not have three dimensions, 
+                             or if `var` is not a valid variable in the dataset.
+    :raises ValueError: If `method` is invalid, or if `output_label` conflicts with an existing variable and 
+                        `overwrite` is `False`.
 
-    **See also**
-
-    toad.tsanalysis : Collection of abrupt shift detection algorithms 
-    toad.clustering: Clustering algorithms using the results of the detection
+    Notes:
+    - Predefined methods are stored in the `detection_methods` dictionary and can be referenced by name.
+    - If a custom detection algorithm is used, it must adhere to the specified callable signature.
+    - The detected shifts are stored in the dataset under `output_label`, with metadata describing the method used.
     """
     
     # 1. Get the shifts method
@@ -60,12 +77,12 @@ def compute_shifts(
     # 2. Set output label
     default_name = f'{var}_dts'
     output_label = output_label or default_name
-    if output_label in data:
+    if output_label in data and merge_input:
         if overwrite:
             logging.warning(f'overwriting variable {output_label} in data')
             data = data.drop_vars(output_label)
         else:
-            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or pass overwrite=True')
+            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or set overwrite=True or set merge_input=False')
 
     # 3. Get var from data
     logging.info(f'extracting variable {var} from Dataset')
@@ -85,8 +102,12 @@ def compute_shifts(
 
     # 6. Save details as attributes
     shifts.attrs.update({
-        f'{output_label}_git_version': __version__,
-        f'{output_label}_shifts_method': method_details
+        f'method': method_details,
+        f'_git_version': __version__
     })
-    
-    return shifts
+
+    # 7. Merge the detected shifts with the original data
+    if merge_input:
+        return xr.merge([data, shifts], combine_attrs="override")
+    else:
+        return shifts

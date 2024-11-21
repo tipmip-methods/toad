@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.cluster import SpectralClustering
 from sklearn.cluster import BisectingKMeans
+from sklearn.metrics.pairwise import cosine_similarity
 
 def aggregate(data: xr.Dataset, 
               coocurrence_threshold: float = 0.0, 
@@ -86,9 +87,8 @@ def aggregate(data: xr.Dataset,
     # Convert similarity to dissimilarity (1 - similarity)
     dissimilarity_matrix = 1 - similarity_matrix
 
-    # Apply MDS for dimensionality reduction to Euclidean feature space
-    mds = MDS(n_components= n_reduction, dissimilarity='precomputed', random_state=42)
-    mds_features = mds.fit_transform(dissimilarity_matrix)
+    # compute cosine similarity
+    cosine_sim_matrix = cosine_similarity(similarity_matrix)
 
     # Choose clustering method
     if cluster_method == 'hierarchical':
@@ -116,14 +116,14 @@ def aggregate(data: xr.Dataset,
             raise ValueError("Please specify `num_clusters` for KMeans.")
         
         clustering_model = KMeans(n_clusters=num_clusters, random_state=42)
-        cluster_labels = clustering_model.fit_predict(mds_features)
+        cluster_labels = clustering_model.fit_predict(cosine_sim_matrix)
 
     elif cluster_method == 'bissecting_kmeans':
         if not num_clusters:
             raise ValueError("Please specify `num_clusters` for KMeans.")
         
         clustering_model = BisectingKMeans(n_clusters=num_clusters)
-        cluster_labels = clustering_model.fit_predict(mds_features)
+        cluster_labels = clustering_model.fit_predict(cosine_sim_matrix)
 
 
     elif cluster_method == 'spectral':

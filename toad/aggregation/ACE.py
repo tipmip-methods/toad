@@ -220,34 +220,37 @@ def update_similarity_matrix(similarity_matrix, clusters, merged_index):
     return new_sim_matrix
 
 
-# Resolve Uncertain Assignments
 def resolve_uncertain_objects(binary_matrix, clusters, valid_objects, alpha2):
     """
     Resolve uncertain assignments for objects, retaining noise labels for unclustered objects.
     """
+    # Initialize all objects as noise (-1)
     final_labels = -1 * np.ones(binary_matrix.shape[0], dtype=int)
 
-    for i, cluster in enumerate(clusters):
+    for cluster_index, cluster in enumerate(clusters):
         for obj in cluster:
-            if final_labels[obj] == -1:
-                final_labels[obj] = i
-            
-            else: # if object appears to be assigned to multiple clusters
+            if obj < 0 or obj >= binary_matrix.shape[0]:
+                continue  # Skip invalid object indices
 
-                # initialise
+            # If object already assigned, resolve conflict
+            if final_labels[obj] != -1:
                 max_similarity = 0
                 best_cluster = -1
 
-                for j, cluster in enumerate(clusters):
-                    similarity = binary_matrix[obj, cluster].mean() # calculate mean similarity of the object to each cluster
+                for j, candidate_cluster in enumerate(clusters):
+                    if j >= binary_matrix.shape[1]:
+                        continue  # Avoid out-of-bounds access
+                    similarity = binary_matrix[obj, candidate_cluster].mean()  # Calculate similarity
                     if similarity > max_similarity and similarity >= alpha2:
                         max_similarity = similarity
-                        best_cluster = j 
-                if best_cluster != -1: 
-                    final_labels[obj] = best_cluster #  choose the cluster with highest similarity that exceeds alph2 threshold
-                    # if no cluster satisfies the threshold, the object is labeled as noise 
+                        best_cluster = j
+                
+                if best_cluster != -1:
+                    final_labels[obj] = best_cluster  # Assign to best cluster
+            else:
+                final_labels[obj] = cluster_index
 
-    # Reset noise objects to -1
+    # Ensure noise objects remain labeled as -1
     final_labels[~valid_objects] = -1
 
     return final_labels

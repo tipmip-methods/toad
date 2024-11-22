@@ -98,41 +98,54 @@ class TOAD:
         Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
         This function detects abrupt shifts in the specified variable of a dataset using a chosen detection 
-        algorithm. It processes the variable along the temporal dimension and returns an updated dataset 
-        with the detected shifts and associated metadata.
+        algorithm. The variable is processed along the specified temporal dimension, and the function returns 
+        an updated dataset with detected shifts and associated metadata.
 
-        :param var: Name of the variable in the dataset to analyze for abrupt shifts.
-        :type var: str
-        :param temporal_dim: Dimension along which the one-dimensional time-series analysis for abrupt shifts is executed. 
-                            Typically the time axis but could also represent another forcing axis. Default is "time".
-        :type temporal_dim: str, optional
-        :param method: Abrupt shift detection algorithm to use. Can be a string referring to a predefined method 
-                    (e.g., "asdetect") or a custom callable. Custom callables must have the signature 
-                    `def custom_detector(data: xr.DataArray, temporal_dim: str, **method_kwargs) -> xr.DataArray`.
-        :type method: Union[str, callable]
-        :param output_label: Name of the variable in the dataset to store the shift detection results. 
-                            Defaults to `{var}_dts` if not provided.
-        :type output_label: str, optional
-        :param overwrite: Whether to overwrite an existing variable in the dataset with the same name as `output_label`. 
-                        Default is `False`.
-        :type overwrite: bool
-        :param merge_input: Whether to merge the detected shifts with the original data. If False, only the detected shifts
-                            are returned. Default is `True`.    
-        :type merge_input: bool
-        :param method_kwargs: Additional keyword arguments specific to the detection algorithm.
-        :type method_kwargs: dict, optional
-        :return: If merge_input is false, an xarray.Dataset containing original var and shifts detected var. Else nothing.
-        :rtype: xr.Dataset
+        Parameters
+        ----------
+        var : str
+            Name of the variable in the dataset to analyze for abrupt shifts.
+        temporal_dim : str, optional
+            Dimension along which the time-series analysis is performed. Typically, this is the time axis
+            but can represent another forcing axis. Defaults to "time".
+        method : Union[str, callable], optional
+            The abrupt shift detection algorithm to use. Can be a string referring to a predefined method
+            (e.g., "asdetect") or a custom callable. Custom callables must have the signature:
+            `def custom_detector(data: xr.DataArray, temporal_dim: str, **method_kwargs) -> xr.DataArray`.
+            Defaults to "asdetect".
+        output_label : str, optional
+            Name of the variable in the dataset to store the shift detection results. Defaults to `{var}_dts`
+            if not provided.
+        overwrite : bool, optional
+            Whether to overwrite an existing variable in the dataset with the same name as `output_label`.
+            Defaults to `False`.
+        merge_input : bool, optional
+            Whether to merge the detected shifts with the original data. If False, only the detected shifts
+            are returned. Defaults to `True`.
+        **method_kwargs : dict, optional
+            Additional keyword arguments specific to the detection algorithm.
 
-        :raises AssertionError: If `data` is not an `xarray.Dataset`, if the dataset does not have three dimensions, 
-                                or if `var` is not a valid variable in the dataset.
-        :raises ValueError: If `method` is invalid, or if `output_label` conflicts with an existing variable and 
-                            `overwrite` is `False`.
+        Returns
+        -------
+        xr.Dataset
+            If `merge_input` is `False`, returns an xarray.Dataset containing the original variable and the
+            detected shifts. Otherwise, the function updates `self.data` in place and returns nothing.
 
-        Notes:
+        Raises
+        ------
+        AssertionError
+            If `data` is not an xarray.Dataset, if the dataset does not have three dimensions, or if `var`
+            is not a valid variable in the dataset.
+        ValueError
+            If `method` is invalid, or if `output_label` conflicts with an existing variable and
+            `overwrite` is `False`.
+
+        Notes
+        -----
         - Predefined methods are stored in the `detection_methods` dictionary and can be referenced by name.
         - If a custom detection algorithm is used, it must adhere to the specified callable signature.
-        - The detected shifts are stored in the dataset under `output_label`, with metadata describing the method used.
+        - The detected shifts are stored in the dataset under `output_label`, with metadata describing the
+        method used.
         """
         results = shifts_detection.compute_shifts(self.data, var, temporal_dim, method, output_label, overwrite, merge_input, **method_kwargs)
         if merge_input:
@@ -159,50 +172,69 @@ class TOAD:
         """
         Apply a clustering algorithm to the dataset along the temporal dimension.
 
-        This function clusters data points in the temporal dimension using a specified clustering algorithm 
-        (default is HDBSCAN). It filters the data using specified conditions on the primary variable and its 
-        computed shifts before performing clustering. Results are returned as a new xarray.DataArray containing 
-        the cluster labels.
+        This function performs clustering on the specified variable in the dataset using a chosen clustering 
+        algorithm (default: HDBSCAN). Data points are optionally filtered based on specified conditions 
+        applied to the primary variable and/or its precomputed shifts. Results are stored in the dataset 
+        or returned as a new `xarray.DataArray`.
 
-        :param data: Data with two spatial and one temporal dimension. Must be an `xarray.Dataset`.
-        :type data: xr.Dataset
-        :param var: The name of the variable in the dataset to cluster.
-        :type var: str
-        :param var_dts: The name of the variable containing precomputed shifts (e.g., `{var}_dts`). Defaults to `{var}_dts` if not provided.
-        :type var_dts: str, optional
-        :param min_abruptness: Minimum threshold for abruptness to filter shifts. Must be provided if `dts_func` is not supplied.
-        :type min_abruptness: float, optional
-        :param method: The clustering algorithm to use, either a string referring to a predefined method or a callable. Default is "hdbscan".
-        :type method: Union[str, callable]
-        :param var_func: A callable to filter the primary variable before clustering. Defaults to `None`.
-        :type var_func: Callable[[float], bool], optional
-        :param dts_func: A callable to filter the shifts before clustering. Defaults to `None`.
-        :type dts_func: Callable[[float], bool], optional
-        :param scaler: The scaling method to apply to the data before clustering. Default is 'StandardScaler'.
-        :type scaler: str
-        :param output_label: The name of the variable in the dataset to store the clustering results. Defaults to `{var}_cluster` if not provided.
-        :type output_label: str, optional
-        :param overwrite: Whether to overwrite the existing variable in the dataset if `output_label` already exists. Default is `False`.
-        :type overwrite: bool
-        :param merge_input: Whether to merge the clustering results back into the original dataset. If false function will return results. Default is `True`.
-        :type merge_input: bool
-        :param transpose_output: Whether to transpose the output DataArray. Sometimes needed... Default is `False`.
-        :type transpose_output: bool
-        :param method_kwargs: Additional keyword arguments specific to the clustering algorithm.
-        :type method_kwargs: dict, optional
-        :return: If merge_input=False: an xarray.DataArray containing cluster labels for the data points, else nothing.
-        :rtype: xr.DataArray
+        Parameters
+        ----------
+        var : str
+            The name of the variable in the dataset to cluster.
+        var_dts : str, optional
+            The name of the variable containing precomputed shifts (e.g., `{var}_dts`). Defaults to `{var}_dts` 
+            if not provided.
+        min_abruptness : float, optional
+            Minimum threshold for abruptness to filter shifts. Required if `dts_func` is not provided.
+        method : Union[str, callable], optional
+            The clustering algorithm to use, either a string referring to a predefined method or a custom 
+            callable. Defaults to "hdbscan".
+        var_func : Callable[[float], bool], optional
+            A callable used to filter the primary variable before clustering. Defaults to `None`.
+        dts_func : Callable[[float], bool], optional
+            A callable used to filter the shifts before clustering. Defaults to `None`.
+        scaler : str, optional
+            The scaling method to apply to the data before clustering. Defaults to 'StandardScaler'.
+        output_label : str, optional
+            The name of the variable in the dataset to store the clustering results. Defaults to 
+            `{var}_cluster` if not provided.
+        overwrite : bool, optional
+            Whether to overwrite the existing variable in the dataset if `output_label` already exists. 
+            Defaults to `False`.
+        merge_input : bool, optional
+            Whether to merge the clustering results back into the original dataset. If `False`, the function 
+            will return the results. Defaults to `True`.
+        transpose_output : bool, optional
+            Whether to transpose the output `xarray.DataArray`. This may be necessary for certain operations.
+            Defaults to `False`.
+        **method_kwargs : dict, optional
+            Additional keyword arguments specific to the clustering algorithm.
 
-        :raises AssertionError: If `data` is not an `xarray.Dataset`, if `data` does not have three dimensions, 
-                                or if neither `min_abruptness` nor `dts_func` is provided.
-        :raises ValueError: If `var_dts` is not found in the dataset, if `method` is invalid, or if `output_label`
-                            conflicts with an existing variable and `overwrite` is `False`.
+        Returns
+        -------
+        xr.DataArray
+            If `merge_input` is `False`, returns an `xarray.DataArray` containing cluster labels for the data 
+            points. Otherwise, the clustering results are merged into the original dataset, and the function 
+            returns `None`.
 
-        Notes:
+        Raises
+        ------
+        AssertionError
+            If the dataset is not an `xarray.Dataset`, if the dataset does not have three dimensions, or if 
+            neither `min_abruptness` nor `dts_func` is provided.
+        ValueError
+            If `var_dts` is not found in the dataset, if `method` is invalid, or if `output_label` conflicts 
+            with an existing variable and `overwrite` is `False`.
+
+        Notes
+        -----
         - The `method` can either be a string referring to a predefined clustering method or a custom callable. 
         Predefined methods are stored in the `clustering_methods` dictionary.
-        - If both `var_func` and `dts_func` are provided, data points must pass both filters to be included in clustering.
+        - If both `var_func` and `dts_func` are provided, data points must pass both filters to be included in 
+        clustering.
         - The function automatically applies scaling to the data based on the specified `scaler`.
+        - The `transpose_output` option can be useful when working with datasets that require a specific axis 
+        arrangement for downstream processing.
         """
         result = clustering.compute_clusters(self.data, var, var_dts, min_abruptness, method, var_func, dts_func, scaler, output_label, overwrite, merge_input, transpose_output, **method_kwargs)
         if merge_input:
@@ -215,26 +247,38 @@ class TOAD:
     # #               GET functions (postprocessing)
     # # ======================================================================
     def get_cluster_counts(self, var, sort=False):
-        """Calculate the number of cells in each cluster for a specified variable.
+        """
+        Calculate the number of cells in each cluster for a specified variable.
 
-        Each cell may belong to multiple clusters. The function allows sorting 
-        the output by the number of cells in each cluster.
+        Each cell may belong to multiple clusters over time. This function computes the number
+        of unique cells in each cluster and allows optional sorting of the results.
 
-        :param data:    The input dataset containing cluster information for the variable.
-        :type data:     xr.Dataset
-        :param var:     The name of the variable for which cluster counts are computed. 
-                        Requires the dataset to have a corresponding "{var}_cluster" key.
-        :type var:      str
-        :param sort:    If True, the resulting dictionary is sorted in descending order 
-                        by the number of cells in each cluster. Defaults to False.
-        :type sort:     bool, optional
-        :return:        A dictionary where keys are cluster IDs and values are the 
-                        number of cells in each cluster.
-        :rtype:         dict
+        Parameters
+        ----------
+        var : str
+            The name of the variable for which cluster counts are computed.
+            Requires the dataset to have a corresponding `"{var}_cluster"` key.
+        sort : bool, optional
+            If `True`, the resulting dictionary is sorted in descending order
+            by the number of cells in each cluster. Defaults to `False`.
 
-        :raises ValueError: If cluster information for the specified variable is not found 
-                            in the dataset.
+        Returns
+        -------
+        dict
+            A dictionary where keys are cluster IDs (as integers) and values are the
+            number of unique cells in each cluster.
 
+        Raises
+        ------
+        ValueError
+            If cluster information for the specified variable is not found in the dataset.
+
+        Notes
+        -----
+        - The function counts the number of unique spatial cells that are part of each cluster,
+        regardless of the number of time steps they appear in the cluster.
+        - For the unclustered data (typically represented by cluster ID `-1`), the function uses
+        a special masking strategy to ensure accurate counts.
 
         TODO: I think this returns the number of cells that are part of the cluster in 
         both space and time, so if the same cell is part of the cluster for several time
@@ -286,10 +330,20 @@ class TOAD:
             clustering=Clustering(clusters),
             cluster_lbl=[cluster_id],
             masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
-            how=('per_gridcell') # get time series for each grid cell
+            how="per_gridcell" # get time series for each grid cell
         )
         return [timeseries_data.isel(cell_xy=j) for j in range(len(timeseries_data.cell_xy))]
 
+
+    def get_timeseries_in_cluster_aggregate(self, var, cluster_id, cluster_label=None, how="mean"):
+        clusters = self.data[cluster_label] if cluster_label else self.get_clusters(var)
+        return self.timeseries(
+            self.data,
+            clustering=Clustering(clusters),
+            cluster_lbl=[cluster_id],
+            masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
+            how=how
+        )
 
     def get_largest_cluster_ids(self, var):
         """
@@ -355,24 +409,6 @@ class TOAD:
         return num_cells_in_cluster / num_cells
 
 
-    # def to_netcdf(self, path="None", overwrite_original=False):
-    #     print("Warning: saves in root! TODO") # TODO save to original path
-    #     """
-    #     Save the data to a NetCDF file.
-    #     """
-    #     if path == "None":
-    #         suffix = "_TOAD" if not overwrite_original else ""
-    #         path = self.data.attrs['title'] + suffix + ".nc"
-        
-    #     self.data.to_netcdf(path)
-    #     return self
-
-
-
-    # # ======================================================================
-    # #               Legacy entry points / functions
-    # # ======================================================================
-
     def timeseries(
             self,
             dataframe, 
@@ -397,11 +433,15 @@ class TOAD:
                                     * median: median value
                                     * aggr: sum of values
                                     * std: standard deviation
-                                    * perc: percentile value
+                                    * perc: percentile value, eg. how=('perc',0.9)
                                     * per_gridcell: time series for each grid cell
         :type how:              str, tuple
         :return:                Time series of the cluster label.
         :rtype:                 xr.DataArray
+
+        TODO: consider renaming this.
+        TODO: consider making this private 
+        TODO: consider spliting this into two functions, one for getting individual time series and one for aggreating them
         """
         da = clustering._apply_mask_to(dataframe, cluster_lbl, masking=masking)
         tdim, sdims = infer_dims(dataframe)
@@ -426,6 +466,7 @@ class TOAD:
             timeseries = da.std(dim=sdims, skipna=True)
         elif 'perc' in how:
             # takes the (first) numeric value to be found in how 
+            assert len([arg for arg in how if type(arg)==float])==1, "using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)"
             pval = [arg for arg in how if type(arg)==float][0]
             timeseries = da.quantile(pval, dim=sdims, skipna=True)
         elif 'per_gridcell' in how:
@@ -450,6 +491,8 @@ class Clustering():
     :type cluster_label_ds:     xarray.DataArray
     :param temporal_dim:        Dimension in which the abrupt shifts have been detected. Automatically inferred if not provided.
     :type temporal_dim:         str, optional
+
+    TODO: Consider whether to merge this with the TOAD object
     """
 
     def __init__(
@@ -544,6 +587,9 @@ class Clustering():
         :return:                temporal properties of the cluster label
         :rtype:                 ...
 
+        
+        TODO: rewrite docstring
+        TODO: verify this works and move to postprocessing/stats.py
         """
         if type(how)== str:
             how = (how,)
@@ -590,6 +636,9 @@ class Clustering():
         :type how:              tuple
         :return:                spatial properties of the cluster label
         :rtype:                 ...
+
+        TODO: rewrite docstring
+        TODO: verify this works and move to postprocessing/stats.py
 
         """
         if type(how)== str:

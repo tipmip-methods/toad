@@ -9,7 +9,6 @@ October 24
 """
 import xarray as xr
 import numpy as np
-from sklearn.manifold import MDS
 from scipy.sparse import dok_matrix
 from sklearn.cluster import AgglomerativeClustering
 from scipy.cluster.hierarchy import dendrogram, linkage

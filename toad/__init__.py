@@ -8,6 +8,7 @@ from .tsanalysis import asdetect
 from .clustering import dbscan
 from .aggregation import diffusive
 from .aggregation import cspa
+from .aggregation import ACE
 from .clustering.cluster import Clustering
 from .utils import infer_dims
 
@@ -30,6 +31,7 @@ _clustering_methods = {
 _aggregation_methods = {
     'diffusive': diffusive.aggregate,
     'cspa': cspa.aggregate,
+    'ACE': ACE.aggregate,
 } 
 
 # Adapted for multivariate TOAD
@@ -258,7 +260,7 @@ def cluster(
 
 def aggregate(
         data: xr.Dataset, # give an xr.Dataset where each variable contains the clustering labels
-        method: str, # two methods: diffusive or consensus
+        method: str, # three methods: diffusive, cspa, ACE
         method_kwargs = {}
     ) -> xr.Dataset:
     """

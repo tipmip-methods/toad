@@ -49,38 +49,47 @@ def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_
 
     return data
 
-
 def transform_to_binary(clusterings, threshold=0.5):
     """
     Transform the clustering dataset into a binary membership matrix.
-    Objects that are noise in more than the given threshold of clusterings are excluded.
-    
+    All objects are included in the matrix, and objects labeled as noise (-1)
+    are represented with a row of zeros for the respective clustering.
+
     Parameters:
-    - clusterings: xarray.Dataset with each variable as a clustering.
-    - threshold: Proportion of clusterings where an object must not be noise to be considered valid.
-    
+    - clusterings: xarray.Dataset with clustering variables.
+    - threshold: Proportion of clusterings where an object must not be noise.
+
     Returns:
     - membership_matrix: Binary membership matrix (objects x clusters).
     - valid_objects: Boolean array indicating whether each object is valid.
     """
     data = []
     num_clusterings = len(clusterings.data_vars)
-    noise_counts = np.zeros(clusterings.object.size, dtype=int)
+    noise_counts = np.zeros(clusterings.sizes["object"], dtype=int)
 
-    # Flatten each clustering and count noise occurrences
     for var in clusterings.data_vars:
         clustering = clusterings[var].values.flatten()
+
+        # Mask valid (non-noise) objects
         mask = clustering != -1
-        noise_counts += ~mask  # Increment noise count for objects labeled as -1
-        unique_clusters = np.unique(clustering[mask])
-        binary_repr = np.eye(len(unique_clusters))[np.searchsorted(unique_clusters, clustering[mask])]
+        noise_counts += ~mask
+
+        # Create binary representation only for valid clusters (exclude -1)
+        unique_clusters = np.unique(clustering[mask])  # Unique clusters, excluding -1
+        binary_repr = np.zeros((len(clustering), len(unique_clusters)), dtype=int)
+
+        # Fill binary matrix for valid clusters
+        for i, cluster_id in enumerate(unique_clusters):
+            binary_repr[clustering == cluster_id, i] = 1  # Set 1 where the object belongs to this cluster
+
+        # If the object is noise (-1), its row remains all zeros
         data.append(binary_repr)
+
+    # Concatenate binary matrices along the columns (each clustering adds more columns)
+    membership_matrix = np.hstack(data)
 
     # Compute valid objects based on the noise threshold
     valid_objects = (num_clusterings - noise_counts) / num_clusterings >= threshold
-
-    # Concatenate valid cluster binary representations
-    membership_matrix = np.hstack(data) if data else np.empty((len(valid_objects), 0))
 
     return membership_matrix, valid_objects
 

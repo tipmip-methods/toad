@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 
 # ACE Algorithm Implementation
-def aggregate(clusterings, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_alpha=0.1, noise_threshold = 0.5):
+def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_alpha=0.1, noise_threshold = 0.5):
     """
     Adaptive Clustering Ensemble (ACE) Algorithm.
 

@@ -25,7 +25,7 @@ def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_
     - xarray.DataArray: Final clustering labels for each object.
     """
     # Step 1: Binary Transformation
-    binary_matrix, valid_objects = transform_to_binary(clusterings, noise_threshold)
+    binary_matrix, valid_objects = transform_to_binary(data, noise_threshold)
 
     # Step 2: Generate Consensus Clusters
     consensus_clusters = generate_consensus_clusters(binary_matrix, n_final_clusters, alpha1, delta_alpha)
@@ -34,9 +34,9 @@ def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_
     ace_clustering = resolve_uncertain_objects(binary_matrix, consensus_clusters, valid_objects, alpha2)
 
     # Add ACE clustering result as a new variable in the dataset
-    clusterings["ace_clustering"] = xr.DataArray(ace_clustering, dims=["object"], coords={"object": clusterings.object})
+    data["ace_clustering"] = xr.DataArray(ace_clustering, dims=["object"], coords={"object": data.object})
 
-    return clusterings
+    return data
 
 def transform_to_binary(clusterings, threshold=0.5):
     """

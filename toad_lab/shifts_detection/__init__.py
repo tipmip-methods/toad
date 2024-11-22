@@ -6,7 +6,6 @@ from _version import __version__
 
 from toad_lab.method_dictionary import shifts_methods
 
-
 logger = logging.getLogger("TOAD")
 
 def compute_shifts(
@@ -80,10 +79,11 @@ def compute_shifts(
     output_label = output_label or default_name
     if output_label in data and merge_input:
         if overwrite:
-            logging.warning(f'overwriting variable {output_label} in data')
+            logger.warning(f'Overwriting variable {output_label}')
             data = data.drop_vars(output_label)
         else:
-            raise ValueError(f'data already contains a variable named {output_label}. Please specify a different output_label or set overwrite=True or set merge_input=False')
+            logger.warning(f'{output_label} already exists. Please pass overwrite=True to overwrite it.')
+            return data
 
     # 3. Get var from data
     logging.info(f'extracting variable {var} from Dataset')

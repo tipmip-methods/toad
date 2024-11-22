@@ -6,6 +6,7 @@ import os
 
 from toad_lab import shifts_detection, clustering, postprocessing, visualisation
 from toad_lab.utils import infer_dims
+import toad_lab.clustering.methods
 from _version import __version__
 
 
@@ -26,6 +27,7 @@ class TOAD:
         
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")
+        self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level) 
 
         # Assert that there are no duplicates in the data
@@ -72,7 +74,6 @@ class TOAD:
         # Only add a handler if there are no handlers yet (to avoid duplicate messages)
         if not self.logger.handlers:
             console_handler = logging.StreamHandler()
-            # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             formatter = logging.Formatter('%(levelname)s: %(message)s')
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
@@ -159,7 +160,7 @@ class TOAD:
         var : str,
         var_dts: str = None,
         min_abruptness: float = None,
-        method : Union [str, callable] = "hdbscan",
+        method : clustering.ClusteringMethod = toad_lab.clustering.methods.default_clustering_method,
         var_func: Callable[[float], bool] = None,
         dts_func: Callable[[float], bool] = None,
         scaler: str = 'StandardScaler',
@@ -186,9 +187,9 @@ class TOAD:
             if not provided.
         min_abruptness : float, optional
             Minimum threshold for abruptness to filter shifts. Required if `dts_func` is not provided.
-        method : Union[str, callable], optional
-            The clustering algorithm to use, either a string referring to a predefined method or a custom 
-            callable. Defaults to "hdbscan".
+        method : toad_lab.clustering.ClusteringMethod
+            The clustering method to use. Choose from predefined method objects in toad_lab.clustering.methods.
+            Defaults to euclidian HDBSCAN with min_cluster_size=25. 
         var_func : Callable[[float], bool], optional
             A callable used to filter the primary variable before clustering. Defaults to `None`.
         dts_func : Callable[[float], bool], optional
@@ -207,8 +208,6 @@ class TOAD:
         transpose_output : bool, optional
             Whether to transpose the output `xarray.DataArray`. This may be necessary for certain operations.
             Defaults to `False`.
-        **method_kwargs : dict, optional
-            Additional keyword arguments specific to the clustering algorithm.
 
         Returns
         -------

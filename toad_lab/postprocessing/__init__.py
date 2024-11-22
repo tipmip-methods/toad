@@ -1,4 +1,3 @@
-import xarray as xr
-from ..utils import deprecated
-from ..utils import infer_dims
-import numpy as np
+from toad_lab.postprocessing.stats import Stats
+
+__all__ = ["Stats"]

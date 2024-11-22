@@ -1,7 +1,5 @@
 from hdbscan import HDBSCAN
-import xarray as xr
 import numpy as np
-from typing import Callable
 
 def hdbscan(
     coords: np.ndarray,
@@ -36,7 +34,8 @@ def hdbscan(
                 where -1 indicates noise points.
             - str: A string summarizing the HDBSCAN parameters used, suitable 
                 for storing as metadata or documentation.
-
+                
+                
     TODO: find way to make this work with haversine distance for lat/lon data
     """
      

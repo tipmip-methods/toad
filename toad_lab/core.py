@@ -4,12 +4,8 @@ import numpy as np
 from typing import Union, Callable
 import os
 
-from . import shifts_detection
-from . import clustering
-from . import postprocessing
-from .postprocessing.stats import Stats
-from .utils import infer_dims
-from .utils import deprecated
+from toad_lab import shifts_detection, clustering, postprocessing, visualisation
+from toad_lab.utils import infer_dims
 from _version import __version__
 
 
@@ -43,7 +39,11 @@ class TOAD:
     # #               Module functions
     # # ======================================================================
     def stats(self):
-        return Stats(self)
+        return postprocessing.Stats(self)
+    
+    def plotter(self):
+        return visualisation.TOADPlotter(self)
+    
 
     # # ======================================================================
     # #               SET functions

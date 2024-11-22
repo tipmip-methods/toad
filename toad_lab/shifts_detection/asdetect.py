@@ -11,7 +11,7 @@ import xarray as xr
 from scipy import stats
 
 # Main function called from outside ============================================
-def detect(
+def asdetect(
         data : xr.DataArray, #3d-xarray.DataArray
         temporal_dim: str,
         lmin : int = 5, lmax : int = None

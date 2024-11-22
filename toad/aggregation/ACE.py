@@ -10,7 +10,8 @@ import numpy as np
 import xarray as xr
 
 # ACE Algorithm Implementation
-def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_alpha=0.1, noise_threshold = 0.5):
+def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_alpha=0.1, noise_threshold = 0.5,
+              first_dimension = "latitude", second_dimension = "longitude", third_dimension = "time",):
     """
     Adaptive Clustering Ensemble (ACE) Algorithm.
 
@@ -24,19 +25,30 @@ def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_
     Returns:
     - xarray.DataArray: Final clustering labels for each object.
     """
-    # Step 1: Binary Transformation
-    binary_matrix, valid_objects = transform_to_binary(data, noise_threshold)
+    # Step 1: Flatten dataset
+    flattened_data = data.stack(object=(first_dimension, second_dimension, third_dimension))
 
-    # Step 2: Generate Consensus Clusters
+    # Step 2: Binary Transformation
+    binary_matrix, valid_objects = transform_to_binary(flattened_data, noise_threshold)
+
+    # Step 3: Generate Consensus Clusters
     consensus_clusters = generate_consensus_clusters(binary_matrix, n_final_clusters, alpha1, delta_alpha)
 
-    # Step 3: Resolve Uncertain Assignments
+    # Step 4: Resolve Uncertain Assignments
     ace_clustering = resolve_uncertain_objects(binary_matrix, consensus_clusters, valid_objects, alpha2)
 
-    # Add ACE clustering result as a new variable in the dataset
-    data["ace_clustering"] = xr.DataArray(ace_clustering, dims=["object"], coords={"object": data.object})
+     # Step 5: Reshape ACE clustering back to original dimensions
+    reshaped_ace_clustering = xr.DataArray(
+        ace_clustering.reshape(data.sizes[first_dimension], data.sizes[second_dimension], data.sizes[third_dimension]),
+        coords={dim: data[dim] for dim in data.dims},
+        dims=data.dims,
+    )
+
+    # Step 6: Add ACE clustering as a new variable in the dataset
+    data["ace_clustering"] = reshaped_ace_clustering
 
     return data
+
 
 def transform_to_binary(clusterings, threshold=0.5):
     """

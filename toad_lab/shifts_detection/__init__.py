@@ -2,9 +2,10 @@
 import logging
 from typing import Union
 import xarray as xr
-from .method_dictionary import detection_methods
 from _version import __version__
-from ..utils import deprecated
+
+from toad_lab.method_dictionary import shifts_methods
+
 
 logger = logging.getLogger("TOAD")
 
@@ -70,7 +71,7 @@ def compute_shifts(
         detector = method
     elif type(method) == str:
         logging.info(f'looking up detector {method}')
-        detector = detection_methods[method]
+        detector = shifts_methods[method]
     else:
         raise ValueError('method must be a string or a callable') 
 

@@ -1,6 +1,7 @@
 import numpy as np
 
-from ..utils import infer_dims
+from toad_lab.utils import infer_dims
+
 
 class Stats:
     def __init__(self, toad):
@@ -45,8 +46,7 @@ class Stats:
         float or tuple
             The cluster score, and optionally the linear regression fit if `return_score_fit` is True.
         """
-        from ..core import Clustering
-
+        
         # Check if cluster_label is provided
         cluster_label = f"{var}_cluster" if cluster_label is None else cluster_label
 

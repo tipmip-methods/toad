@@ -258,7 +258,7 @@ def resolve_uncertain_objects(binary_matrix, clusters, valid_objects, alpha2):
 
         # Find the best cluster for the object
         for cluster_idx in range(len(clusters)):
-            temp_clusters = clusters.copy()
+            temp_clusters = [list(cluster) for cluster in clusters]  # Ensure temp_clusters is a list of lists
             temp_clusters[cluster_idx].append(obj)
 
             # Calculate quality (variance of similarities in the cluster)

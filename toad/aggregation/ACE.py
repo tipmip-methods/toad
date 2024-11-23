@@ -44,10 +44,11 @@ def aggregate(data: xr.Dataset, n_final_clusters, alpha1=0.8, alpha2=0.7, delta_
         dims=data.dims,
     )
 
+    data_ace = data.copy()
     # Step 6: Add ACE clustering as a new variable in the dataset
-    data["ace_clustering"] = reshaped_ace_clustering
+    data_ace["ace_clustering"] = reshaped_ace_clustering
 
-    return data
+    return data_ace
 
 def transform_to_binary(clusterings, threshold=0.5):
     """

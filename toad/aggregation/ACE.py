@@ -219,38 +219,94 @@ def update_similarity_matrix(similarity_matrix, clusters, merged_index):
 
     return new_sim_matrix
 
-
 def resolve_uncertain_objects(binary_matrix, clusters, valid_objects, alpha2):
     """
-    Resolve uncertain assignments for objects, retaining noise labels for unclustered objects.
+    Assign objects to clusters, resolving uncertainty while minimizing cluster quality impact.
+    
+    Parameters:
+    - binary_matrix: Binary membership matrix (objects x clusters).
+    - clusters: List of clusters, where each cluster contains object indices.
+    - valid_objects: Boolean array indicating valid objects (not noise).
+    - alpha2: Certainty threshold for assigning objects to clusters.
+
+    Returns:
+    - Array of final cluster labels for all objects.
     """
-    # Initialize all objects as noise (-1)
+    # Initialize final labels (-1 for noise)
     final_labels = -1 * np.ones(binary_matrix.shape[0], dtype=int)
 
-    for cluster_index, cluster in enumerate(clusters):
+    # Calculate membership similarity (Sx)
+    cluster_membership = np.zeros((binary_matrix.shape[0], len(clusters)))
+    for i, cluster in enumerate(clusters):
         for obj in cluster:
-            if obj < 0 or obj >= binary_matrix.shape[0]:
-                continue  # Skip invalid object indices
+            cluster_membership[obj, i] += 1
+    cluster_membership /= cluster_membership.sum(axis=1, keepdims=True)
 
-            # If object already assigned, resolve conflict
-            if final_labels[obj] != -1:
-                max_similarity = 0
-                best_cluster = -1
+    # Assign certain objects based on alpha2
+    max_similarity = cluster_membership.max(axis=1)
+    best_cluster = cluster_membership.argmax(axis=1)
 
-                for j, candidate_cluster in enumerate(clusters):
-                    if j >= binary_matrix.shape[1]:
-                        continue  # Avoid out-of-bounds access
-                    similarity = binary_matrix[obj, candidate_cluster].mean()  # Calculate similarity
-                    if similarity > max_similarity and similarity >= alpha2:
-                        max_similarity = similarity
-                        best_cluster = j
-                
-                if best_cluster != -1:
-                    final_labels[obj] = best_cluster  # Assign to best cluster
-            else:
-                final_labels[obj] = cluster_index
+    for obj in range(len(final_labels)):
+        if valid_objects[obj] and max_similarity[obj] >= alpha2:
+            final_labels[obj] = best_cluster[obj]
 
-    # Ensure noise objects remain labeled as -1
-    final_labels[~valid_objects] = -1
+    # Handle uncertain objects
+    uncertain_objects = (valid_objects) & (max_similarity < alpha2)
+    for obj in np.where(uncertain_objects)[0]:
+        min_quality_loss = float("inf")
+        best_cluster = -1
+
+        # Find the best cluster for the object
+        for cluster_idx in range(len(clusters)):
+            temp_clusters = clusters.copy()
+            temp_clusters[cluster_idx].append(obj)
+
+            # Calculate quality (variance of similarities in the cluster)
+            cluster_quality = np.var(cluster_membership[temp_clusters[cluster_idx], cluster_idx])
+
+            if cluster_quality < min_quality_loss:
+                min_quality_loss = cluster_quality
+                best_cluster = cluster_idx
+
+        # Assign the object to the best cluster
+        if best_cluster != -1:
+            final_labels[obj] = best_cluster
 
     return final_labels
+
+
+
+# def resolve_uncertain_objects(binary_matrix, clusters, valid_objects, alpha2):
+#     """
+#     Resolve uncertain assignments for objects, retaining noise labels for unclustered objects.
+#     """
+#     # Initialize all objects as noise (-1)
+#     final_labels = -1 * np.ones(binary_matrix.shape[0], dtype=int)
+
+#     for cluster_index, cluster in enumerate(clusters):
+#         for obj in cluster:
+#             if obj < 0 or obj >= binary_matrix.shape[0]:
+#                 continue  # Skip invalid object indices
+
+#             # If object already assigned, resolve conflict
+#             if final_labels[obj] != -1:
+#                 max_similarity = 0
+#                 best_cluster = -1
+
+#                 for j, candidate_cluster in enumerate(clusters):
+#                     if j >= binary_matrix.shape[1]:
+#                         continue  # Avoid out-of-bounds access
+#                     similarity = binary_matrix[obj, candidate_cluster].mean()  # Calculate similarity
+#                     if similarity > max_similarity and similarity >= alpha2:
+#                         max_similarity = similarity
+#                         best_cluster = j
+                
+#                 if best_cluster != -1:
+#                     final_labels[obj] = best_cluster  # Assign to best cluster
+#             else:
+#                 final_labels[obj] = cluster_index
+
+#     # Ensure noise objects remain labeled as -1
+#     final_labels[~valid_objects] = -1
+
+#     return final_labels

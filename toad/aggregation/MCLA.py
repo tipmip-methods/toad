@@ -121,17 +121,27 @@ def compute_medoids(cluster_labels, coords):
       - Medoid coordinates for each cluster.
       - Medoid indices (in the flattened array).
     """
-    cluster_labels = cluster_labels.flatten()  # Flatten the cluster labels
-    coords = np.stack([coord.flatten() for coord in coords], axis=1)  # Flatten coordinates into 2D array
+    # Flatten cluster_labels
+    cluster_labels_flat = cluster_labels.flatten()
 
-    unique_clusters = np.unique(cluster_labels[cluster_labels != -1])  # Exclude noise
+    # Stack coordinates into a 2D array
+    coords_flat = np.stack(np.meshgrid(*coords, indexing='ij'), axis=-1).reshape(-1, len(coords))
+
+    # Ensure shapes match
+    if coords_flat.shape[0] != cluster_labels_flat.shape[0]:
+        raise ValueError(
+            f"Shape mismatch: coords has {coords_flat.shape[0]} points, "
+            f"but cluster_labels has {cluster_labels_flat.shape[0]} points. Ensure dimensions align."
+        )
+
+    unique_clusters = np.unique(cluster_labels_flat[cluster_labels_flat != -1])  # Exclude noise
     medoids = []
     medoid_indices = []
 
     for cluster in unique_clusters:
         # Extract points belonging to the current cluster
-        cluster_indices = np.where(cluster_labels == cluster)[0]
-        cluster_points = coords[cluster_indices]
+        cluster_indices = np.where(cluster_labels_flat == cluster)[0]
+        cluster_points = coords_flat[cluster_indices]
 
         # Compute pairwise distances within the cluster
         pairwise_distances = np.linalg.norm(
@@ -142,4 +152,5 @@ def compute_medoids(cluster_labels, coords):
         medoids.append(cluster_points[medoid_idx])  # Store the medoid's coordinates
 
     return np.array(medoids), np.array(medoid_indices)
+
 

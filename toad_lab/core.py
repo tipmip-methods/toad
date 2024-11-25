@@ -273,7 +273,11 @@ class TOAD:
         return list(counts.keys())
     
 
-    def get_timeseries_in_cluster(self, var, cluster_id):
+    def get_cluster_cell_data(self, var, cluster_id):
+        """ Returns a list of xr.datasets for each cell that at one point in time is 
+        in the speicified cluster. Except if cluster_id=-1, the method will return 
+        cells that are always in -1, i.e. cells that remain unclustered throughout time."""
+        
         clusters = self.get_clusters(var)
         timeseries_data = self.timeseries(
             self.data,

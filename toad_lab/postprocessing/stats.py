@@ -56,7 +56,7 @@ class Stats:
         # Get the variable values
         tdim, _ = infer_dims(self.td.data)  
         xvals = self.td.data[tdim].values
-        yvals = self.td.get_timeseries_in_cluster_aggregate(var, cluster_id, how=how)[var].values
+        yvals = self.get_cluster_cell_aggregate(var, cluster_id, how=how)[var].values
         
         # Perform linear regression
         (a, b), res, _, _, _ = np.polyfit(xvals, yvals, 1, full=True)
@@ -77,9 +77,9 @@ class Stats:
             return standardized_score
         
 
-    def get_timeseries_in_cluster_aggregate(self, var, cluster_id, cluster_label=None, how="mean"):
+    def get_cluster_cell_aggregate(self, var, cluster_id, how, cluster_label=None):
         """
-        Get aggregated timeseries for a cluster using different statistical measures.
+        Aggregate data across all cells in the specified cluster using mean, median, sum, standard deviation, or percentile calculations.
         
         Parameters:
         ----------
@@ -89,7 +89,7 @@ class Stats:
             The ID of the cluster to analyze. Use -1 for unclustered cells.
         cluster_label : str, optional
             Custom cluster label variable name. If None, uses "{var}_cluster"
-        how : str, default="mean"
+        how : str
             Method for aggregating data across grid cells. Supported values:
             - 'mean': Mean value
             - 'median': Median value
@@ -109,10 +109,10 @@ class Stats:
         unclustered cells. For other cluster IDs, uses 'spatial' masking which 
         includes cells that were part of the cluster at any point in time.
         """
-        from toad_lab.clustering import Clustering
-        clusters = self.data[cluster_label] if cluster_label else self.get_clusters(var)
-        return self.timeseries(
-            self.data,
+        from toad_lab.core import Clustering
+        clusters = self.td.data[cluster_label] if cluster_label else self.td.get_clusters(var)
+        return self.td.timeseries(
+            self.td.data,
             clustering=Clustering(clusters),
             cluster_lbl=[cluster_id],
             masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
@@ -148,12 +148,12 @@ class Stats:
             represents the fraction of cells that are part of the cluster at that specific 
             time step. If there are no cells in the cluster, an array of zeros is returned.
         """
-        from toad_lab.clustering import Clustering
+        from toad_lab.core import Clustering
 
         cluster_var = f"{var}_cluster"
-        timeseries_data = self.timeseries(
-            self.data,
-            clustering=Clustering(self.data[cluster_var]),
+        timeseries_data = self.td.timeseries(
+            self.td.data,
+            clustering=Clustering(self.td.data[cluster_var]),
             cluster_lbl=[cluster_id],
             masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
             how=('per_gridcell') # get time series for each grid cell

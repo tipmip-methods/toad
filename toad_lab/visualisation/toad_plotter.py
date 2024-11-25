@@ -94,7 +94,7 @@ class TOADPlotter:
         return self
 
     def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, plot_shifts=False, **plot_kwargs):
-        timeseries = self.td.get_timeseries_in_cluster(var, cluster_id)
+        timeseries = self.td.get_cluster_cell_data(var, cluster_id)
         if(plot_shifts):
             timeseries = [ts[var + "_dts"] for ts in timeseries]
         else:

@@ -1,4 +1,3 @@
-
 import logging
 from typing import Union
 import xarray as xr
@@ -17,11 +16,13 @@ def compute_shifts(
         overwrite: bool = False,
         merge_input = True,
     ) -> xr.Dataset :
-    """
-    Main abrupt shift detection coordination function. Called from the TOAD.compute_shifts method. Ref that docstring for more info.
-    Differences: 
-        merge_input: Whether to merge the detected shifts with the original data. Defaults to True. 
-    TODO: clean up this docstring
+    """Implementation of shift detection logic.
+    
+    Internal function called by TOAD.compute_shifts(). 
+    See that method's documentation for usage details.
+    
+    Additional params:
+        merge_input: Whether to merge results into input dataset (True) or return separately (False)
     """
     
     # 1. Set output label
@@ -37,12 +38,12 @@ def compute_shifts(
 
     # 2. Get var from data
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
-    logging.info(f'extracting variable {var} from Dataset')
+    logger.info(f'extracting variable {var} from Dataset')
     data_array = data.get(var) 
     assert data_array.ndim == 3, 'data must be 3-dimensional!'
 
     # 3. Apply the detector
-    logging.info(f'applying detector {method} to data')
+    logger.info(f'applying detector {method} to data')
     shifts, method_params = method.apply(dataarray=data_array, temporal_dim=temporal_dim)
     
     # 4. Rename the output variable

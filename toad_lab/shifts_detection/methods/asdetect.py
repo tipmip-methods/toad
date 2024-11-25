@@ -44,6 +44,7 @@ class ASDETECT(ShiftsMethod):
             tuple: A tuple containing:
                 - xr.DataArray: A 3D xarray DataArray with the same shape as `data` 
                   (nt, nx, ny), representing the detection time series for each grid cell.
+                  TODO: provide more info about the output, why are the numbers between 0 and 1? What does 1 mean?
                 - dict: A dictionary summarizing the ASDETECT parameters used, suitable 
                   for storing as metadata or documentation.
         """
@@ -59,15 +60,12 @@ class ASDETECT(ShiftsMethod):
             vectorize=True
         ).transpose(*dataarray.dims)
 
-        method_details = {
-            "method": "asdetect",
-            "params": {
-                "lmin": self.lmin,
-                "lmax": self.lmax
-            }
+        method_params = {
+            "lmin": self.lmin,
+            "lmax": self.lmax
         }
 
-        return shifts, method_details
+        return shifts, method_params
 
 
 # 1D time series analysis of abrupt shifts =====================================

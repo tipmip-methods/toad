@@ -62,13 +62,10 @@ class DBSCAN(ClusteringMethod):
         cluster_labels_array = clustering.fit_predict(coords, sample_weight=weights).astype(float)
 
         # Metadata details
-        method_details = {
-            "method": "dbscan",
-            "params": {
-                "eps": self.eps,
-                "min_samples": self.min_samples,
-                "metric": self.metric,
-            },
+        method_params = {
+            "eps": self.eps,
+            "min_samples": self.min_samples,
+            "metric": self.metric,
         }
 
-        return cluster_labels_array, method_details
+        return cluster_labels_array, method_params

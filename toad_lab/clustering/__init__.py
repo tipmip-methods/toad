@@ -28,8 +28,6 @@ def compute_clusters(
     Main clustering coordination function. Called from the TOAD.compute_clusters method. Ref that docstring for more info.
 
     TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
-    TODO: (2) coordinates are sometimes flipped in the output. 
-    TODO: (3) Find out why transpose_output is needed for antarctica data. Related to (2)? 
     """
 
     assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'

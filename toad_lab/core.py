@@ -7,6 +7,7 @@ import os
 from toad_lab import shifts_detection, clustering, postprocessing, visualisation
 from toad_lab.utils import infer_dims
 import toad_lab.clustering.methods
+import toad_lab.shifts_detection.methods
 from _version import __version__
 
 
@@ -89,11 +90,10 @@ class TOAD:
         self,
         var: str,
         temporal_dim: str = "time",
-        method: Union [str, callable] = "asdetect",
+        method: shifts_detection.ShiftsMethod = toad_lab.shifts_detection.methods.default_shifts_method,
         output_label: str = None,
         overwrite: bool = False,
         merge_input = True,
-        **method_kwargs
     ) -> xr.Dataset :
         """
         Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
@@ -109,11 +109,8 @@ class TOAD:
         temporal_dim : str, optional
             Dimension along which the time-series analysis is performed. Typically, this is the time axis
             but can represent another forcing axis. Defaults to "time".
-        method : Union[str, callable], optional
-            The abrupt shift detection algorithm to use. Can be a string referring to a predefined method
-            (e.g., "asdetect") or a custom callable. Custom callables must have the signature:
-            `def custom_detector(data: xr.DataArray, temporal_dim: str, **method_kwargs) -> xr.DataArray`.
-            Defaults to "asdetect".
+        method : shifts_detection.ShiftsMethod, optional
+            The abrupt shift detection algorithm to use. Defaults to "asdetect".
         output_label : str, optional
             Name of the variable in the dataset to store the shift detection results. Defaults to `{var}_dts`
             if not provided.
@@ -123,8 +120,6 @@ class TOAD:
         merge_input : bool, optional
             Whether to merge the detected shifts with the original data. If False, only the detected shifts
             are returned. Defaults to `True`.
-        **method_kwargs : dict, optional
-            Additional keyword arguments specific to the detection algorithm.
 
         Returns
         -------
@@ -148,7 +143,7 @@ class TOAD:
         - The detected shifts are stored in the dataset under `output_label`, with metadata describing the
         method used.
         """
-        results = shifts_detection.compute_shifts(self.data, var, temporal_dim, method, output_label, overwrite, merge_input, **method_kwargs)
+        results = shifts_detection.compute_shifts(data=self.data, var=var, temporal_dim=temporal_dim, method=method, output_label=output_label, overwrite=overwrite, merge_input=merge_input)
         if merge_input:
             self.data = results
         else:
@@ -168,7 +163,6 @@ class TOAD:
         overwrite: bool = False,
         merge_input: bool = True,
         transpose_output: bool = False,
-        **method_kwargs
     ) -> xr.Dataset:
         """
         Apply a clustering algorithm to the dataset along the temporal dimension.
@@ -235,7 +229,7 @@ class TOAD:
         - The `transpose_output` option can be useful when working with datasets that require a specific axis 
         arrangement for downstream processing.
         """
-        result = clustering.compute_clusters(self.data, var, var_dts, min_abruptness, method, var_func, dts_func, scaler, output_label, overwrite, merge_input, transpose_output, **method_kwargs)
+        result = clustering.compute_clusters(self.data, var, var_dts, min_abruptness, method, var_func, dts_func, scaler, output_label, overwrite, merge_input, transpose_output)
         if merge_input:
             self.data = result
         else:

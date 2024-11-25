@@ -14,7 +14,7 @@ from toad_lab.clustering.methods.base import ClusteringMethod
 
 class DBSCAN(ClusteringMethod):
     """
-    Apply the DBSCAN clustering algorithm to 1D coordinate data.
+    DBSCAN clustering algorithm applicable to coordinate data in 1d-array 
 
     Args:
         eps (float): The maximum distance between two samples for them to be 
@@ -45,11 +45,10 @@ class DBSCAN(ClusteringMethod):
                 Not used in HDBSCAN but included for compatibility with other clustering methods.
 
         Returns:
-            tuple: A tuple containing:
-                - np.ndarray: A 1D NumPy array of cluster labels for each data point, 
-                  where -1 indicates noise points.
-                - dict: A dictionary summarizing the HDBSCAN parameters used, suitable 
-                  for storing as metadata or documentation.
+            np.ndarray: A 1D NumPy array of cluster labels for each data point, 
+                where -1 indicates noise points.
+            dict: A dictionary summarizing the HDBSCAN parameters used, suitable 
+                for storing as metadata or documentation.
 
         TODO: find way to make this work with haversine distance for lat/lon data
         

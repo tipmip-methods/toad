@@ -19,6 +19,9 @@ def compute_shifts(
     ) -> xr.Dataset :
     """
     Main abrupt shift detection coordination function. Called from the TOAD.compute_shifts method. Ref that docstring for more info.
+    Differences: 
+        merge_input: Whether to merge the detected shifts with the original data. Defaults to True. 
+    TODO: clean up this docstring
     """
     
     # 1. Set output label
@@ -40,15 +43,17 @@ def compute_shifts(
 
     # 3. Apply the detector
     logging.info(f'applying detector {method} to data')
-    shifts, method_details = method.apply(dataarray=data_array, temporal_dim=temporal_dim)
+    shifts, method_params = method.apply(dataarray=data_array, temporal_dim=temporal_dim)
     
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)
 
     # 5. Save details as attributes
     shifts.attrs.update({
-        'method': method_details,
-        '_git_version': __version__
+        'temporal_dim': temporal_dim,
+        'method': method.__class__.__name__,
+        'method_params': method_params,
+        'git_version': __version__
     })
 
     # 6. Merge the detected shifts with the original data

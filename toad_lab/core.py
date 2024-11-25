@@ -86,70 +86,75 @@ class TOAD:
     def compute_shifts(
         self,
         var: str,
+        method: shifts_detection.ShiftsMethod,
         temporal_dim: str = "time", 
-        method: shifts_detection.ShiftsMethod = toad_lab.shifts_detection.methods.default_shifts_method,
         output_label: str = None,
         overwrite: bool = False,
-        merge_input = True,
+        return_results_directly: bool = False,
     ) -> xr.Dataset :
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
         Args:
             var: Name of the variable in the dataset to analyze for abrupt shifts.
+            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad_lab.shifts_detection.methods or create your own following the base class in toad_lab.shifts_detection.methods.base
             temporal_dim: Dimension along which the time-series analysis is performed. Defaults to "time".
-            method: The abrupt shift detection algorithm to use. Defaults to "asdetect".
             output_label: Name of the variable to store results. Defaults to {var}_dts.
             overwrite: Whether to overwrite existing variable. Defaults to False.
-            merge_input: Whether to merge shifts with original data. Defaults to True.
+            return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
 
         Returns:
-            xr.Dataset: Original data with detected shifts if merge_input=True, otherwise just shifts.
+            xr.Dataset:  If `return_results_directly` is `True`, returns an `xarray.DataArray` containing the detected shifts. 
+            Otherwise, the detected shifts are merged into the original dataset, and the function returns `None`.
 
         Raises:
             AssertionError: If invalid dataset or variable.
             ValueError: If invalid method or output_label conflicts.
         """
-        results = shifts_detection.compute_shifts(data=self.data, var=var, temporal_dim=temporal_dim, method=method, output_label=output_label, overwrite=overwrite, merge_input=merge_input)
-        if merge_input:
-            self.data = results
-        else:
+        results = shifts_detection.compute_shifts(
+            data=self.data, 
+            var=var, 
+            temporal_dim=temporal_dim, 
+            method=method, 
+            output_label=output_label, 
+            overwrite=overwrite, 
+            merge_input=not return_results_directly
+        )
+        if return_results_directly:
             return results
+        else:
+            self.data = results
 
 
     def compute_clusters(
         self,
         var : str,
-        var_dts: str = None,
-        min_abruptness: float = None,
-        method : clustering.ClusteringMethod = toad_lab.clustering.methods.default_clustering_method,
-        var_func: Callable[[float], bool] = None,
-        dts_func: Callable[[float], bool] = None,
+        method : clustering.ClusteringMethod,
+        shifts_filter_func: Callable[[float], bool],
+        var_filter_func: Callable[[float], bool] = None,
+        shifts_label: str = None,
         scaler: str = 'StandardScaler',
         output_label: str = None,
         overwrite: bool = False,
-        merge_input: bool = True,
+        return_results_directly: bool = False,
         transpose_output: bool = False,
     ) -> xr.Dataset:
         """Apply a clustering algorithm to the dataset along the temporal dimension.
 
         Args:
             var: Name of the variable in the dataset to cluster.
-            var_dts: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
-            min_abruptness: Minimum threshold for abruptness to filter shifts. Required if dts_func not provided.
-            method: The clustering method to use. Choose from predefined method objects in toad_lab.clustering.methods.
-                Defaults to euclidian HDBSCAN with min_cluster_size=25.
-            var_func: A callable used to filter the primary variable before clustering. Defaults to None.
-            dts_func: A callable used to filter the shifts before clustering. Defaults to None.
+            method: The clustering method to use. Choose from predefined method objects in toad_lab.clustering.methods or create your own following the base class in toad_lab.clustering.methods.base
+            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+            shifts: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
             scaler: The scaling method to apply to the data before clustering. Defaults to 'StandardScaler'.
             output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
             overwrite: Whether to overwrite existing variable. Defaults to False.
-            merge_input: Whether to merge clustering results with original data. Defaults to True.
+            return_results_directly: Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
             transpose_output: Whether to transpose the output array. Defaults to False.
 
         Returns:
-            xr.Dataset:  If `merge_input` is `False`, returns an `xarray.DataArray` containing cluster labels for the data 
-            points. Otherwise, the clustering results are merged into the original dataset, and the function 
-            returns `None`.
+            xr.Dataset:  If `return_results_directly` is `True`, returns an `xarray.DataArray` containing cluster labels for the data 
+            points. Otherwise, the clustering results are merged into the original dataset, and the function returns `None`.
 
         Raises:
             AssertionError: If invalid dataset, dimensions, or missing required parameters.
@@ -160,16 +165,47 @@ class TOAD:
             - Scaling is automatically applied based on scaler parameter
             - transpose_output helps with datasets requiring specific axis arrangement
         """
-        result = clustering.compute_clusters(self.data, var, var_dts, min_abruptness, method, var_func, dts_func, scaler, output_label, overwrite, merge_input, transpose_output)
-        if merge_input:
-            self.data = result
-        else:
+        result = clustering.compute_clusters(
+            data=self.data,
+            var=var,
+            method=method,
+            shifts_filter_func=shifts_filter_func,
+            var_filter_func=var_filter_func,
+            shifts_label=shifts_label,
+            scaler=scaler,
+            output_label=output_label,
+            overwrite=overwrite,
+            merge_input=not return_results_directly,
+            transpose_output=transpose_output
+        )
+
+        if return_results_directly:
             return result
+        else:
+            self.data = result
         
 
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
+    def get_shifts(self, var):
+        """
+        Return the shifts dataset for further analysis.
+        """
+        if self.data.get(f"{var}_dts") is None:
+            raise ValueError(f"No shifts computed for {var} yet.")
+        return self.data[f"{var}_dts"]
+
+
+    def get_clusters(self, var):
+        """
+        Return the clusters dataset for further analysis.
+        """
+        if self.data.get(f"{var}_cluster") is None:
+            raise ValueError(f"No clusters computed for {var} yet.")
+        return self.data[f"{var}_cluster"]
+
+
     def get_cluster_counts(self, var, sort=False):
         """
         Calculate the number of cells in each cluster for a specified variable.
@@ -229,23 +265,13 @@ class TOAD:
             return counts
 
 
-    def get_shifts(self, var):
+    def get_cluster_ids(self, var, sort=False):
         """
-        Return the shifts dataset for further analysis.
+        Return list of cluster ids, optionally sorted by the number of cells in each cluster.
         """
-        if self.data.get(f"{var}_dts") is None:
-            raise ValueError(f"No shifts computed for {var} yet.")
-        return self.data[f"{var}_dts"]
-
-
-    def get_clusters(self, var):
-        """
-        Return the clusters dataset for further analysis.
-        """
-        if self.data.get(f"{var}_cluster") is None:
-            raise ValueError(f"No clusters computed for {var} yet.")
-        return self.data[f"{var}_cluster"]
-
+        counts = self.get_cluster_counts(var, sort=sort)
+        return list(counts.keys())
+    
 
     def get_timeseries_in_cluster(self, var, cluster_id):
         clusters = self.get_clusters(var)
@@ -257,80 +283,6 @@ class TOAD:
             how="per_gridcell" # get time series for each grid cell
         )
         return [timeseries_data.isel(cell_xy=j) for j in range(len(timeseries_data.cell_xy))]
-
-
-    def get_timeseries_in_cluster_aggregate(self, var, cluster_id, cluster_label=None, how="mean"):
-        clusters = self.data[cluster_label] if cluster_label else self.get_clusters(var)
-        return self.timeseries(
-            self.data,
-            clustering=Clustering(clusters),
-            cluster_lbl=[cluster_id],
-            masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
-            how=how
-        )
-
-    def get_largest_cluster_ids(self, var):
-        """
-        Return list of cluster ids sorted by the number of cells in each cluster.
-        """
-        counts = self.get_cluster_counts(var, sort=True)
-        return list(counts.keys())
-
-
-    def cluster_persistence_fraction(self, var, cluster_id):
-        """
-        Calculate the persistence fraction of cells in a given cluster over time.
-        
-        This function computes the fraction of grid cells that belong to a specified 
-        cluster at each time step, relative to the total number of cells that have 
-        ever belonged to that cluster. The "persistence fraction" represents how 
-        many cells are part of the cluster at each moment, based on cells that 
-        have been in the cluster at any point in time.
-
-        Parameters:
-        ----------
-        var : str
-            Name of the variable representing the cluster data. This variable will 
-            be used to access the corresponding cluster field (e.g., "thk_cluster").
-            
-        cluster_id : int
-            The identifier for the cluster of interest. If `cluster_id == -1`, the function 
-            computes the fraction for unclustered cells using the 'always_in_cluster' mask. 
-            Otherwise, it uses the 'spatial' mask to compute for the selected cluster.
-        
-        Returns:
-        -------
-        np.ndarray
-            A 1D array of length equal to the number of time steps, where each element 
-            represents the fraction of cells that are part of the cluster at that specific 
-            time step. If there are no cells in the cluster, an array of zeros is returned.
-        """
-        cluster_var = f"{var}_cluster"
-        timeseries_data = self.timeseries(
-            self.data,
-            clustering=Clustering(self.data[cluster_var]),
-            cluster_lbl=[cluster_id],
-            masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
-            how=('per_gridcell') # get time series for each grid cell
-        )
-            
-        # Number of cells in the dataset
-        num_cells = len(timeseries_data.cell_xy)
-        
-        # Preallocate cluster matrix
-        cluster_matrix = np.full((num_cells, len(timeseries_data.time)), -1)
-        
-        for i in np.arange(num_cells):
-            cluster_matrix[i, :] = timeseries_data.isel(cell_xy=i)[cluster_var].values
-
-        # Calculate fraction of cells in the cluster at each time step
-        num_cells_in_cluster = (cluster_matrix == cluster_id).sum(axis=0)
-        
-        # Avoid division by zero if no cells are in the cluster
-        if num_cells == 0:
-            return np.zeros(len(timeseries_data.time))
-
-        return num_cells_in_cluster / num_cells
 
 
     def timeseries(

@@ -69,14 +69,11 @@ class HDBSCAN(ClusteringMethod):
         cluster_labels_array = clustering.fit_predict(coords).astype(float)
 
         # Metadata details
-        method_details = {
-            "method": "hdbscan",
-            "params": {
-                "min_cluster_size": self.min_cluster_size,
-                "min_samples": self.min_samples,
-                "metric": self.metric,
-                "cluster_selection_epsilon": self.cluster_selection_epsilon,
-            },
+        method_params = {
+            "min_cluster_size": self.min_cluster_size,
+            "min_samples": self.min_samples,
+            "metric": self.metric,
+            "cluster_selection_epsilon": self.cluster_selection_epsilon,
         }
 
-        return cluster_labels_array, method_details
+        return cluster_labels_array, method_params

@@ -60,7 +60,7 @@ class TOADPlotter:
             if(south_pole):
                 ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
         
-        for i, id in enumerate(self.td.get_largest_cluster_ids(var)[:n_clusters]):
+        for i, id in enumerate(self.td.get_cluster_ids(var, True)[:n_clusters]):
             ax = axs.flat[i]
             self.plot_cluster_on_map(var, ax=ax, cluster_id=id, color=color)
             ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)

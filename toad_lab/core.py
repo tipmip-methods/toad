@@ -86,59 +86,28 @@ class TOAD:
     def compute_shifts(
         self,
         var: str,
-        temporal_dim: str = "time",
+        temporal_dim: str = "time", 
         method: shifts_detection.ShiftsMethod = toad_lab.shifts_detection.methods.default_shifts_method,
         output_label: str = None,
         overwrite: bool = False,
         merge_input = True,
     ) -> xr.Dataset :
-        """
-        Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
+        """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
-        This function detects abrupt shifts in the specified variable of a dataset using a chosen detection 
-        algorithm. The variable is processed along the specified temporal dimension, and the function returns 
-        an updated dataset with detected shifts and associated metadata.
+        Args:
+            var: Name of the variable in the dataset to analyze for abrupt shifts.
+            temporal_dim: Dimension along which the time-series analysis is performed. Defaults to "time".
+            method: The abrupt shift detection algorithm to use. Defaults to "asdetect".
+            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            merge_input: Whether to merge shifts with original data. Defaults to True.
 
-        Parameters
-        ----------
-        var : str
-            Name of the variable in the dataset to analyze for abrupt shifts.
-        temporal_dim : str, optional
-            Dimension along which the time-series analysis is performed. Typically, this is the time axis
-            but can represent another forcing axis. Defaults to "time".
-        method : shifts_detection.ShiftsMethod, optional
-            The abrupt shift detection algorithm to use. Defaults to "asdetect".
-        output_label : str, optional
-            Name of the variable in the dataset to store the shift detection results. Defaults to `{var}_dts`
-            if not provided.
-        overwrite : bool, optional
-            Whether to overwrite an existing variable in the dataset with the same name as `output_label`.
-            Defaults to `False`.
-        merge_input : bool, optional
-            Whether to merge the detected shifts with the original data. If False, only the detected shifts
-            are returned. Defaults to `True`.
+        Returns:
+            xr.Dataset: Original data with detected shifts if merge_input=True, otherwise just shifts.
 
-        Returns
-        -------
-        xr.Dataset
-            If `merge_input` is `False`, returns an xarray.Dataset containing the original variable and the
-            detected shifts. Otherwise, the function updates `self.data` in place and returns nothing.
-
-        Raises
-        ------
-        AssertionError
-            If `data` is not an xarray.Dataset, if the dataset does not have three dimensions, or if `var`
-            is not a valid variable in the dataset.
-        ValueError
-            If `method` is invalid, or if `output_label` conflicts with an existing variable and
-            `overwrite` is `False`.
-
-        Notes
-        -----
-        - Predefined methods are stored in the `detection_methods` dictionary and can be referenced by name.
-        - If a custom detection algorithm is used, it must adhere to the specified callable signature.
-        - The detected shifts are stored in the dataset under `output_label`, with metadata describing the
-        method used.
+        Raises:
+            AssertionError: If invalid dataset or variable.
+            ValueError: If invalid method or output_label conflicts.
         """
         results = shifts_detection.compute_shifts(data=self.data, var=var, temporal_dim=temporal_dim, method=method, output_label=output_label, overwrite=overwrite, merge_input=merge_input)
         if merge_input:
@@ -161,70 +130,35 @@ class TOAD:
         merge_input: bool = True,
         transpose_output: bool = False,
     ) -> xr.Dataset:
-        """
-        Apply a clustering algorithm to the dataset along the temporal dimension.
+        """Apply a clustering algorithm to the dataset along the temporal dimension.
 
-        This function performs clustering on the specified variable in the dataset using a chosen clustering 
-        algorithm (default: HDBSCAN). Data points are optionally filtered based on specified conditions 
-        applied to the primary variable and/or its precomputed shifts. Results are stored in the dataset 
-        or returned as a new `xarray.DataArray`.
+        Args:
+            var: Name of the variable in the dataset to cluster.
+            var_dts: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            min_abruptness: Minimum threshold for abruptness to filter shifts. Required if dts_func not provided.
+            method: The clustering method to use. Choose from predefined method objects in toad_lab.clustering.methods.
+                Defaults to euclidian HDBSCAN with min_cluster_size=25.
+            var_func: A callable used to filter the primary variable before clustering. Defaults to None.
+            dts_func: A callable used to filter the shifts before clustering. Defaults to None.
+            scaler: The scaling method to apply to the data before clustering. Defaults to 'StandardScaler'.
+            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            merge_input: Whether to merge clustering results with original data. Defaults to True.
+            transpose_output: Whether to transpose the output array. Defaults to False.
 
-        Parameters
-        ----------
-        var : str
-            The name of the variable in the dataset to cluster.
-        var_dts : str, optional
-            The name of the variable containing precomputed shifts (e.g., `{var}_dts`). Defaults to `{var}_dts` 
-            if not provided.
-        min_abruptness : float, optional
-            Minimum threshold for abruptness to filter shifts. Required if `dts_func` is not provided.
-        method : toad_lab.clustering.ClusteringMethod
-            The clustering method to use. Choose from predefined method objects in toad_lab.clustering.methods.
-            Defaults to euclidian HDBSCAN with min_cluster_size=25. 
-        var_func : Callable[[float], bool], optional
-            A callable used to filter the primary variable before clustering. Defaults to `None`.
-        dts_func : Callable[[float], bool], optional
-            A callable used to filter the shifts before clustering. Defaults to `None`.
-        scaler : str, optional
-            The scaling method to apply to the data before clustering. Defaults to 'StandardScaler'.
-        output_label : str, optional
-            The name of the variable in the dataset to store the clustering results. Defaults to 
-            `{var}_cluster` if not provided.
-        overwrite : bool, optional
-            Whether to overwrite the existing variable in the dataset if `output_label` already exists. 
-            Defaults to `False`.
-        merge_input : bool, optional
-            Whether to merge the clustering results back into the original dataset. If `False`, the function 
-            will return the results. Defaults to `True`.
-        transpose_output : bool, optional
-            Whether to transpose the output `xarray.DataArray`. This may be necessary for certain operations.
-            Defaults to `False`.
-
-        Returns
-        -------
-        xr.DataArray
-            If `merge_input` is `False`, returns an `xarray.DataArray` containing cluster labels for the data 
+        Returns:
+            xr.Dataset:  If `merge_input` is `False`, returns an `xarray.DataArray` containing cluster labels for the data 
             points. Otherwise, the clustering results are merged into the original dataset, and the function 
             returns `None`.
 
-        Raises
-        ------
-        AssertionError
-            If the dataset is not an `xarray.Dataset`, if the dataset does not have three dimensions, or if 
-            neither `min_abruptness` nor `dts_func` is provided.
-        ValueError
-            If `var_dts` is not found in the dataset, if `method` is invalid, or if `output_label` conflicts 
-            with an existing variable and `overwrite` is `False`.
+        Raises:
+            AssertionError: If invalid dataset, dimensions, or missing required parameters.
+            ValueError: If var_dts not found, invalid method, or output_label conflicts.
 
-        Notes
-        -----
-        - The `method` can either be a string referring to a predefined clustering method or a custom callable. 
-        Predefined methods are stored in the `clustering_methods` dictionary.
-        - If both `var_func` and `dts_func` are provided, data points must pass both filters to be included in 
-        clustering.
-        - The function automatically applies scaling to the data based on the specified `scaler`.
-        - The `transpose_output` option can be useful when working with datasets that require a specific axis 
-        arrangement for downstream processing.
+        Notes:
+            - Both var_func and dts_func filters must pass for data points to be included
+            - Scaling is automatically applied based on scaler parameter
+            - transpose_output helps with datasets requiring specific axis arrangement
         """
         result = clustering.compute_clusters(self.data, var, var_dts, min_abruptness, method, var_func, dts_func, scaler, output_label, overwrite, merge_input, transpose_output)
         if merge_input:

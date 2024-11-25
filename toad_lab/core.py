@@ -4,7 +4,7 @@ import numpy as np
 from typing import Union, Callable
 import os
 
-from toad_lab import shifts_detection, clustering, postprocessing, visualisation
+from toad_lab import shifts_detection, clustering, postprocessing, visualisation, preprocessing
 from toad_lab.utils import infer_dims
 import toad_lab.clustering.methods
 import toad_lab.shifts_detection.methods
@@ -31,16 +31,13 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level) 
 
-        # Assert that there are no duplicates in the data
-        dims = list(self.data.sizes.keys())
-        duplicates = len(self.data.to_dataframe().groupby(dims).size().value_counts().values) > 1
-        if duplicates:
-            self.logger.warning("Data contains non-unqiue values for some coordinates. This may cause unexpected behavior in TOAD. Can be mitigated with xr.drop_duplicates(dim).")
-
 
     # # ======================================================================
     # #               Module functions
     # # ======================================================================
+    def preprocess(self):
+        return preprocessing.Preprocess(self)
+    
     def stats(self):
         return postprocessing.Stats(self)
     

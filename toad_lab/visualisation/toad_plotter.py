@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 
 class TOADPlotter:
@@ -9,6 +10,49 @@ class TOADPlotter:
     def __init__(self, td):
         """Init TOADPlotter with a TOAD object """
         self.td = td
+
+
+    def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(1,1), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+        fig = plt.figure(figsize=figsize)
+        if nrows == 1 and ncols == 1:
+            ax = fig.add_subplot(1, 1, 1, projection=projection)
+            axs = ax
+        else:
+            axs = np.empty((nrows, ncols), dtype=object)
+            for i in range(nrows):
+                for j in range(ncols):
+                    axs[i,j] = fig.add_subplot(nrows, ncols, i*ncols + j + 1, projection=projection)
+                    
+        # Add features to all axes
+        if isinstance(axs, np.ndarray):
+            for ax in axs.flat:
+                ax.coastlines(resolution=resolution, linewidth=linewidth[0])
+                if borders:
+                    ax.add_feature(cfeature.BORDERS, linestyle='-', linewidth=linewidth[1])
+                if grid_labels:
+                    ax.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style)
+        else:
+            axs.coastlines(resolution=resolution, linewidth=linewidth[0])
+            if borders:
+                axs.add_feature(cfeature.BORDERS, linestyle='-', linewidth=linewidth[1])
+            if grid_labels:
+                axs.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style)
+                
+        return fig, axs
+
+
+
+    def south_pole_plots(self, nrows=1, ncols=1, resolution="110m", linewidth=(1,1), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+        fig, axs = self.map_plots(nrows, ncols, projection=ccrs.SouthPolarStereo(), resolution=resolution, linewidth=linewidth, grid_labels=grid_labels, grid_style=grid_style, grid_width=grid_width, grid_color=grid_color, grid_alpha=grid_alpha, figsize=figsize, borders=borders, **kwargs)
+        if isinstance(axs, np.ndarray):
+            axs_flat = axs.flat
+        else:
+            axs_flat = [axs]
+
+        for ax in axs_flat:
+            ax.coastlines(resolution="110m")
+            ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
+        return fig, axs
 
     def plot_clusters_on_map(self, var, cluster_label=None, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
         """

@@ -6,12 +6,14 @@ def readme():
         return f.read()
 
 setup(
-    name='toad-lab',
+    name='toad',
     version=__version__,
     description='Tipping and other abrupt events detector',
     long_description=readme(),
     author='Sina Loriani',
     author_email='sina.loriani@pik-potsdam.de',
+    maintainer='Jakob Harteg',
+    maintainer_email='jakob.harteg@pik-potsdam.de',
     packages=find_packages(),
     install_requires = [
         'numpy',
@@ -25,5 +27,7 @@ setup(
         'ipykernel',
         'dask',
         'distributed'
+        'cartopy',
+        'hdbscan'
     ]
 )

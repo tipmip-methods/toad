@@ -16,6 +16,7 @@ from toad_lab.shifts_detection.methods.base import ShiftsMethod
 class ASDETECT(ShiftsMethod):
     """
     Detect shifts algorithm applicable to 3D data arrays.
+    TODO: write summary of the method (In notion already)
 
     Args:
         lmin (int, optional): The minimum segment length for detection. Defaults to 5.

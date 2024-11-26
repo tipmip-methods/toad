@@ -1,21 +1,36 @@
 import xarray as xr
 
 
-def preprocess(data, keep_only=None):
-    """Preprocess the data.
 
-    :param data:        xarray dataset
-    :type data:         xr.Dataset
-    :return:            ...
-    :rtype:             ...
-    """
+class Preprocess:
+    def __init__(self, toad):
+        self.td = toad
 
-    # Drop unnecessary variables
-    if keep_only:
-        data = data.drop_vars([v for v in data.data_vars if v not in keep_only])
+    def preprocess(self, keep_only=None):
+        """Preprocess the data.
 
-    # TODO apply XMIP preprocessing
+        This method preprocesses the data by dropping unnecessary variables and applying XMIP preprocessing.
 
-    return data
+        Parameters
+        ----------
+        keep_only : list, optional
+            List of variable names to keep. All other variables will be dropped.
+            If None, all variables are kept.
+
+        Returns
+        -------
+        xarray.Dataset
+            The preprocessed dataset
+        """
+
+        raise NotImplementedError("Preprocessing is not yet implemented.")
+
+        # Drop unnecessary variables
+        if keep_only:
+            self.data = self.data.drop_vars([v for v in self.data.data_vars if v not in keep_only])
+
+        # TODO apply XMIP preprocessing
+
+        return self.data
 
 

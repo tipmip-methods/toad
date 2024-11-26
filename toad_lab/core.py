@@ -41,6 +41,9 @@ class TOAD:
     def stats(self):
         return postprocessing.Stats(self)
     
+    def aggregation(self):
+        return postprocessing.Aggregation(self)
+    
     def plotter(self):
         return visualisation.TOADPlotter(self)
     
@@ -277,7 +280,7 @@ class TOAD:
         """ Returns a list of xr.datasets for each cell that at one point in time is 
         in the speicified cluster. Except if cluster_id=-1, the method will return 
         cells that are always in -1, i.e. cells that remain unclustered throughout time."""
-        
+
         clusters = self.get_clusters(var)
         timeseries_data = self.timeseries(
             self.data,

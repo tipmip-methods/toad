@@ -29,13 +29,14 @@ def compute_clusters(
 
     TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
     """
-    assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
 
     # Check shifts var
     all_vars = list(data.data_vars.keys())
     shifts_label = shifts_label if shifts_label else f'{var}_dts'  # default to {var}_dts
-    assert shifts_label in all_vars, f'Please run shifts on {var} first, or provide a custom "shifts" variable'
-    assert data[shifts_label].ndim == 3, 'data must be 3-dimensional!'
+    if shifts_label not in all_vars:
+        raise ValueError(f'Shifts not found at {shifts_label}. Please run shifts on {var} first, or provide a custom "shifts_label"')
+    if data[shifts_label].ndim != 3:
+        raise ValueError('data must be 3-dimensional!')
     
     # 1. Check if the output_label is already in the data
     default_name = f'{var}_cluster'
@@ -77,9 +78,14 @@ def compute_clusters(
         f"shifts_filter_func": inspect.getsource(shifts_filter_func) if shifts_filter_func else "None",
         f"scaler": scaler,
         f'method': method.__class__.__name__,
-        f'method_params': method_params,
-        f'git_version': __version__
     })
+
+    # Add method params as separate attributes
+    for param, value in method_params.items():
+        cluster_labels.attrs[f'method_param_{param}'] = str(value) if value is not None else ''
+
+    # add git version
+    cluster_labels.attrs['git_version'] = __version__
 
     # 7. Merge the cluster labels back into the original data
     if merge_input:

@@ -2,6 +2,7 @@ import logging
 from typing import Union
 import xarray as xr
 from _version import __version__
+import numpy as np
 
 from toad_lab.shifts_detection.methods.base import ShiftsMethod
 
@@ -37,10 +38,23 @@ def compute_shifts(
             return data
 
     # 2. Get var from data
-    assert type(data) == xr.Dataset, 'data must be an xr.DataSet!'
     logger.info(f'extracting variable {var} from Dataset')
     data_array = data.get(var) 
-    assert data_array.ndim == 3, 'data must be 3-dimensional!'
+
+    # check if var is in data
+    if data_array is None:
+        raise ValueError(f'variable {var} not found in dataset!')
+
+    # check that data_array is not empty
+    if data_array.size == 0:
+        raise ValueError(f'data array for variable {var} is empty!')
+
+    # check that data_array is 3-dimensional
+    if data_array.ndim != 3:
+        raise ValueError('data must be 3-dimensional!')
+    # check that time dim consists of ints or floats
+    if not (np.issubdtype(data_array[temporal_dim].dtype, np.integer) or np.issubdtype(data_array[temporal_dim].dtype, np.floating)):
+        raise ValueError('time dimension must consist of integers or floats.')
 
     # 3. Apply the detector
     logger.info(f'applying detector {method} to data')
@@ -53,9 +67,14 @@ def compute_shifts(
     shifts.attrs.update({
         'temporal_dim': temporal_dim,
         'method': method.__class__.__name__,
-        'method_params': method_params,
-        'git_version': __version__
     })
+
+    # Add method params as separate attributes
+    for param, value in method_params.items():
+        shifts.attrs[f'method_param_{param}'] = str(value) if value is not None else ''
+
+    # add git version
+    shifts.attrs['git_version'] = __version__
 
     # 6. Merge the detected shifts with the original data
     if merge_input:

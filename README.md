@@ -9,6 +9,23 @@ pip install (to be added)
 
 Please see tutorial in [examples/basics.ipynb](examples/basics.ipynb).
 
+### Simple use case
+``` python
+from toad import TOAD
+from toad.shifts_detection.methods import ASDETECT
+from toad.clustering.methods import HDBSCAN
+
+
+td = TOAD("data.nc")
+td.compute_shifts("temp", method=ASDETECT())
+td.compute_clusters(
+    var="temp",                                  
+    method=HDBSCAN(min_cluster_size=25),        
+    shifts_filter_func=lambda x: np.abs(x)>0.8,
+)
+```
+
+
 
 ## Development
 ```bash

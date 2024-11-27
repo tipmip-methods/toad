@@ -50,7 +50,13 @@ others to use very specific versions of the code if needed.
 
 
 ## Note on using older version of TOAD
-Version 0.2 of TOAD is still available on the `toad-alpha` branch. The package there has been renamed from `toad` to `toad-alpha` such that it can be used alongside the most recent version of toad if cloned locally
+Version 0.2 of TOAD is still available on the `toad-alpha` branch. The package there has been renamed from `toad` to `toad-alpha` such that it can be used alongside the most recent version of toad if cloned locally: 
+```bash
+git clone (to be added) :: toad-alpha
+cd toad
+pip install -e .
+```
+Then
 ``` python
 import toad-alpha as toad
 ```

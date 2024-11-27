@@ -1,13 +1,32 @@
 # TOAD
-**T**ipping and **o**ther **a**brupt events **D**etector. Tutorial how to use [here.](https://gitlab.pik-potsdam.de/sinal/toadtorial)
+**T**ipping and **O**ther **A**brupt events **D**etector. 
 
 ## Installation
 Installation:
 ```bash
-pip install 'git+ssh://git@gitlab.pik-potsdam.de/sinal/toad.git'
+pip install (to be added)
 ```
 
+Please see tutorial in [examples/basics.ipynb](examples/basics.ipynb).
+
+
+## Development
+```bash
+git clone (to be added)
+cd toad
+pip install -e .
+```
+The `-e` flag installs the package in "editable" mode, which means changes to the source code are immediately reflected without needing to reinstall.
+
+
 ## Version information
+
+**Version 0.3 [Nov 2024]** Major refactoring of the code to increase
+ease of use and extendability. First version on Github. The main use-case now happens through
+the `TOAD` object, which wraps the xarray dataset and provides analysis
+functions etc. Added `HDBSCAN` clustering and basic plotting functionality
+(still work in progress). Various classes/functions are still to be implemented,
+but basic functionality of 0.2 is there, and few breaking changes are expected.
 
 **Version 0.2 [Jun 2023]** Working clustering based on `DBSCAN` with an
 evaluation pipeline that adds the cluster labels as auxiliary variable to a
@@ -19,8 +38,7 @@ the detection time series as auxiliary variable to a dataset. The git hash is
 additionally saved as an attribute.
 
 ## Repository information
-We use [trunk-based
-development](https://medium.com/@vafrcor2009/gitflow-vs-trunk-based-development-3beff578030b)
+We use [trunk-based development](https://medium.com/@vafrcor2009/gitflow-vs-trunk-based-development-3beff578030b)
 for our git workflow. This means we all work on the same branch (main), the
 trunk, and push our code changes to it often. This way, we can keep our code up
 to date. We also avoid having too many branches that can get messy and hard to
@@ -31,4 +49,6 @@ versions of the code can be then dedicated releases with version tags, allowing
 others to use very specific versions of the code if needed.
 
 ---
+Nov 2024 ∙ [Jakob Harteg](mailto:jakob.harteg@pik-potsdam.de)
+
 June 2022 ∙ [Sina Loriani](mailto:sina.loriani@pik-potsdam.de)

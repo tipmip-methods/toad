@@ -31,14 +31,14 @@ class ASDETECT(ShiftsMethod):
         self.lmax = lmax
 
 
-    def apply(self, dataarray: xr.DataArray, temporal_dim: str):
+    def apply(self, dataarray: xr.DataArray, time_dim: str):
         """Compute the detection time series for each grid cell in the 3D data array.
 
         Args:
             dataarray (xr.DataArray): A 3D xarray DataArray with shape (nt, nx, ny), where 
                 `nt` is the length of the temporal dimension, and `nx` and `ny` are 
                 the spatial dimensions.
-            temporal_dim (str): The name of the temporal dimension in `data` used 
+            time_dim (str): The name of the temporal dimension in `data` used 
                 for constructing the detection time series.
 
         Returns:
@@ -53,11 +53,11 @@ class ASDETECT(ShiftsMethod):
             construct_detection_ts,
             dataarray,
             kwargs=dict(
-                    times_1d=dataarray[temporal_dim].values,
+                    times_1d=dataarray[time_dim].values,
                     lmin=self.lmin, lmax=self.lmax
                 ),
-            input_core_dims=[[temporal_dim]],
-            output_core_dims=[[temporal_dim]],
+            input_core_dims=[[time_dim]],
+            output_core_dims=[[time_dim]],
             vectorize=True
         ).transpose(*dataarray.dims)
 
@@ -290,4 +290,4 @@ def construct_detection_ts(
 #     )
 
 #     res1d = construct_detection_ts(arr1d, times)
-#     resxd = map_dts_to_xarray(darr3d, temporal_dim='t')    
+#     resxd = map_dts_to_xarray(darr3d, time_dim='t')    

@@ -11,7 +11,7 @@ logger = logging.getLogger("TOAD")
 def compute_shifts(
         data: xr.Dataset,
         var: str,
-        temporal_dim: str = "time",
+        time_dim: str = "time",
         method: ShiftsMethod = None,
         output_label: str = None,
         overwrite: bool = False,
@@ -53,19 +53,19 @@ def compute_shifts(
     if data_array.ndim != 3:
         raise ValueError('data must be 3-dimensional!')
     # check that time dim consists of ints or floats
-    if not (np.issubdtype(data_array[temporal_dim].dtype, np.integer) or np.issubdtype(data_array[temporal_dim].dtype, np.floating)):
+    if not (np.issubdtype(data_array[time_dim].dtype, np.integer) or np.issubdtype(data_array[time_dim].dtype, np.floating)):
         raise ValueError('time dimension must consist of integers or floats.')
 
     # 3. Apply the detector
     logger.info(f'applying detector {method} to data')
-    shifts, method_params = method.apply(dataarray=data_array, temporal_dim=temporal_dim)
+    shifts, method_params = method.apply(dataarray=data_array, time_dim=time_dim)
     
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)
 
     # 5. Save details as attributes
     shifts.attrs.update({
-        'temporal_dim': temporal_dim,
+        'time_dim': time_dim,
         'method': method.__class__.__name__,
     })
 

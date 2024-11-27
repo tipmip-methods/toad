@@ -1,4 +1,7 @@
-def infer_dims(xr_da, tdim=None):
+import xarray as xr
+
+
+def infer_dims(xr_da: xr.DataArray, tdim=None):
     """
     Infers the temporal and spatial dimensions from an xarray DataArray.
 
@@ -51,3 +54,22 @@ def infer_dims(xr_da, tdim=None):
 
                 # print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
                 return (tdim[0], sdims)
+            
+
+import warnings
+import functools
+
+def deprecated(message=None):
+    """ Mark functions as deprecated with @deprecated decorator"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            warn_message = message if message else f"{func.__name__} is deprecated and will be removed in a future version."
+            warnings.warn(
+                warn_message,
+                category=DeprecationWarning,
+                stacklevel=2
+            )
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator

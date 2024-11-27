@@ -48,6 +48,13 @@ issues pull-requests that are approved or rejected by the maintainer. Special
 versions of the code can be then dedicated releases with version tags, allowing
 others to use very specific versions of the code if needed.
 
+
+## Note on using older version of TOAD
+Version 0.2 of TOAD is still available on the `toad-alpha` branch. The package there has been renamed from `toad` to `toad-alpha` such that it can be used alongside the most recent version of toad if cloned locally
+``` python
+import toad-alpha as toad
+```
+
 ---
 Nov 2024 ∙ [Jakob Harteg](mailto:jakob.harteg@pik-potsdam.de)
 

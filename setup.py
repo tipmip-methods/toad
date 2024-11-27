@@ -26,7 +26,7 @@ setup(
         'netcdf4',
         'ipykernel',
         'dask',
-        'distributed'
+        'distributed',
         'cartopy',
         'hdbscan'
     ]

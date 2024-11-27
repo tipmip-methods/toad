@@ -23,6 +23,7 @@ td.compute_clusters(
     method=HDBSCAN(min_cluster_size=25),        
     shifts_filter_func=lambda x: np.abs(x)>0.8,
 )
+td.plotter().plot_clusters_on_map("temp");
 ```
 
 

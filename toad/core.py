@@ -90,7 +90,7 @@ class TOAD:
         self,
         var: str,
         method: shifts_detection.ShiftsMethod,
-        temporal_dim: str = "time", 
+        time_dim: str = "time", 
         output_label: str = None,
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -100,7 +100,7 @@ class TOAD:
         Args:
             var: Name of the variable in the dataset to analyze for abrupt shifts.
             method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
-            temporal_dim: Dimension along which the time-series analysis is performed. Defaults to "time".
+            time_dim: Dimension along which the time-series analysis is performed. Defaults to "time".
             output_label: Name of the variable to store results. Defaults to {var}_dts.
             overwrite: Whether to overwrite existing variable. Defaults to False.
             return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
@@ -116,7 +116,7 @@ class TOAD:
         results = shifts_detection.compute_shifts(
             data=self.data, 
             var=var, 
-            temporal_dim=temporal_dim, 
+            time_dim=time_dim, 
             method=method, 
             output_label=output_label, 
             overwrite=overwrite, 
@@ -372,8 +372,8 @@ class Clustering():
                                     * strict: same as spactial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
 
     :type cluster_label_ds:     xarray.DataArray
-    :param temporal_dim:        Dimension in which the abrupt shifts have been detected. Automatically inferred if not provided.
-    :type temporal_dim:         str, optional
+    :param time_dim:        Dimension in which the abrupt shifts have been detected. Automatically inferred if not provided.
+    :type time_dim:         str, optional
 
     TODO: Consider whether to merge this with the TOAD object
     """
@@ -381,9 +381,9 @@ class Clustering():
     def __init__(
             self,
             cluster_label_da,
-            temporal_dim=None,
+            time_dim=None,
             ):
-        self.tdim, self.sdims = infer_dims(cluster_label_da, tdim=temporal_dim)
+        self.tdim, self.sdims = infer_dims(cluster_label_da, tdim=time_dim)
         self._cluster_labels = cluster_label_da
 
     def _apply_mask_to(

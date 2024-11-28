@@ -2,13 +2,14 @@ from typing import Callable
 import xarray as xr
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from typing import Optional
 
 def prepare_dataframe(
         data: xr.Dataset,
         var: str, 
         var_dts: str,
-        var_func: Callable[[float], bool] = None,
-        dts_func: Callable[[float], bool] = None,
+        var_func: Optional[Callable[[float], bool]] = None,
+        dts_func: Optional[Callable[[float], bool]] = None,
         scaler: str = 'StandardScaler'
     ):
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.

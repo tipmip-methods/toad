@@ -1,21 +1,27 @@
 import logging
 import xarray as xr
 import numpy as np
-from typing import Union, Callable
+from typing import Union, Callable, Optional
 import os
+from sklearn.base import ClusterMixin
 
 from toad import shifts_detection, clustering, postprocessing, visualisation, preprocessing
 from toad.utils import infer_dims
-import toad.clustering.methods
-import toad.shifts_detection.methods
 from _version import __version__
 
 
 class TOAD:
+    """TOAD (Tippping and Other Abrupt events Detector) is a framework for detecting shifts and anomalies in temporal data.
+    TODO: add more descriptive docstirng
+    """
+    
+    data: xr.Dataset
+
     def __init__(self, 
                  data: Union[xr.Dataset, str],
                  log_level = "WARNING"
         ):
+        """ TODO: docstring """
         
         # load data from path if string
         if type(data) is str:
@@ -91,10 +97,10 @@ class TOAD:
         var: str,
         method: shifts_detection.ShiftsMethod,
         time_dim: str = "time", 
-        output_label: str = None,
+        output_label: Optional[str] = None,
         overwrite: bool = False,
         return_results_directly: bool = False,
-    ) -> xr.Dataset :
+    ) -> Union[xr.DataArray, None]:
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
         Args:
@@ -106,7 +112,7 @@ class TOAD:
             return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
 
         Returns:
-            xr.Dataset:  If `return_results_directly` is `True`, returns an `xarray.DataArray` containing the detected shifts. 
+            xarray.DataArray:  If `return_results_directly` is `True`, returns an `xarray.DataArray` containing the detected shifts. 
             Otherwise, the detected shifts are merged into the original dataset, and the function returns `None`.
 
         Raises:
@@ -122,30 +128,31 @@ class TOAD:
             overwrite=overwrite, 
             merge_input=not return_results_directly
         )
-        if return_results_directly:
+        if return_results_directly and isinstance(results, xr.DataArray):
             return results
-        else:
-            self.data = results
+        elif isinstance(results, xr.Dataset):
+            self.data = results 
+            return None
 
 
     def compute_clusters(
         self,
         var : str,
-        method : clustering.ClusteringMethod,
+        method : ClusterMixin,
         shifts_filter_func: Callable[[float], bool],
-        var_filter_func: Callable[[float], bool] = None,
-        shifts_label: str = None,
+        var_filter_func: Optional[Callable[[float], bool]] = None,
+        shifts_label: Optional[str] = None,
         scaler: str = 'StandardScaler',
-        output_label: str = None,
+        output_label: Optional[str] = None,
         overwrite: bool = False,
         return_results_directly: bool = False,
         transpose_output: bool = False,
-    ) -> xr.Dataset:
+    ) -> Union[xr.DataArray, None]:
         """Apply a clustering algorithm to the dataset along the temporal dimension.
 
         Args:
             var: Name of the variable in the dataset to cluster.
-            method: The clustering method to use. Choose from predefined method objects in toad.clustering.methods or create your own following the base class in toad.clustering.methods.base
+            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
             shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
             shifts: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
@@ -168,7 +175,7 @@ class TOAD:
             - Scaling is automatically applied based on scaler parameter
             - transpose_output helps with datasets requiring specific axis arrangement
         """
-        result = clustering.compute_clusters(
+        results = clustering.compute_clusters(
             data=self.data,
             var=var,
             method=method,
@@ -182,10 +189,11 @@ class TOAD:
             transpose_output=transpose_output
         )
 
-        if return_results_directly:
-            return result
-        else:
-            self.data = result
+        if return_results_directly and isinstance(results, xr.DataArray):
+            return results 
+        elif isinstance(results, xr.Dataset):
+            self.data = results 
+            return None
         
 
     # # ======================================================================

@@ -4,7 +4,7 @@ import xarray as xr
 # Abstract class for shifts detection methods
 class ShiftsMethod(ABC):
     @abstractmethod
-    def apply(self, dataarray: xr.DataArray, time_dim: str) -> tuple[xr.DataArray, dict]:
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
         """Apply the shifts detection method.
         
         Args:
@@ -12,8 +12,6 @@ class ShiftsMethod(ABC):
             time_dim (str): Name of the temporal dimension
             
         Returns:
-            tuple: A tuple containing:
-                - xr.DataArray: The detection time series
-                - dict: Method details and parameters used
+            - xr.DataArray: The detection time series
         """
         pass

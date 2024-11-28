@@ -4,9 +4,10 @@ import numpy as np
 from typing import Callable
 from _version import __version__
 import inspect
+from typing import Optional, Union
 
 from toad.clustering.prepare_data import prepare_dataframe
-from toad.clustering.methods.base import ClusteringMethod
+from sklearn.base import ClusterMixin
 
 
 logger = logging.getLogger("TOAD")
@@ -14,16 +15,16 @@ logger = logging.getLogger("TOAD")
 def compute_clusters(
         data: xr.Dataset,
         var : str,
-        method : ClusteringMethod,
+        method : ClusterMixin,
         shifts_filter_func: Callable[[float], bool],
-        var_filter_func: Callable[[float], bool] = None,
-        shifts_label: str = None,
+        var_filter_func: Optional[Callable[[float], bool]] = None,
+        shifts_label: Optional[str] = None,
         scaler: str = 'StandardScaler',
-        output_label: str = None,
+        output_label: Optional[str] = None,
         overwrite: bool = False,
         merge_input: bool = True,
         transpose_output: bool = False,
-    ) -> xr.Dataset:
+    ) -> Union[xr.Dataset, xr.DataArray]:
     """
     Main clustering coordination function. Called from the TOAD.compute_clusters method. Ref that docstring for more info.
 
@@ -57,9 +58,16 @@ def compute_clusters(
         data, var, shifts_label, var_filter_func, shifts_filter_func, scaler
     )
 
+    # Save method params before clustering (because they might change during clustering)
+    method_params = {
+        f'method_{param}': str(value) 
+        for param, value in dict(sorted(vars(method).items())).items() 
+        if value is not None
+    }
+
     # 3. Perform clustering
     logger.info(f'Applying clustering method {method}')
-    clusters, method_params = method.apply(coords=scaled_coords, weights=importance_weights)
+    clusters = method.fit_predict(scaled_coords, importance_weights)
 
     if transpose_output:
         clusters = clusters.transpose()
@@ -77,20 +85,19 @@ def compute_clusters(
         f"var_filter_func": inspect.getsource(var_filter_func) if var_filter_func else "None",
         f"shifts_filter_func": inspect.getsource(shifts_filter_func) if shifts_filter_func else "None",
         f"scaler": scaler,
-        f'method': method.__class__.__name__,
+        f'method_name': method.__class__.__name__,
     })
-
-    # Add method params as separate attributes
-    for param, value in method_params.items():
-        cluster_labels.attrs[f'method_param_{param}'] = str(value) if value is not None else ''
+    
+    # Add saved params as attributes
+    cluster_labels.attrs.update(method_params)
 
     # add git version
-    cluster_labels.attrs['git_version'] = __version__
+    cluster_labels.attrs['toad_version'] = __version__
 
     # 7. Merge the cluster labels back into the original data
     if merge_input:
-        return xr.merge([data, cluster_labels], combine_attrs="override")
+        return xr.merge([data, cluster_labels], combine_attrs="override") # xr.dataset
     else:
-        return cluster_labels
+        return cluster_labels # xr.dataarray
 
 

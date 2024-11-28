@@ -31,7 +31,7 @@ TOAD's core functionality is exposed through the `TOAD` class, which analyzes ne
 ``` python
 from toad import TOAD
 from toad.shifts_detection.methods import ASDETECT
-from toad.clustering.methods import HDBSCAN
+from sklearn.cluster import HDBSCAN
 
 
 # init TOAD object
@@ -65,11 +65,12 @@ The `-e` flag installs the package in "editable" mode, which means changes to th
 ## Version information
 
 **Version 0.3 [Nov 2024]** Major refactoring of the code to increase
-ease of use and extendability. First version on Github. The main use-case now happens through
-the `TOAD` object, which wraps the xarray dataset and provides analysis
-functions etc. Added `HDBSCAN` clustering and basic plotting functionality
-(still work in progress). Various classes/functions are still to be implemented,
-but basic functionality of 0.2 is there, and few breaking changes are expected.
+ease of use and extendability. First version on GitHub. The main use-case now happens through
+the `TOAD` object, which wraps the `xarray` dataset and provides analysis
+functions etc. You can now create your own shifts detection and clustering methods, as well
+pass clustering methods from `sklearn.cluster` directly to `TOAD`. 
+Various classes/functions are still to be implemented, but the basic functionality of 0.2 is there, 
+and few breaking changes are expected. 
 
 **Version 0.2 [Jun 2023]** Working clustering based on `DBSCAN` with an
 evaluation pipeline that adds the cluster labels as auxiliary variable to a

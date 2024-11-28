@@ -31,7 +31,7 @@ class ASDETECT(ShiftsMethod):
         self.lmax = lmax
 
 
-    def apply(self, dataarray: xr.DataArray, time_dim: str):
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str):
         """Compute the detection time series for each grid cell in the 3D data array.
 
         Args:
@@ -42,12 +42,9 @@ class ASDETECT(ShiftsMethod):
                 for constructing the detection time series.
 
         Returns:
-            tuple: A tuple containing:
-                - xr.DataArray: A 3D xarray DataArray with the same shape as `data` 
-                  (nt, nx, ny), representing the detection time series for each grid cell.
-                  TODO: provide more info about the output, why are the numbers between 0 and 1? What does 1 mean?
-                - dict: A dictionary summarizing the ASDETECT parameters used, suitable 
-                  for storing as metadata or documentation.
+            - xr.DataArray: A 3D xarray DataArray with the same shape as `data` 
+                (nt, nx, ny), representing the detection time series for each grid cell.
+                TODO: provide more info about the output, why are the numbers between 0 and 1? What does 1 mean?
         """
         shifts = xr.apply_ufunc(
             construct_detection_ts,
@@ -61,12 +58,7 @@ class ASDETECT(ShiftsMethod):
             vectorize=True
         ).transpose(*dataarray.dims)
 
-        method_params = {
-            "lmin": self.lmin,
-            "lmax": self.lmax
-        }
-
-        return shifts, method_params
+        return shifts
 
 
 # 1D time series analysis of abrupt shifts =====================================

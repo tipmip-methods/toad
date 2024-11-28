@@ -1,5 +1,5 @@
 import logging
-from typing import Union
+from typing import Union, Optional
 import xarray as xr
 from _version import __version__
 import numpy as np
@@ -11,12 +11,12 @@ logger = logging.getLogger("TOAD")
 def compute_shifts(
         data: xr.Dataset,
         var: str,
+        method: ShiftsMethod,
         time_dim: str = "time",
-        method: ShiftsMethod = None,
-        output_label: str = None,
+        output_label: Optional[str] = None,
         overwrite: bool = False,
-        merge_input = True,
-    ) -> xr.Dataset :
+        merge_input: bool = True,
+    ) -> Union[xr.Dataset, xr.DataArray]:
     """Implementation of shift detection logic.
     
     Internal function called by TOAD.compute_shifts(). 
@@ -56,9 +56,16 @@ def compute_shifts(
     if not (np.issubdtype(data_array[time_dim].dtype, np.integer) or np.issubdtype(data_array[time_dim].dtype, np.floating)):
         raise ValueError('time dimension must consist of integers or floats.')
 
+    # Save method params (to be consistent with clustering structure.)
+    method_params = {
+        f'method_{param}': str(value) 
+        for param, value in dict(sorted(vars(method).items())).items() 
+        if value is not None
+    }
+
     # 3. Apply the detector
     logger.info(f'applying detector {method} to data')
-    shifts, method_params = method.apply(dataarray=data_array, time_dim=time_dim)
+    shifts = method.fit_predict(dataarray=data_array, time_dim=time_dim)
     
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)
@@ -70,14 +77,19 @@ def compute_shifts(
     })
 
     # Add method params as separate attributes
-    for param, value in method_params.items():
-        shifts.attrs[f'method_param_{param}'] = str(value) if value is not None else ''
+    for param, value in dict(sorted(vars(method).items())).items():
+        if value is not None:
+            shifts.attrs[f'method_{param}'] = str(value)
+
+
+    # Add saved params as attributes
+    shifts.attrs.update(method_params)
 
     # add git version
-    shifts.attrs['git_version'] = __version__
+    shifts.attrs['toad_version'] = __version__
 
     # 6. Merge the detected shifts with the original data
     if merge_input:
-        return xr.merge([data, shifts], combine_attrs="override")
+        return xr.merge([data, shifts], combine_attrs="override") # xr.dataset
     else:
-        return shifts
+        return shifts # xr.dataarray

@@ -29,7 +29,7 @@ def prepare_dataframe(
             `dts` values. Defaults to a function that filters values based on 
             `min_abruptness` in the calling function.
         scaler (str, optional): The scaler to use for normalizing coordinates. 
-            Options are 'StandardScaler' or 'MinMaxScaler'. Defaults to 'StandardScaler'.
+            Options are 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
 
     Returns:
         tuple: A tuple containing:
@@ -67,11 +67,15 @@ def prepare_dataframe(
     dims = list(data[var].dims) # take var dims instead of dataset dims, as they may not be the same.
     coords = filtered_data_pandas[dims].to_numpy()
 
-    # Choose the scaler and scale the coordinates
-    scaler_instance = StandardScaler() if scaler == 'StandardScaler' else MinMaxScaler()
-    scaled_coords = scaler_instance.fit_transform(coords)
+    # Scale if scaler is not None
+    if scaler == 'StandardScaler':
+        coords = StandardScaler().fit_transform(coords)
+    elif scaler == 'MinMaxScaler':
+        coords = MinMaxScaler().fit_transform(coords)
+    elif scaler is not None:
+        raise ValueError(f"Invalid scaler: {scaler}. Please choose 'StandardScaler', 'MinMaxScaler' or None.")
 
     # Compute importance weights as the absolute values of the dts variable
     importance_weights = np.abs(filtered_data_pandas[var_dts].to_numpy())
 
-    return filtered_data_pandas, dims, importance_weights, scaled_coords
+    return filtered_data_pandas, dims, importance_weights, coords

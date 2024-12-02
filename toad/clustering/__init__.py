@@ -23,13 +23,29 @@ def compute_clusters(
         output_label: Optional[str] = None,
         overwrite: bool = False,
         merge_input: bool = True,
-        transpose_output: bool = False,
     ) -> Union[xr.Dataset, xr.DataArray]:
-    """
-    Main clustering coordination function. Called from the TOAD.compute_clusters method. Ref that docstring for more info.
+    """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
-    TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
+        Args:
+            var: Name of the variable in the dataset to cluster.
+            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
+            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
+            shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
+
+        Returns:
+            xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
+            xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
+
+        Raises:
+            ValueError: If data is invalid or required parameters are missing
+
     """
+    # TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
 
     # Check shifts var
     all_vars = list(data.data_vars.keys())
@@ -68,9 +84,6 @@ def compute_clusters(
     # 3. Perform clustering
     logger.info(f'Applying clustering method {method}')
     clusters = method.fit_predict(scaled_coords, importance_weights)
-
-    if transpose_output:
-        clusters = clusters.transpose()
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims

@@ -9,21 +9,27 @@ Refactored: Nov, 2024 (Jakob)
 import numpy as np
 import xarray as xr
 from scipy import stats
+from typing import Optional
 
 from toad.shifts_detection.methods.base import ShiftsMethod
 
 
 class ASDETECT(ShiftsMethod):
     """
-    Detect shifts algorithm applicable to 3D data arrays.
-    TODO: write summary of the method (In notion already)
+    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+
+    Steps:
+    1. Divide the time series into overlapping segments of size `l`.
+    2. Perform linear regression within each segment to calculate gradients.
+    3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
+    4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
+    5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
+    6. Normalize the detection array by dividing by the number of window sizes used.
 
     Args:
-        lmin (int, optional): The minimum segment length for detection. Defaults to 5.
-        lmax (int, optional): The maximum segment length for detection. If not 
-            specified, it defaults to one-third of the size of the temporal 
-            dimension.
-        
+        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
+        lmax: (Optional) The maximum segment length for detection. If not 
+            specified, it defaults to one-third of the size of the time dimension.
     """
 
     def __init__(self, lmin = 5, lmax = None):
@@ -31,20 +37,21 @@ class ASDETECT(ShiftsMethod):
         self.lmax = lmax
 
 
-    def fit_predict(self, dataarray: xr.DataArray, time_dim: str):
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
         """Compute the detection time series for each grid cell in the 3D data array.
 
         Args:
-            dataarray (xr.DataArray): A 3D xarray DataArray with shape (nt, nx, ny), where 
-                `nt` is the length of the temporal dimension, and `nx` and `ny` are 
-                the spatial dimensions.
-            time_dim (str): The name of the temporal dimension in `data` used 
-                for constructing the detection time series.
+            - dataarray: A 3D xarray DataArray containing a variable over time and two spatial coordinates
+            - time_dim: Name of the time dimension in `dataarray`.
 
         Returns:
-            - xr.DataArray: A 3D xarray DataArray with the same shape as `data` 
-                (nt, nx, ny), representing the detection time series for each grid cell.
-                TODO: provide more info about the output, why are the numbers between 0 and 1? What does 1 mean?
+            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents 
+            the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
+                - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
+                - `-1` indicates that all tested segment lengths detected a significant negative gradient.
+                - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
+
+
         """
         shifts = xr.apply_ufunc(
             construct_detection_ts,
@@ -63,28 +70,27 @@ class ASDETECT(ShiftsMethod):
 
 # 1D time series analysis of abrupt shifts =====================================
 def centered_segmentation(
-            l_tot: int, l_seg: int, verbose : bool = False
-        ) -> np.ndarray:
+        l_tot: int, 
+        l_seg: int, 
+        verbose : bool = False
+    ) -> np.ndarray:
     """ Provide set of indices to divide a range into segments of equal length.
 
     The range of l_tot is divided into segments of equal length l_seg,
     with the remainder of the division being equally truncated at the
     beginning and end, with the end+1 for uneven division.
 
-    :param l_tot:   Total length of the range to be segmented
-    :type l_tot:    int
-    :param l_seg:   Length of one segment.
-    :type l_seg:    int
-    :param verbose: If true, print segmentation indices.
-    :type verbose:  bool
-    :return:        List of indices of the segmentation; entry i are the first index of the ith segment.
-    :rtype:         numpy.ndarray[int]
+    Args:
+        l_tot: Total length of the range to be segmented
+        l_seg: Length of one segment
+        verbose: If true, print segmentation indices
 
-    **Example**
+    Returns:
+        - List of indices of the segmentation; entry i are the first index of the ith segment
 
-    >>> tsanalysis.asdetect.centered_segmentation(l_tot=103, l_seg=10)
-    array([  1,  11,  21,  31,  41,  51,  61,  71,  81,  91, 101])
-
+    Examples:
+        >>> centered_segmentation(l_tot=103, l_seg=10)
+        array([  1,  11,  21,  31,  41,  51,  61,  71,  81,  91, 101])
     """
 
     # number of segments
@@ -128,8 +134,11 @@ def centered_segmentation(
     return seg_idces
 
 def construct_detection_ts(
-        values_1d : np.ndarray, times_1d: np.ndarray,
-        lmin : int = 5, lmax : int = None) -> np.ndarray:
+        values_1d : np.ndarray, 
+        times_1d: np.ndarray,
+        lmin : int = 5, 
+        lmax : Optional[int] = None
+    ) -> np.ndarray:
     """ Construct a detection time series (asdetect algorithm).
 
     Following [Boulton+Lenton2019]_, the time series (ts) is divided into
@@ -138,16 +147,14 @@ def construct_detection_ts(
     over many segmentation choices (i.e. values of l) results in a detection
     time series that indicates the points of largest relative gradients.
 
-    :param values_1d:   time series, shape (n,)
-    :type values_1d:    1d-numpy.ndarray
-    :param times_1d:    times, shape (n,), same length as values_1d
-    :type times_1d:     1d-numpy.ndarray
-    :param lmin:        smallest segment length, default = 5
-    :type lmin:         int
-    :param lmax:        largest segment length, default = n/3
-    :type lmax:         int
-    :return:            detection time series, shape (n,)
-    :rtype:             1d-numpy.ndarray
+    Args:
+        values_1d: Time series, shape (n,)
+        times_1d: Times, shape (n,), same length as values_1d
+        lmin: Smallest segment length, default = 5
+        lmax: Largest segment length, default = n/3
+
+    Returns:
+        - Abraupt shift score time series, shape (n,)
     """
 
     n_tot = len(values_1d)
@@ -198,7 +205,7 @@ def construct_detection_ts(
 
 
 # ==============================================================================
-# Sina leftovers ===============================================================
+# Sina leftovers TODO: need any of this? =======================================
 # ==============================================================================
 
 

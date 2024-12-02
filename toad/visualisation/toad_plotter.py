@@ -6,6 +6,11 @@ import cartopy.feature as cfeature
 
 
 class TOADPlotter:
+    """
+    Plotting methods for TOAD objects.
+    
+    Note: Docstrings here are short as this class is under heavy development
+    """
     
     def __init__(self, td):
         """Init TOADPlotter with a TOAD object """
@@ -13,6 +18,10 @@ class TOADPlotter:
 
 
     def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+        """
+        Plot maps with coastlines, gridlines, and optional borders.
+        """
+
         fig = plt.figure(figsize=figsize)
         if nrows == 1 and ncols == 1:
             ax = fig.add_subplot(1, 1, 1, projection=projection)
@@ -32,17 +41,20 @@ class TOADPlotter:
                 if grid_labels:
                     ax.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style)
         else:
-            axs.coastlines(resolution=resolution, linewidth=linewidth[0])
+            axs.coastlines(resolution=resolution, linewidth=linewidth[0]) # type: ignore
             if borders:
-                axs.add_feature(cfeature.BORDERS, linestyle='-', linewidth=linewidth[1])
+                axs.add_feature(cfeature.BORDERS, linestyle='-', linewidth=linewidth[1]) # type: ignore
             if grid_labels:
-                axs.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style)
+                axs.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style) # type: ignore
                 
         return fig, axs
 
 
 
     def south_pole_plots(self, nrows=1, ncols=1, resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+        """
+        Plot maps with coastlines, gridlines, and optional borders at the South Pole.
+        """
         fig, axs = self.map_plots(nrows, ncols, projection=ccrs.SouthPolarStereo(), resolution=resolution, linewidth=linewidth, grid_labels=grid_labels, grid_style=grid_style, grid_width=grid_width, grid_color=grid_color, grid_alpha=grid_alpha, figsize=figsize, borders=borders, **kwargs)
         if isinstance(axs, np.ndarray):
             axs_flat = axs.flat
@@ -50,15 +62,17 @@ class TOADPlotter:
             axs_flat = [axs]
 
         for ax in axs_flat:
-            ax.coastlines(resolution="110m")
-            ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
+            ax.coastlines(resolution="110m") # type: ignore
+            ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
     def plot_clusters_on_map(self, var, cluster_label=None, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
         """
-        Plot the clusters on a South Pole map.
-        Paramss: 
-        -   clusters: supply your own cluster labels (e.g. from a different clustering algorithm)
+        Plot the clusters on a map.
+        
+        Args: 
+            - cluster_label: custom cluster labels to plot, defaults to the {var}_cluster. 
+            - cluster_ids: which clusters to plot, defaults to all clusters
         """
         if cluster_label is None:
             cluster_label = self.td.get_clusters(var)
@@ -78,7 +92,7 @@ class TOADPlotter:
 
     def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None, time_dim="time"):
         """
-        Plot the clusters on a South Pole map.
+        Plot a individual clusters on a map.
         """
         if ax is None:
             fig, ax = plt.subplots()
@@ -91,6 +105,9 @@ class TOADPlotter:
 
 
     def plot_clusters_on_maps(self, var, max_clusters = 5, ncols = 5, color="k", south_pole=False):
+        """
+        Plot individual clusters on each their own map.
+        """
         cluster_counts = self.td.get_cluster_counts(var)
         n_clusters = np.min([len(self.td.get_clusters(var).clusters), max_clusters])
         nrows = int(np.ceil(n_clusters / ncols))
@@ -110,59 +127,35 @@ class TOADPlotter:
             ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)
 
 
-    def plot_shifts(self, var, frame=0, ax=None, cmap="RdBu"):
-        """
-        Plot the shifts (rate of change and ice thickness) for a specific time frame.
-        """
-
-        if ax is None:
-            fig, ax = plt.subplots()
-        
-        # Plot rate of change
-        self.td.data[f"{var}_dts"].isel(time=frame).plot(cmap=cmap, ax=ax)
-        ax.set_title(f'{var}_dts')
-        return self
-
-    
-    def plot_var(self, var, frame=0, ax=None, cmap="RdBu", **kwargs):
-        """
-        Plot the shifts (rate of change and ice thickness) for a specific time frame.
-        """
-
-        if ax is None:
-            fig, ax = plt.subplots()
-        
-        # Plot rate of change
-        self.td.data[var].isel(time=frame).plot(cmap=cmap, ax=ax, **kwargs)
-        ax.set_title(var)
-        return self
-
     def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, plot_shifts=False, **plot_kwargs):
-        timeseries = self.td.get_cluster_cell_data(var, cluster_id)
+        """
+        Plot the time series of a cluster.
+        """
+        cell = self.td.get_cluster_cell_data(var, cluster_id)
         if(plot_shifts):
-            timeseries = [ts[var + "_dts"] for ts in timeseries]
+            cell = [ts.get_shifts() for ts in cell]
         else:
-            timeseries = [ts[var] for ts in timeseries]
+            cell = [ts[var] for ts in cell]
         
         if ax is None:
             fig, ax = plt.subplots()
 
 
         # Limit the number of trajectories to plot
-        max_trajectories = np.min([max_trajectories, len(timeseries)])
+        max_trajectories = np.min([max_trajectories, len(cell)])
 
-        # Shuffle the timeseries to get a random sample
-        order = np.arange(len(timeseries))
+        # Shuffle the cell to get a random sample
+        order = np.arange(len(cell))
         np.random.shuffle(order) 
         order = order[:max_trajectories]
 
         for i in order:
-            timeseries[i].plot(ax=ax, **plot_kwargs)
+            cell[i].plot(ax=ax, **plot_kwargs)
         
-        if max_trajectories < len(timeseries):
-            ax.set_title(f'Random sample of {max_trajectories} from total {len(timeseries)} timeseries for {var} in cluster {cluster_id}')
+        if max_trajectories < len(cell):
+            ax.set_title(f'Random sample of {max_trajectories} from total {len(cell)} cell for {var} in cluster {cluster_id}')
         else:                                                                              
-            ax.set_title(f'{len(timeseries)} timeseries for {var} in cluster {cluster_id}')
+            ax.set_title(f'{len(cell)} timeseries for {var} in cluster {cluster_id}')
         return self
 
 

@@ -1,9 +1,12 @@
 import numpy as np
-
+from typing import Union
 from toad.utils import infer_dims
 
-
 class Stats:
+    """
+    Statistical analysis of clustering results.
+    """
+
     def __init__(self, toad):
         self.td = toad
 
@@ -13,38 +16,32 @@ class Stats:
             cluster_id, 
             cluster_label = None,
             return_score_fit=False,
+            time_dim="time",
             how='mean'
-        ):
+        ) -> Union[float, tuple[float, np.ndarray]]:
         """
-        Calculate the score of a cluster, ranging from 0 to 1, where:
-        - A score of 1 corresponds to a perfect Heaviside step function.
-        - A score of 0 corresponds to a perfect linear function.
-        Clusters dominated by abrupt shifts yield higher scores.
+        Calculates cluster score based on fit to Heaviside vs linear function.
+        
+        Score ranges from 0-1, where 1 indicates perfect Heaviside step function and 0 
+        indicates perfect linear function. Higher scores mean more abrupt shifts.
+        Score is calculated by fitting linear regression and evaluating residuals.
 
-        The score is derived by fitting a linear regression to the cluster's time series and evaluating the residual.
-
-        Parameters:
-        ----------
-        var : str
-            The variable to analyze.
-        cluster_id : int or list
-            The ID(s) of the cluster(s) to score.
-        cluster_label : str, optional
-            The cluster label to use. Defaults to `"{var}_cluster"` if not provided.
-        return_score_fit : bool, optional
-            If True, also return the linear regression fit. Defaults to False.
-        how : str, optional
-            Method for aggregating data across grid cells. Supported values:
-            - 'mean': Mean value (default).
-            - 'median': Median value.
-            - 'aggr': Sum of values.
-            - 'std': Standard deviation.
-            - 'perc': Percentile value.
+        Args:
+            var: Variable name to analyze.
+            cluster_id: id of the cluster to score.
+            cluster_label: Optional cluster label, defaults to "{var}_cluster".
+            return_score_fit: If True, returns linear regression fit along with score.
+            how: Method for aggregating grid cells:
+                - 'mean': Mean value (default)
+                - 'median': Median value  
+                - 'aggr': Sum of values
+                - 'std': Standard deviation
+                - 'perc': Percentile value, e.g. how=('perc', 0.9)
 
         Returns:
-        -------
-        float or tuple
-            The cluster score, and optionally the linear regression fit if `return_score_fit` is True.
+            - score: Cluster score between 0-1.
+            - If return_score_fit is True:
+                - tuple: (score, linear fit)
         """
         
         # Check if cluster_label is provided
@@ -54,8 +51,7 @@ class Stats:
         assert how != "per_gridcell", f"per_gridcell is not supported for this method."
 
         # Get the variable values
-        tdim, _ = infer_dims(self.td.data)  
-        xvals = self.td.data[tdim].values
+        xvals = self.td.data[time_dim].values # time values
         yvals = self.get_cluster_cell_aggregate(var, cluster_id, how=how)[var].values
         
         # Perform linear regression
@@ -81,33 +77,25 @@ class Stats:
         """
         Aggregate data across all cells in the specified cluster using mean, median, sum, standard deviation, or percentile calculations.
         
-        Parameters:
-        ----------
-        var : str
-            The variable to analyze (e.g., 'thk' for thickness)
-        cluster_id : int
-            The ID of the cluster to analyze. Use -1 for unclustered cells.
-        cluster_label : str, optional
-            Custom cluster label variable name. If None, uses "{var}_cluster"
-        how : str
-            Method for aggregating data across grid cells. Supported values:
-            - 'mean': Mean value
-            - 'median': Median value
-            - 'aggr': Sum of values
-            - 'std': Standard deviation
-            - 'perc': Percentile value, e.g. how=('perc',0.9)
-            
+        Args:
+            var (str): The variable to analyze (e.g., 'thk' for thickness)
+            cluster_id (int): The ID of the cluster to analyze. Use -1 for unclustered cells.
+            cluster_label (str, optional): Custom cluster label variable name. If None, uses "{var}_cluster"
+            how (str): Method for aggregating data across grid cells. Supported values:
+                - 'mean': Mean value
+                - 'median': Median value
+                - 'aggr': Sum of values
+                - 'std': Standard deviation
+                - 'perc': Percentile value, e.g. how=('perc',0.9)
+
         Returns:
-        -------
-        xr.Dataset
-            Dataset containing the aggregated timeseries for the specified cluster.
-            The variable name in the dataset matches the input variable name.
-            
-        Notes:
-        -----
-        For cluster_id=-1, uses 'always_in_cluster' masking to properly handle 
-        unclustered cells. For other cluster IDs, uses 'spatial' masking which 
-        includes cells that were part of the cluster at any point in time.
+            xr.Dataset: Dataset containing the aggregated timeseries for the specified cluster.
+                The variable name in the dataset matches the input variable name.
+
+        Note:
+            For cluster_id=-1, uses 'always_in_cluster' masking to properly handle
+            unclustered cells. For other cluster IDs, uses 'spatial' masking which
+            includes cells that were part of the cluster at any point in time.
         """
         from toad.core import Clustering
         clusters = self.td.data[cluster_label] if cluster_label else self.td.get_clusters(var)
@@ -124,29 +112,22 @@ class Stats:
         """
         Calculate the persistence fraction of cells in a given cluster over time.
         
-        This function computes the fraction of grid cells that belong to a specified 
-        cluster at each time step, relative to the total number of cells that have 
-        ever belonged to that cluster. The "persistence fraction" represents how 
-        many cells are part of the cluster at each moment, based on cells that 
-        have been in the cluster at any point in time.
-
-        Parameters:
-        ----------
-        var : str
-            Name of the variable representing the cluster data. This variable will 
-            be used to access the corresponding cluster field (e.g., "thk_cluster").
-            
-        cluster_id : int
-            The identifier for the cluster of interest. If `cluster_id == -1`, the function 
-            computes the fraction for unclustered cells using the 'always_in_cluster' mask. 
-            Otherwise, it uses the 'spatial' mask to compute for the selected cluster.
+        For each timestep, calculates what fraction of cells are currently in the cluster,
+        compared to all cells that were ever part of that cluster. A value of 1.0 means
+        all cells that were ever in the cluster are currently in it, while 0.0 means
+        none of those cells are currently in the cluster.
         
+        Args:
+            var (str): Name of the variable representing the cluster data. This variable will
+                be used to access the corresponding cluster field (e.g., "thk_cluster").
+            cluster_id (int): The identifier for the cluster of interest. If `cluster_id == -1`, the function
+                computes the fraction for unclustered cells using the 'always_in_cluster' mask.
+                Otherwise, it uses the 'spatial' mask to compute for the selected cluster.
+
         Returns:
-        -------
-        np.ndarray
-            A 1D array of length equal to the number of time steps, where each element 
-            represents the fraction of cells that are part of the cluster at that specific 
-            time step. If there are no cells in the cluster, an array of zeros is returned.
+            np.ndarray: A 1D array of length equal to the number of time steps, where each element
+                represents the fraction of cells that are part of the cluster at that specific
+                time step. If there are no cells in the cluster, an array of zeros is returned.
         """
         from toad.core import Clustering
 

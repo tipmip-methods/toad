@@ -1,63 +1,63 @@
+import warnings
+import functools
+from typing import Union, Optional, Tuple
 import xarray as xr
 
 
-def infer_dims(xr_da: xr.DataArray, tdim=None):
+def infer_dims(
+    xr_da: Union[xr.DataArray, xr.Dataset], 
+    tdim: Optional[str] = None
+) -> Tuple[str, list[str]]:
     """
-    Infers the temporal and spatial dimensions from an xarray DataArray.
+    Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
 
-    Parameters:
-    -----------
-    xr_da : xarray.DataArray
-        The input DataArray from which to infer dimensions.
-    tdim : str, optional
-        The name of the temporal dimension. If provided, it will be used to 
-        distinguish between temporal and spatial dimensions. If not provided, 
-        the function will attempt to auto-detect the temporal dimension based 
-        on standard spatial dimension names.
+    Args:
+        xr_da: The input DataArray or Dataset from which to infer dimensions.
+        tdim: (Optional) The name of the temporal dimension. If provided, it will be used to 
+            distinguish between temporal and spatial dimensions. If not provided, 
+            the function will attempt to auto-detect the temporal dimension based 
+            on standard spatial dimension names.
 
     Returns:
-    --------
-    tuple
-        A tuple containing the temporal dimension (str) and a list of spatial 
-        dimensions (list of str).
+        - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
 
     Raises:
-    -------
-    AssertionError
-        If the provided temporal dimension is not in the dimensions of the dataset.
+        ValueError: If the provided temporal dimension is not in the dimensions of the dataset.
+        ValueError: If unable to infer temporal and spatial dimensions.
 
     Notes:
-    ------
-    - If `tdim` is provided, the function will use it to identify the temporal 
-      dimension and consider all other dimensions as spatial.
-    - If `tdim` is not provided, the function will attempt to auto-detect the 
-      temporal dimension by looking for standard spatial dimension pairs such as 
-      ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
+        - If `tdim` is provided, the function will use it to identify the temporal 
+          dimension and consider all other dimensions as spatial.
+        - If `tdim` is not provided, the function will attempt to auto-detect the 
+          temporal dimension by looking for standard spatial dimension pairs such as 
+          ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
+        
+    Examples:
+        >>> infer_dims(dataset)
+        ('time', ['x', 'y'])
     """
 
-    # spatial dims are all non-temporal dims
+    # Spatial dims are all non-temporal dims
     if tdim:
         sdims = list(xr_da.dims)
-        assert tdim in xr_da.dims, f"provided temporal dim '{tdim}' is not in the dimensions of the dataset!"
+        if tdim not in xr_da.dims:
+            raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions of the dataset!")
         sdims.remove(tdim)
+        sdims = [str(dim) for dim in sdims]
         sdims = sorted(sdims)
-        # print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
-        return (tdim, sdims)
-    # check if one of the standard combinations in present and auto-infer
+        return tdim, sdims
     else:
-        for pair in [('x','y'),('lat','lon'),('latitude','longitude')]:
-            if all(i in list(xr_da.dims) for i in pair):
-                sdims = pair
-                tdim = list(xr_da.dims)
-                for sd in sdims:
-                    tdim.remove(sd)
+        # Auto-detect standard spatial dimension combinations
+        for pair in [('x', 'y'), ('lat', 'lon'), ('latitude', 'longitude')]:
+            if all(dim in xr_da.dims for dim in pair):
+                sdims = list(pair)
+                remaining_dims = [dim for dim in xr_da.dims if dim not in sdims]
+                if len(remaining_dims) == 1:  # Ensure a single temporal dimension is left
+                    tdim = str(remaining_dims[0])  # Explicitly convert to str
+                    return tdim, sdims
 
-                # print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
-                return (tdim[0], sdims)
-            
+        raise ValueError("Unable to infer temporal and spatial dimensions. Please provide `tdim` explicitly.")
 
-import warnings
-import functools
 
 def deprecated(message=None):
     """ Mark functions as deprecated with @deprecated decorator"""

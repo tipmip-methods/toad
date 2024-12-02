@@ -8,10 +8,11 @@ class ShiftsMethod(ABC):
         """Apply the shifts detection method.
         
         Args:
-            dataarray (xr.DataArray): Input data array to detect shifts in
-            time_dim (str): Name of the temporal dimension
+            dataarray (xr.DataArray): Input data array to detect shifts in.
+            time_dim (str): Name of the temporal dimension.
             
         Returns:
-            - xr.DataArray: The detection time series
+            xr.DataArray: A detection time series with the same shape as the input, 
+            where each value indicates the presence or magnitude of a detected shift.
         """
         pass

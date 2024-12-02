@@ -16,11 +16,17 @@ class TOAD:
     Main object for interacting with TOAD.
     TOAD (Tippping and Other Abrupt events Detector) is a framework for detecting and clustering spatio-temporal patterns in spatio-temporal data.
 
+<<<<<<< HEAD
     >> Args:
         data : (xr.Dataset or str)
             The input data. If a string, it is interpreted as a path to a netCDF file.
         log_level : (str)
             The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'WARNING'.
+=======
+    Args:
+        data (xr.Dataset or str): The input data. If a string, it is interpreted as a path to a netCDF file.
+        log_level (str): The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'WARNING'.
+>>>>>>> c6fc662 (Docstring and type fixes)
     """
     
     data: xr.Dataset
@@ -55,6 +61,7 @@ class TOAD:
         """ Access preprocessing methods. """
         return preprocessing.Preprocess(self)
     
+<<<<<<< HEAD
 
     def cluster_stats(self, var):
         """ Access cluster statistical methods. 
@@ -68,6 +75,11 @@ class TOAD:
         """
         return postprocessing.ClusterStats(self, var)
 
+=======
+    def stats(self):
+        """ Access statistical methods. """
+        return postprocessing.Stats(self)
+>>>>>>> c6fc662 (Docstring and type fixes)
     
     def aggregation(self):
         """ Access aggregation methods. """
@@ -86,11 +98,18 @@ class TOAD:
     def set_log_level(self, level):
         """Sets the logging level for the TOAD logger.
 
+<<<<<<< HEAD
         >> Args:
             level:
                 The logging level to set. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
         
         >> Examples: 
+=======
+        Args:
+            level: The logging level to set. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
+        
+        Examples: 
+>>>>>>> c6fc662 (Docstring and type fixes)
             Used like this:         
                 logger.debug("This is a debug message.")
                 logger.info("This is an info message.")
@@ -132,6 +151,7 @@ class TOAD:
     ) -> Union[xr.DataArray, None]:
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
+<<<<<<< HEAD
         >> Args:
             var:
                 Name of the variable in the dataset to analyze for abrupt shifts.
@@ -153,6 +173,22 @@ class TOAD:
         >> Raises:
             ValueError:
                 If data is invalid or required parameters are missing
+=======
+        Args:
+            var: Name of the variable in the dataset to analyze for abrupt shifts.
+            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+            time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
+            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
+
+        Returns:
+            - If `return_results_directly` is `True`, returns an `xarray.DataArray` containing the detected shifts. 
+            - If `return_results_directly` is `False`, the detected shifts are merged into the original dataset, and the function returns `None`.
+
+        Raises:
+            ValueError: If data is invalid or required parameters are missing
+>>>>>>> c6fc662 (Docstring and type fixes)
         """
         results = shifts_detection.compute_shifts(
             data=self.data, 
@@ -181,6 +217,7 @@ class TOAD:
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
+<<<<<<< HEAD
         sort_by_size: bool = True,
     ) -> Union[xr.DataArray, None]:
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
@@ -212,6 +249,27 @@ class TOAD:
             points. Otherwise, the clustering results are merged into the original dataset, and the function returns `None`.
 
         >> Raises:
+=======
+    ) -> Union[xr.DataArray, None]:
+        """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
+
+        Args:
+            var: Name of the variable in the dataset to cluster.
+            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
+            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
+            shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            return_results_directly: Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
+
+        Returns:
+            If `return_results_directly` is `True`, returns an `xarray.DataArray` containing cluster labels for the data 
+            points. Otherwise, the clustering results are merged into the original dataset, and the function returns `None`.
+
+        Raises:
+>>>>>>> c6fc662 (Docstring and type fixes)
             ValueError: If data is invalid or required parameters are missing
 
         """
@@ -226,7 +284,10 @@ class TOAD:
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
             merge_input=not return_results_directly,
+<<<<<<< HEAD
             sort_by_size=sort_by_size,
+=======
+>>>>>>> c6fc662 (Docstring and type fixes)
         )
 
         if return_results_directly and isinstance(results, xr.DataArray):
@@ -239,6 +300,7 @@ class TOAD:
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
+<<<<<<< HEAD
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
         Get shifts xr.DataArray for the specified variable.
@@ -257,6 +319,74 @@ class TOAD:
             ValueError:
                 Failed to find valid shifts xr.DataArray for the given var. Note: An xr.DataArray is only considered a shifts label if it contains _dts in its name.
         """
+=======
+    def get_shifts(self, var) -> xr.DataArray:
+        """
+        Return the shifts dataset for further analysis.
+
+        Args:
+            var: Name of the variable in the dataset to get shifts for.
+
+        Returns:
+            xarray.DataArray: The shifts dataset for the specified variable.
+
+        Raises:
+            ValueError: If no shifts have been computed for the specified variable.
+        """
+        if self.data.get(f"{var}_dts") is None:
+            raise ValueError(f"No shifts computed for {var} yet.")
+        return self.data[f"{var}_dts"]
+
+
+    def get_clusters(self, var) -> xr.DataArray:
+        """
+        Return the clusters dataset for further analysis.
+
+        Args:
+            var: Name of the variable in the dataset to get clusters for.
+
+        Returns:
+            xarray.DataArray: The clusters dataset for the specified variable.
+
+        Raises:
+            ValueError: If no clusters have been computed for the specified variable.
+        """
+        if self.data.get(f"{var}_cluster") is None:
+            raise ValueError(f"No clusters computed for {var} yet.")
+        return self.data[f"{var}_cluster"]
+
+
+    def get_cluster_counts(self, var, sort=False):
+        """Calculate the number of cells (in space and time) in each cluster for a specified variable.
+
+        Each cell may belong to multiple clusters over time. This function computes the number
+        of unique cells in each cluster and allows optional sorting of the results.
+
+        Args:
+            var: The name of the variable for which cluster counts are computed.
+                Requires the dataset to have a corresponding "{var}_cluster" key.
+            sort: If True, the resulting dictionary is sorted in descending order
+                by the number of cells in each cluster. Defaults to False.
+
+        Returns:
+            dict: A dictionary where keys are cluster IDs (as integers) and values are the
+                number of unique cells in each cluster.
+
+        Raises:
+            ValueError: If cluster information for the specified variable is not found in the dataset.
+
+        Notes:
+            - The function counts the number of unique spatial cells that are part of each cluster,
+              regardless of the number of time steps they appear in the cluster. i: verify this.
+        """
+
+        # TODO: I think this actually returns the number of cells that are part of the cluster in 
+        # both space and time, so if the same cell is part of the cluster for several time
+        # steps, it adds up. Verify this. 
+
+        if self.data.get(f"{var}_cluster") is None:
+            raise ValueError(f"No clusters computed for {var} yet.")
+>>>>>>> c6fc662 (Docstring and type fixes)
         
         # Check if the variable is a shifts variable
         v = f'{var}{label_suffix}'
@@ -330,6 +460,7 @@ class TOAD:
 
     def get_cluster_ids(self, var):
         """
+<<<<<<< HEAD
         Return list of cluster ids sorted by total number of cells in each cluster.
 
         >> Args:
@@ -337,22 +468,47 @@ class TOAD:
                 Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
         >> Returns:
+=======
+        Return list of cluster ids, optionally sorted by the number of cells in each cluster.
+
+        Args:
+            var: Name of the variable in the dataset to get cluster ids for.
+            sort: If True, the cluster ids are sorted by the number of cells in each cluster. Defaults to False.
+
+        Returns:
+>>>>>>> c6fc662 (Docstring and type fixes)
             list: A list of cluster ids.
         """
         return np.array(list(self.get_cluster_counts(var).keys()))
     
 
+<<<<<<< HEAD
     def get_active_clusters_count_per_timestep(self, var):
         """Get number of active clusters for each timestep.
         
         >> Args:
             var : (str)
                 Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+=======
+    def get_cluster_cell_data(self, var, cluster_id):
+        """ Returns a list of xr.datasets for each cell that at one point in time is 
+        in the speicified cluster. Except if cluster_id=-1, the method will return 
+        cells that are always in -1, i.e. cells that remain unclustered throughout time.
+        
+        Args:
+            var: Name of the variable in the dataset to get cluster cell data for.
+            cluster_id: The cluster id to get cell data for.
+
+        Returns:
+            list: A list of xr.datasets for each cell that at one point in time is in the specified cluster.
+        """
+>>>>>>> c6fc662 (Docstring and type fixes)
 
         >> Returns:
             xr.DataArray: Number of active clusters for each timestep.
         """
         clusters = self.get_clusters(var)
+<<<<<<< HEAD
         return xr.DataArray(
             [len(np.unique(clusters.sel(**{self.time_dim: t}))) for t in self.data[self.time_dim]],
             coords={self.time_dim: self.data[self.time_dim]},
@@ -373,6 +529,50 @@ class TOAD:
         """
         clusters = self.get_clusters(var)
         return clusters.isin(cluster_id)
+=======
+        timeseries_data = self.timeseries(
+            self.data,
+            clustering=Clustering(clusters),
+            cluster_lbl=[cluster_id],
+            masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
+            how="per_gridcell" # get time series for each grid cell
+        )
+        return [timeseries_data.isel(cell_xy=j) for j in range(len(timeseries_data.cell_xy))]
+    
+    def timeseries(
+            self,
+            dataframe, 
+            clustering,
+            cluster_lbl,
+            masking = 'simple',
+            how=('aggr',)  # mean, median, std, perc, per_gridcell
+        ):
+        """Extracts the time series of a cluster label.
+        
+        Args:
+            clustering (toad.core.Clustering): Clustering object of type toad.core.Clustering
+            cluster_lbl (int or list): Cluster label to extract the time series from. Can be int or list.
+            masking (str): Type of masking to apply. Options:
+                * simple: apply the 3D mask to a 3D dataarray 
+                * spatial: reduce in the temporal dimension
+                * strict: same as spatial, but create new cluster labels for regions 
+                  that lie in the spatial overlap of multiple clusters
+            how (str or tuple): How to aggregate the time series. Options:
+                * mean: mean value
+                * median: median value
+                * aggr: sum of values
+                * std: standard deviation
+                * perc: percentile value, eg. how=('perc',0.9)
+                * per_gridcell: time series for each grid cell
+
+        Returns:
+            xr.DataArray: Time series of the cluster label.
+        """
+        # TODO: Decide whether to merge this with the TOAD object
+
+        da = clustering._apply_mask_to(dataframe, cluster_lbl, masking=masking)
+        tdim, sdims = infer_dims(dataframe) # TODO: this will only work if space dims are (x, y), or (lat, lon), otherwise it crashes and tells you to pass in time dim
+>>>>>>> c6fc662 (Docstring and type fixes)
 
     def apply_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
         """Apply the cluster mask to a variable
@@ -588,6 +788,7 @@ class TOAD:
         return self.data.where(mask)
 
 
+<<<<<<< HEAD
     def _aggregate_spatial(
         self, 
         data: xr.DataArray,
@@ -609,6 +810,62 @@ class TOAD:
                 - "raw": Return data for each grid cell separately (default).
             percentile:
                 Percentile value between 0-1 when using percentile aggregation
+=======
+class Clustering():
+    """ Handle clusterings to allow simplified operation.
+    
+    Args:
+        cluster_label_ds (xr.DataArray): Dataarray with cluster label variable. 
+            Cluster labels should be processed:
+            * simple: apply the 3D mask to a 3D dataarray
+            * spatial: reduce in the temporal dimension
+            * strict: same as spatial, but create new cluster labels for regions 
+              that lie in the spatial overlap of multiple clusters
+        time_dim (str): Dimension in which the abrupt shifts have been detected. 
+            Automatically inferred if not provided.
+
+    """
+    # TODO: Decide whether to merge this with the TOAD object
+
+    def __init__(
+            self,
+            cluster_label_da,
+            time_dim=None,
+            ):
+        self.tdim, self.sdims = infer_dims(cluster_label_da, tdim=time_dim)
+        self._cluster_labels = cluster_label_da
+
+    def _apply_mask_to(
+            self,
+            xarr_obj,
+            cluster_lbl,
+            masking='simple' # spatial, strict
+            ):
+        """ Apply mask to an xr.DataArray.
+
+        Args:
+            xarr_obj (xr.DataArray): xarray object to apply the mask to
+            cluster_lbl (int or list): cluster label to apply the mask for
+            masking (str, optional): type of masking to apply. Options:
+                * simple: apply the 3D mask to a 3D dataarray
+                * spatial: reduce in the temporal dimension 
+                * strict: same as spatial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+
+        **Examples**
+
+        Could directly be used as
+            >>> clustering = Clustering(clustered_ds, masking='spatial)
+            >>> other_ds_clustered = clustering._apply_mask_to(other_ds, [0,2,3])
+            >>> other_ds_clustered.mean()
+
+        But usually will be wrapped in toad accessor, allowing
+            >>> other_ds.toad.timeseries(
+            >>>     clustering = Clustering(clustered_ds),
+            >>>     cluster_lbl = [0,2,3]
+            >>>     masking='spatial',
+            >>>     how=('mean')
+            >>>     )
+>>>>>>> c6fc662 (Docstring and type fixes)
         
         >> Returns:
             xr.DataArray: Aggregated data. If method="raw", includes cell_xy dimension.
@@ -632,6 +889,7 @@ class TOAD:
             raise ValueError(f"Unknown aggregation method: {method}")
 
 
+<<<<<<< HEAD
     def get_cluster_timeseries(
         self, 
         var: str, 
@@ -666,6 +924,15 @@ class TOAD:
                 - "max": Normalize by the maximum value
                 - "last": Normalize by the last non-zero, non-nan timestep
                 - "none": Do not normalize
+=======
+        Args:
+            cluster_lbl (int or list): cluster label to apply the mask for
+
+        Returns:
+            xr.DataArray: Mask for the cluster label
+        """
+        return self._cluster_labels.isin(cluster_lbl)
+>>>>>>> c6fc662 (Docstring and type fixes)
 
             keep_full_timeseries: 
                 If True, returns full time series of cluster cells. If False, only returns time series of cells when they were in the cluster. Defaults to True.
@@ -675,6 +942,7 @@ class TOAD:
         """
         cluster_var = cluster_var if cluster_var else var
         
+<<<<<<< HEAD
         if keep_full_timeseries:
             # Handle unclustered case (-1)
             if is_equal_to(cluster_id, -1):
@@ -684,6 +952,13 @@ class TOAD:
         else:
             # Original behavior - only keep timesteps where cells are in cluster
             mask = self.get_cluster_mask(cluster_var, cluster_id)
+=======
+        Args:
+            cluster_lbl (int or list): cluster label to apply the mask for
+
+        Returns:
+            xr.DataArray: Mask for the cluster label
+>>>>>>> c6fc662 (Docstring and type fixes)
 
         # Apply mask
         data = self.data[var].where(mask)
@@ -691,6 +966,7 @@ class TOAD:
         # First aggregate spatially
         data = self._aggregate_spatial(data, aggregation, percentile)
         
+<<<<<<< HEAD
         # Normalise
         if normalize:
             if normalize == "first":
@@ -711,3 +987,101 @@ class TOAD:
                 data = normalized.where(np.isfinite(normalized))
 
         return data
+=======
+        Args:
+            cluster_lbl (int or list): cluster label to apply the mask for
+            how (str or tuple): how to calculate the temporal properties
+
+        Returns:
+            Temporal properties of the cluster label
+        """
+        # TODO: verify this works and move to postprocessing/stats.py
+        if type(how)== str:
+            how = (how,)
+
+        # spatial mask does not make sense for t-properties (would always be the
+        # same)
+        mask = self.simple_mask(cluster_lbl)
+        dimT = xr.where( mask, mask.__getattr__(self.tdim), np.nan)
+
+        if 'mean' in how:
+            return dimT.mean().values
+        elif 'median' in how:
+            return dimT.median().values
+        elif 'std' in how:
+            return dimT.std().values
+        elif 'perc' in how:
+            try:
+                # takes the (first) numeric value to be found in how 
+                pval = [arg for arg in how if type(arg)==float][0]
+                return dimT.quantile(pval, skipna=True)
+            except IndexError:
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
+        elif 'dist' in how:
+            return dimT
+
+    def sprops(
+            self, 
+            cluster_lbl,
+            masking = 'spatial',
+            how=('mean',) # median, std, perc, dist
+            ):
+        """ Calculate spatial properties of a cluster label.
+
+        Args:
+            cluster_lbl (int or list): Cluster label to apply the mask for.
+            masking (str, optional): Type of masking to apply:
+                * simple: apply the 3D mask to a 3D dataarray
+                * spatial: reduce in the temporal dimension  
+                * strict: same as spatial, but create new cluster labels for regions that lie in the spatial overlap of multiple clusters
+            how (tuple): How to calculate the spatial properties.
+
+        Returns:
+            Spatial properties of the cluster label.
+
+        """
+        # TODO: verify this works and move to postprocessing/stats.py
+        if type(how)== str:
+            how = (how,)
+
+        if masking=='spatial':
+            mask = self.spatial_mask(cluster_lbl)
+        elif masking=='simple': 
+            mask = self.simple_mask(cluster_lbl)
+        dimA = xr.where( mask, mask.__getattr__(self.sdims[0]), np.nan)
+        dimB = xr.where( mask, mask.__getattr__(self.sdims[1]), np.nan)
+
+        if 'mean' in how:
+            return dimA.mean().values, dimB.mean().values
+        elif 'median' in how:
+            return dimA.median().values, dimB.median().values
+        elif 'std' in how:
+            return dimA.std().values, dimB.std().values
+        elif 'perc' in how:
+            try:
+                # takes the (first) numeric value to be found in how 
+                pval = [arg for arg in how if type(arg)==float][0]
+                return dimA.quantile(pval, skipna=True).values, dimB.quantile(pval, skipna=True).values
+            except IndexError:
+                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
+        elif 'dist' in how:
+            return dimA, dimB
+
+    def __call__(
+            self,
+            xarr_obj,
+            cluster_lbl = None,
+            ):
+        """ Apply mask to an xarray object.
+
+        Args:
+            xarr_obj (xarray.DataArray): xarray object to apply the mask to.
+            cluster_lbl (int, list): cluster label to apply the mask for.
+
+        Returns:
+            xarray.DataArray: Masked xarray object.
+        """
+        return self._apply_mask_to(xarr_obj,cluster_lbl)
+
+    # End of Clustering object
+>>>>>>> c6fc662 (Docstring and type fixes)

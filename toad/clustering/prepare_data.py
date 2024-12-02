@@ -4,7 +4,10 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from typing import Optional
 import pandas as pd
+<<<<<<< HEAD
 from typing import Union
+=======
+>>>>>>> c6fc662 (Docstring and type fixes)
 
 
 def prepare_dataframe(
@@ -13,7 +16,11 @@ def prepare_dataframe(
         var_dts: str,
         var_func: Optional[Callable[[float], bool]] = None,
         dts_func: Optional[Callable[[float], bool]] = None,
+<<<<<<< HEAD
         scaler: Union[str, None] = 'StandardScaler'
+=======
+        scaler: str = 'StandardScaler'
+>>>>>>> c6fc662 (Docstring and type fixes)
     ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 
@@ -22,6 +29,7 @@ def prepare_dataframe(
     for clustering. It also calculates importance weights based on the detection
     time series (dts) variable.
 
+<<<<<<< HEAD
     >> Args:
         data:
             The input xarray Dataset containing the variable to be clustered and its detection time series.
@@ -39,6 +47,18 @@ def prepare_dataframe(
     >> Returns:
         tuple:
             A tuple containing:
+=======
+    Args:
+        data: The input xarray Dataset containing the variable to be clustered and its detection time series.
+        var: The name of the variable in the Dataset to be clustered.
+        var_dts: The name of the detection time series variable in the Dataset.
+        var_func: A function to filter the `var` values. Defaults to keeping all values.
+        dts_func: A function to filter the `dts` values. Defaults to keeping all values.
+        scaler: The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
+
+    Returns:
+        tuple: A tuple containing:
+>>>>>>> c6fc662 (Docstring and type fixes)
             - A Pandas DataFrame of the filtered data, including the original coordinates and the `dts` variable
             - A list of dimension names from the original xarray Dataset
             - A 1D NumPy array of the absolute values of the `dts` variable, used as sample weights

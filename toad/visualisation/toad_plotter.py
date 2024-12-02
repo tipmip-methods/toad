@@ -18,6 +18,7 @@ class TOADPlotter:
         self.td = td
 
 
+<<<<<<< HEAD
     # TODO make function for contour plot: td.get_spatial_cluster_mask("thk", id).plot.contour(levels=1)
     # TODO make function for plotting snap shots of cluster
         # start, end = td.cluster_stats("thk").time.start(id), td.cluster_stats("thk").time.end(id)
@@ -25,6 +26,9 @@ class TOADPlotter:
 
 
     def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs) -> tuple[matplotlib.figure.Figure, np.ndarray]:
+=======
+    def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+>>>>>>> c6fc662 (Docstring and type fixes)
         """
         Plot maps with coastlines, gridlines, and optional borders.
         """
@@ -70,7 +74,11 @@ class TOADPlotter:
             axs_flat = [axs]
 
         for ax in axs_flat:
+<<<<<<< HEAD
             ax.coastlines(resolution="110m", linewidth=linewidth[0]) # type: ignore
+=======
+            ax.coastlines(resolution="110m") # type: ignore
+>>>>>>> c6fc662 (Docstring and type fixes)
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
@@ -78,11 +86,17 @@ class TOADPlotter:
         """
         Plot the clusters on a map.
         
+<<<<<<< HEAD
         >> Args: 
             var:
                 name of the variable for which clusters have been computed or the name of the custom cluster variable.
             cluster_ids:
                 which clusters to plot, defaults to all clusters
+=======
+        Args: 
+            - cluster_label: custom cluster labels to plot, defaults to the {var}_cluster. 
+            - cluster_ids: which clusters to plot, defaults to all clusters
+>>>>>>> c6fc662 (Docstring and type fixes)
         """
         clusters = self.td.get_clusters(var)
 
@@ -140,31 +154,59 @@ class TOADPlotter:
             ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)
 
 
+<<<<<<< HEAD
     def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, **plot_kwargs):
         """
         Plot the time series of a cluster.
         """
         cells = self.td.get_cluster_timeseries(var, cluster_id)
+=======
+    def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, plot_shifts=False, **plot_kwargs):
+        """
+        Plot the time series of a cluster.
+        """
+        cell = self.td.get_cluster_cell_data(var, cluster_id)
+        if(plot_shifts):
+            cell = [ts.get_shifts() for ts in cell]
+        else:
+            cell = [ts[var] for ts in cell]
+>>>>>>> c6fc662 (Docstring and type fixes)
         
         if ax is None:
             fig, ax = plt.subplots()
 
 
         # Limit the number of trajectories to plot
+<<<<<<< HEAD
         max_trajectories = np.min([max_trajectories, len(cells)])
 
         # Shuffle the cell to get a random sample
         order = np.arange(len(cells))
+=======
+        max_trajectories = np.min([max_trajectories, len(cell)])
+
+        # Shuffle the cell to get a random sample
+        order = np.arange(len(cell))
+>>>>>>> c6fc662 (Docstring and type fixes)
         np.random.shuffle(order) 
         order = order[:max_trajectories]
 
         for i in order:
+<<<<<<< HEAD
             cells[i].plot(ax=ax, **plot_kwargs)
         
         if max_trajectories < len(cells):
             ax.set_title(f'Random sample of {max_trajectories} from total {len(cells)} cell for {var} in cluster {cluster_id}')
         else:                                                                              
             ax.set_title(f'{len(cells)} timeseries for {var} in cluster {cluster_id}')
+=======
+            cell[i].plot(ax=ax, **plot_kwargs)
+        
+        if max_trajectories < len(cell):
+            ax.set_title(f'Random sample of {max_trajectories} from total {len(cell)} cell for {var} in cluster {cluster_id}')
+        else:                                                                              
+            ax.set_title(f'{len(cell)} timeseries for {var} in cluster {cluster_id}')
+>>>>>>> c6fc662 (Docstring and type fixes)
         return self
 
 

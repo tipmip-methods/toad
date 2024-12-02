@@ -2,6 +2,7 @@ import warnings
 import functools
 from typing import Union, Optional, Tuple
 import xarray as xr
+<<<<<<< HEAD
 import numpy as np
 import os
 import requests
@@ -28,6 +29,10 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] =
     return infer_dims(xr_da, tdim)[1]
         
         
+=======
+
+
+>>>>>>> c6fc662 (Docstring and type fixes)
 def infer_dims(
     xr_da: Union[xr.DataArray, xr.Dataset], 
     tdim: Optional[str] = None
@@ -35,15 +40,22 @@ def infer_dims(
     """
     Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
 
+<<<<<<< HEAD
     >> Args:
         xr_da:
             The input DataArray or Dataset from which to infer dimensions.
         >> tdim: (Optional)
             The name of the temporal dimension. If provided, it will be used to 
+=======
+    Args:
+        xr_da: The input DataArray or Dataset from which to infer dimensions.
+        tdim: (Optional) The name of the temporal dimension. If provided, it will be used to 
+>>>>>>> c6fc662 (Docstring and type fixes)
             distinguish between temporal and spatial dimensions. If not provided, 
             the function will attempt to auto-detect the temporal dimension based 
             on standard spatial dimension names.
 
+<<<<<<< HEAD
     >> Returns:
         - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
 
@@ -55,13 +67,27 @@ def infer_dims(
 
     >> Notes:
 
+=======
+    Returns:
+        - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
+
+    Raises:
+        ValueError: If the provided temporal dimension is not in the dimensions of the dataset.
+        ValueError: If unable to infer temporal and spatial dimensions.
+
+    Notes:
+>>>>>>> c6fc662 (Docstring and type fixes)
         - If `tdim` is provided, the function will use it to identify the temporal 
           dimension and consider all other dimensions as spatial.
         - If `tdim` is not provided, the function will attempt to auto-detect the 
           temporal dimension by looking for standard spatial dimension pairs such as 
           ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
         
+<<<<<<< HEAD
     >> Examples:
+=======
+    Examples:
+>>>>>>> c6fc662 (Docstring and type fixes)
         >>> infer_dims(dataset)
         ('time', ['x', 'y'])
     """

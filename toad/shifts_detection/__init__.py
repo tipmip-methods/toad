@@ -19,6 +19,7 @@ def compute_shifts(
     ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
+<<<<<<< HEAD
         >> Args:
             var:
                 Name of the variable in the dataset to analyze for abrupt shifts.
@@ -40,8 +41,23 @@ def compute_shifts(
         >> Raises:
             ValueError:
                 If data is invalid or required parameters are missing
+=======
+        Args:
+            var: Name of the variable in the dataset to analyze for abrupt shifts.
+            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+            time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
+            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            overwrite: Whether to overwrite existing variable. Defaults to False.
+            merge_input: Whether to merge results into input dataset (True) or return separately (False)
+            
+        Returns:
+            - xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the detected shifts.
+            - xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the detected shifts.
+
+        Raises:
+            ValueError: If data is invalid or required parameters are missing
+>>>>>>> c6fc662 (Docstring and type fixes)
     """
-    
     # 1. Set output label
     output_label = f'{var}_dts{output_label_suffix}'
 
@@ -68,7 +84,11 @@ def compute_shifts(
 
     # check that data_array is 3-dimensional
     if data_array.ndim != 3:
+<<<<<<< HEAD
         raise ValueError('data must be 3-dimensional')
+=======
+        raise ValueError('data must be 3-dimensional!')
+>>>>>>> c6fc662 (Docstring and type fixes)
     
     # check that time dim consists of ints or floats
     if not (np.issubdtype(data_array[time_dim].dtype, np.integer) or np.issubdtype(data_array[time_dim].dtype, np.floating)):

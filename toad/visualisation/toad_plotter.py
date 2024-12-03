@@ -75,10 +75,14 @@ class TOADPlotter:
 
         for ax in axs_flat:
 <<<<<<< HEAD
+<<<<<<< HEAD
             ax.coastlines(resolution="110m", linewidth=linewidth[0]) # type: ignore
 =======
             ax.coastlines(resolution="110m") # type: ignore
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+            ax.coastlines(resolution="110m", linewidth=linewidth[0]) # type: ignore
+>>>>>>> efd56b8 (Fix plotting clusters)
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
@@ -121,12 +125,21 @@ class TOADPlotter:
             fig, ax = plt.subplots()
 
         clusters = self.td.get_clusters(var)
+<<<<<<< HEAD
         data_mask = self.td.data[var].max(dim=self.td.time_dim) > 0
         if cluster_id == -1:
             # Completely un-clustered cells are those that never have a cluster_id higher than -1
             clusters.where(data_mask).where(clusters.max(dim=self.td.time_dim) == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         else:
             clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+=======
+        data_mask = self.td.data[var].max(dim=time_dim) > 0
+        if cluster_id == -1:
+            # Completely un-clustered cells are those that never have a cluster_id higher than -1
+            clusters.where(data_mask).where(clusters.max(dim=time_dim) == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+        else:
+            clusters.where(data_mask).where(clusters == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+>>>>>>> efd56b8 (Fix plotting clusters)
         ax.set_title(f'{var}_cluster {cluster_id}')
         return self
 

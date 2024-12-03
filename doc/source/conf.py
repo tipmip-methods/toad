@@ -47,6 +47,11 @@ html_sidebars = {
 }
 html_logo = 'resources/toad.png'
 html_permalinks_icon = "<span>¶</span>"                     # change the default anchor icon, paragraph mark only appears when hovering over the heading
+html_context = {
+    "url_mapping": {
+        "sidebar_main_nav_links.html'": "index.html",
+    }
+}
 
 # -- Function for sphinx extention linkcode -------------------------------
 

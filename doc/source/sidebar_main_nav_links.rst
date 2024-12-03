@@ -1,3 +1,8 @@
+.. toad documentation master file, created by
+   sphinx-quickstart on Tue Dec  3 12:45:08 2024.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
 .. TOAD documentation master file, created by
    Lukas Röhrich, November 2023
 
@@ -32,3 +37,14 @@ can be found `here <https://tipmip.pik-potsdam.de>`_.
 * Jonathan Donges: Conceptualisation
 * Ann Kristin Klose: Ice Sheets, conceptualisation
 * Ricarda Winkelmann: Ice Sheets, conceptualisation
+
+
+.. toctree::
+	:maxdepth: 1
+	:includehidden:
+
+	index
+	TOADtorial <https://www.pik-potsdam.de/~lukasro/toadtorial/sidebar_main_nav_links.html>
+	api_doc
+	references
+

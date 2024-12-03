@@ -2,7 +2,7 @@ import logging
 import xarray as xr
 import numpy as np
 from typing import Callable
-from _version import __version__
+from toad._version import __version__
 import inspect
 from typing import Optional, Union
 

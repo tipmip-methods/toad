@@ -1,7 +1,7 @@
 import logging
 from typing import Union, Optional
 import xarray as xr
-from _version import __version__
+from toad._version import __version__
 import numpy as np
 
 from toad.shifts_detection.methods.base import ShiftsMethod

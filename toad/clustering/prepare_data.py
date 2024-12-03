@@ -5,9 +5,13 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from typing import Optional
 import pandas as pd
 <<<<<<< HEAD
+<<<<<<< HEAD
 from typing import Union
 =======
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+from typing import Union
+>>>>>>> 404d1af (Type fix)
 
 
 def prepare_dataframe(
@@ -17,10 +21,14 @@ def prepare_dataframe(
         var_func: Optional[Callable[[float], bool]] = None,
         dts_func: Optional[Callable[[float], bool]] = None,
 <<<<<<< HEAD
+<<<<<<< HEAD
         scaler: Union[str, None] = 'StandardScaler'
 =======
         scaler: str = 'StandardScaler'
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+        scaler: Union[str, None] = 'StandardScaler'
+>>>>>>> 404d1af (Type fix)
     ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 

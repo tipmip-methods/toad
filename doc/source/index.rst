@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 .. toad documentation master file, created by
    sphinx-quickstart on Tue Dec  3 12:45:08 2024.
    You can adapt this file completely to your liking, but it should at least
@@ -16,8 +15,8 @@ Introduction
 
 
 ``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python module within the *TIPMIP* research
-project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). See also the `TIPMIP project page <https://tipmip.pik-potsdam.de>`_
-and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
+project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). The TIPMIP project page
+can be found `here <https://tipmip.pik-potsdam.de>`_.
 
 **Contributors:**
 
@@ -25,6 +24,7 @@ and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 
 *Developer team and student projects* 
 
+* Jakob Harteg: PhD Student, TOAD development
 * Karoline Ramin: Student assistant for codebase support
 * Lukas Röhrich: Student assistant for codebase support
 * Vincent Overbeck: MSc 2023, scoring and optimisation loop
@@ -38,16 +38,3 @@ and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 * Jonathan Donges: Conceptualisation
 * Ann Kristin Klose: Ice Sheets, conceptualisation
 * Ricarda Winkelmann: Ice Sheets, conceptualisation
-
-
-=======
->>>>>>> b758836 (reintroduce index page)
-.. toctree::
-	:maxdepth: 1
-	:includehidden:
-	
-	index
-	TOADtorial <https://www.pik-potsdam.de/~lukasro/toadtorial/sidebar_main_nav_links.html>
-	api_doc
-	references
-

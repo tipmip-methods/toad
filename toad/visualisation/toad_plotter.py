@@ -62,7 +62,7 @@ class TOADPlotter:
             axs_flat = [axs]
 
         for ax in axs_flat:
-            ax.coastlines(resolution="110m") # type: ignore
+            ax.coastlines(resolution="110m", linewidth=linewidth[0]) # type: ignore
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
@@ -99,7 +99,11 @@ class TOADPlotter:
 
         clusters = self.td.get_clusters(var)
         data_mask = self.td.data[var].max(dim=time_dim) > 0
-        clusters.where(data_mask).where(clusters.max(dim=time_dim) == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+        if cluster_id == -1:
+            # Completely un-clustered cells are those that never have a cluster_id higher than -1
+            clusters.where(data_mask).where(clusters.max(dim=time_dim) == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+        else:
+            clusters.where(data_mask).where(clusters == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         ax.set_title(f'{var}_cluster {cluster_id}')
         return self
 
@@ -117,7 +121,7 @@ class TOADPlotter:
         projection = ccrs.SouthPolarStereo() if south_pole else ccrs.PlateCarree()
         fig, axs = plt.subplots(nrows, ncols, figsize=(12, nrows*2.5), subplot_kw={'projection': projection})
         for ax in axs.flat:
-            ax.coastlines(resolution="110m")
+            ax.coastlines(resolution="110m", linewidth=0.5)
             if(south_pole):
                 ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
         

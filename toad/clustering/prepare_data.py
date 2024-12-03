@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from typing import Optional
 import pandas as pd
+from typing import Union
 
 
 def prepare_dataframe(
@@ -12,7 +13,7 @@ def prepare_dataframe(
         var_dts: str,
         var_func: Optional[Callable[[float], bool]] = None,
         dts_func: Optional[Callable[[float], bool]] = None,
-        scaler: str = 'StandardScaler'
+        scaler: Union[str, None] = 'StandardScaler'
     ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 

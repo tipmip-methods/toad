@@ -8,7 +8,10 @@ from sklearn.base import ClusterMixin
 from toad import shifts_detection, clustering, postprocessing, visualisation, preprocessing
 from toad.utils import infer_dims
 from toad._version import __version__
+<<<<<<< HEAD
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
+=======
+>>>>>>> 01b5596 (Moved _version.py inside toad package)
 
 
 class TOAD:

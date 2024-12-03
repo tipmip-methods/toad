@@ -7,7 +7,7 @@ from sklearn.base import ClusterMixin
 
 from toad import shifts_detection, clustering, postprocessing, visualisation, preprocessing
 from toad.utils import infer_dims
-from _version import __version__
+from toad._version import __version__
 
 
 class TOAD:

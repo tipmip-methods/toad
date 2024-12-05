@@ -13,7 +13,7 @@ def compute_shifts(
         var: str,
         method: ShiftsMethod,
         time_dim: str = "time",
-        output_label: Optional[str] = None,
+        output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
     ) -> Union[xr.Dataset, xr.DataArray]:
@@ -23,7 +23,7 @@ def compute_shifts(
             var: Name of the variable in the dataset to analyze for abrupt shifts.
             method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
             time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
-            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge results into input dataset (True) or return separately (False)
             
@@ -34,9 +34,11 @@ def compute_shifts(
         Raises:
             ValueError: If data is invalid or required parameters are missing
     """
+    
     # 1. Set output label
-    default_name = f'{var}_dts'
-    output_label = output_label or default_name
+    output_label = f'{var}_dts{output_label_suffix}'
+
+    # Check if the output_label is already in the data
     if output_label in data and merge_input:
         if overwrite:
             logger.warning(f'Overwriting variable {output_label}')
@@ -82,7 +84,7 @@ def compute_shifts(
     # 5. Save details as attributes
     shifts.attrs.update({
         'time_dim': time_dim,
-        'method': method.__class__.__name__,
+        'method_name': method.__class__.__name__,
     })
 
     # Add method params as separate attributes

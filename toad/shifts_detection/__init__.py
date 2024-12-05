@@ -46,7 +46,7 @@ def compute_shifts(
             var: Name of the variable in the dataset to analyze for abrupt shifts.
             method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
             time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
-            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge results into input dataset (True) or return separately (False)
             
@@ -58,6 +58,7 @@ def compute_shifts(
             ValueError: If data is invalid or required parameters are missing
 >>>>>>> c6fc662 (Docstring and type fixes)
     """
+    
     # 1. Set output label
     output_label = f'{var}_dts{output_label_suffix}'
 

@@ -86,7 +86,11 @@ class TOADPlotter:
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
+<<<<<<< HEAD
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
+=======
+    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
         """
         Plot the clusters on a map.
         
@@ -98,7 +102,7 @@ class TOADPlotter:
                 which clusters to plot, defaults to all clusters
 =======
         Args: 
-            - cluster_label: custom cluster labels to plot, defaults to the {var}_cluster. 
+            - var: name of the variable for which clusters have been computed or the name of the custom cluster variable.
             - cluster_ids: which clusters to plot, defaults to all clusters
 >>>>>>> c6fc662 (Docstring and type fixes)
         """
@@ -111,7 +115,11 @@ class TOADPlotter:
             cluster_ids = np.unique(clusters)
             cluster_ids = cluster_ids[cluster_ids != -1]
         
+<<<<<<< HEAD
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
+=======
+        im = clusters.where(clusters.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
 
         # add_colorbar(ax, im, 'Cluster IDs')
         ax.set_title(f'{clusters.name}')

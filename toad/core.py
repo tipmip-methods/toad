@@ -181,7 +181,7 @@ class TOAD:
             var: Name of the variable in the dataset to analyze for abrupt shifts.
             method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
             time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
-            output_label: Name of the variable to store results. Defaults to {var}_dts.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
 
@@ -216,7 +216,11 @@ class TOAD:
         shifts_filter_func: Callable[[float], bool],
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
+<<<<<<< HEAD
         scaler: Optional[str] = 'StandardScaler',
+=======
+        scaler: str = 'StandardScaler',
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -263,7 +267,7 @@ class TOAD:
             var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
             shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             return_results_directly: Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
 
@@ -304,6 +308,7 @@ class TOAD:
     # #               GET functions (postprocessing)
     # # ======================================================================
 <<<<<<< HEAD
+<<<<<<< HEAD
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
         Get shifts xr.DataArray for the specified variable.
@@ -324,40 +329,69 @@ class TOAD:
         """
 =======
     def get_shifts(self, var) -> xr.DataArray:
+=======
+    def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
         """
-        Return the shifts dataset for further analysis.
+        Get shifts xr.DataArray for the specified variable.
 
         Args:
-            var: Name of the variable in the dataset to get shifts for.
+            var (str): Either the name of the variable for which shifts have been computed (say temperature) or the name of the custom shifts variable.
+            label_suffix (str): If you added a suffix to the shifts variable, help the function find it. Defaults to "".
 
         Returns:
-            xarray.DataArray: The shifts dataset for the specified variable.
+            xarray.DataArray: The shifts xr.DataArray for the specified variable.
 
         Raises:
-            ValueError: If no shifts have been computed for the specified variable.
+            ValueError: Failed to find valid shifts xr.DataArray for the given var. Note: An xr.DataArray is only considered a shifts label if it contains _dts in its name.
         """
-        if self.data.get(f"{var}_dts") is None:
-            raise ValueError(f"No shifts computed for {var} yet.")
-        return self.data[f"{var}_dts"]
+        
+        # Check if the variable is a shifts variable
+        v = f'{var}{label_suffix}'
+        if v in self.data and "_dts" in v:
+            return self.data[v]
 
+        # Infer the default shifts variable name
+        shifts_var = f'{var}_dts{label_suffix}'
+        if shifts_var in self.data:
+            return self.data[shifts_var]
 
-    def get_clusters(self, var) -> xr.DataArray:
+        # Tell the user about alternative shifts variables
+        all_shift_vars = [v for v in self.data.data_vars if '_dts' in v]
+        raise ValueError((f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()." \
+            f" Or did you mean to use any of these?: {', '.join(all_shift_vars)}" if all_shift_vars else ""))
+        
+
+    def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
         """
-        Return the clusters dataset for further analysis.
+        Get cluster xr.DataArray for the specified variable.
 
         Args:
-            var: Name of the variable in the dataset to get clusters for.
+            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            label_suffix (str): If you added a suffix to the cluster variable, help the function find it. Defaults to "".
 
         Returns:
-            xarray.DataArray: The clusters dataset for the specified variable.
+            xarray.DataArray: The clusters xr.DataArray for the specified variable.
 
         Raises:
-            ValueError: If no clusters have been computed for the specified variable.
+            ValueError: Failed to find valid cluster xr.DataArray for the given var. An xr.DataArray is only considered a cluster label if it contains _cluster in its name.
         """
-        if self.data.get(f"{var}_cluster") is None:
-            raise ValueError(f"No clusters computed for {var} yet.")
-        return self.data[f"{var}_cluster"]
+        
+        # Check if the variable is a cluster variable
+        v = f'{var}{label_suffix}'
+        if v in self.data and "_cluster" in v:
+            return self.data[v]
 
+        # Infer the default cluster variable name
+        cluster_var = f'{var}_cluster{label_suffix}'
+        if cluster_var in self.data:
+            return self.data[cluster_var]
+
+        # Tell the user about alternative cluster variables
+        alt_cluster_vars = [v for v in self.data.data_vars if '_cluster' in v]
+        raise ValueError((f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()." \
+            f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}" if alt_cluster_vars else ""))
+        
 
     def get_cluster_counts(self, var, sort=False):
         """Calculate the number of cells (in space and time) in each cluster for a specified variable.
@@ -387,6 +421,7 @@ class TOAD:
         # both space and time, so if the same cell is part of the cluster for several time
         # steps, it adds up. Verify this. 
 
+<<<<<<< HEAD
         if self.data.get(f"{var}_cluster") is None:
             raise ValueError(f"No clusters computed for {var} yet.")
 >>>>>>> c6fc662 (Docstring and type fixes)
@@ -395,6 +430,19 @@ class TOAD:
         v = f'{var}{label_suffix}'
         if v in self.data and "_dts" in v:
             return self.data[v]
+=======
+        clusters = self.get_clusters(var)
+        counts = {}
+        for cluster_id in np.unique(clusters):
+            timeseries_data = self.timeseries(
+                self.data,
+                clustering=Clustering(clusters),
+                cluster_lbl=[cluster_id],
+                masking='always_in_cluster' if cluster_id == -1 else 'spatial', # the spatial mask returns cells that at any point is in cluster_id, so for -1 you would get all cells. Therefore, we need another mask for unclustered cells (i.e. -1).
+                how=('per_gridcell') # get time series for each grid cell
+            )
+            counts[int(cluster_id)] = len(timeseries_data.cell_xy)
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
 
         # Infer the default shifts variable name
         shifts_var = f'{var}_dts{label_suffix}'

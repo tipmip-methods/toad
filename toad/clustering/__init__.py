@@ -19,7 +19,11 @@ def compute_clusters(
         shifts_filter_func: Callable[[float], bool],
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
+<<<<<<< HEAD
         scaler: Optional[str] = 'StandardScaler',
+=======
+        scaler: str = 'StandardScaler',
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
         output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
@@ -72,7 +76,7 @@ def compute_clusters(
             var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
             shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
 
@@ -126,16 +130,21 @@ def compute_clusters(
     # 3. Perform clustering
     logger.info(f'Applying clustering method {method}')
 <<<<<<< HEAD
+<<<<<<< HEAD
     cluster_labels = method.fit_predict(scaled_coords, importance_weights)
     cluster_labels = np.array(cluster_labels) # make sure it's a numpy array
 =======
     clusters = method.fit_predict(scaled_coords, importance_weights)
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+    cluster_labels = method.fit_predict(scaled_coords, importance_weights)
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
     df_dims[output_label] = -1                              # Initialize cluster column with -1
     df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
+<<<<<<< HEAD
 
     if sort_by_size:
         # Rename clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)
@@ -146,6 +155,8 @@ def compute_clusters(
         df_dims.loc[filtered_data.index, output_label] = cluster_labels
     
     # Convert to xarray
+=======
+>>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
     clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
     clusters = clusters[output_label]                       # select only cluster labels
     

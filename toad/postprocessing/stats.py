@@ -14,7 +14,6 @@ class Stats:
             self,
             var,
             cluster_id, 
-            cluster_label = None,
             return_score_fit=False,
             time_dim="time",
             how='mean'
@@ -27,9 +26,8 @@ class Stats:
         Score is calculated by fitting linear regression and evaluating residuals.
 
         Args:
-            var: Variable name to analyze.
+            var: Name of the variable for which clusters have been computed or the name of the custom cluster variable.
             cluster_id: id of the cluster to score.
-            cluster_label: Optional cluster label, defaults to "{var}_cluster".
             return_score_fit: If True, returns linear regression fit along with score.
             how: Method for aggregating grid cells:
                 - 'mean': Mean value (default)
@@ -44,9 +42,6 @@ class Stats:
                 - tuple: (score, linear fit)
         """
         
-        # Check if cluster_label is provided
-        cluster_label = f"{var}_cluster" if cluster_label is None else cluster_label
-
         # Does not work with per_gridcell
         assert how != "per_gridcell", f"per_gridcell is not supported for this method."
 
@@ -73,14 +68,13 @@ class Stats:
             return standardized_score
         
 
-    def get_cluster_cell_aggregate(self, var, cluster_id, how, cluster_label=None):
+    def get_cluster_cell_aggregate(self, var, cluster_id, how):
         """
         Aggregate data across all cells in the specified cluster using mean, median, sum, standard deviation, or percentile calculations.
         
         Args:
-            var (str): The variable to analyze (e.g., 'thk' for thickness)
+            var (str): Name of the variable for which clusters have been computed or the name of the custom cluster variable.
             cluster_id (int): The ID of the cluster to analyze. Use -1 for unclustered cells.
-            cluster_label (str, optional): Custom cluster label variable name. If None, uses "{var}_cluster"
             how (str): Method for aggregating data across grid cells. Supported values:
                 - 'mean': Mean value
                 - 'median': Median value
@@ -98,7 +92,7 @@ class Stats:
             includes cells that were part of the cluster at any point in time.
         """
         from toad.core import Clustering
-        clusters = self.td.data[cluster_label] if cluster_label else self.td.get_clusters(var)
+        clusters = self.td.get_clusters(var)
         return self.td.timeseries(
             self.td.data,
             clustering=Clustering(clusters),

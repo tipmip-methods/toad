@@ -20,7 +20,7 @@ def compute_clusters(
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
         scaler: str = 'StandardScaler',
-        output_label: Optional[str] = None,
+        output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
     ) -> Union[xr.Dataset, xr.DataArray]:
@@ -33,7 +33,7 @@ def compute_clusters(
             var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
             shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label: Name of the variable to store clustering results. Defaults to {var}_cluster.
+            output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
 
@@ -50,14 +50,16 @@ def compute_clusters(
     # Check shifts var
     all_vars = list(data.data_vars.keys())
     shifts_label = shifts_label if shifts_label else f'{var}_dts'  # default to {var}_dts
+    
     if shifts_label not in all_vars:
         raise ValueError(f'Shifts not found at {shifts_label}. Please run shifts on {var} first, or provide a custom "shifts_label"')
     if data[shifts_label].ndim != 3:
         raise ValueError('data must be 3-dimensional!')
     
-    # 1. Check if the output_label is already in the data
-    default_name = f'{var}_cluster'
-    output_label = output_label or default_name
+    # 1. Set output label
+    output_label = f'{var}_cluster{output_label_suffix}'
+
+    # Check if the output_label is already in the data
     if output_label in data and merge_input:
         if overwrite:
             logger.warning(f'Overwriting variable {output_label}')
@@ -83,18 +85,18 @@ def compute_clusters(
 
     # 3. Perform clustering
     logger.info(f'Applying clustering method {method}')
-    clusters = method.fit_predict(scaled_coords, importance_weights)
+    cluster_labels = method.fit_predict(scaled_coords, importance_weights)
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
     df_dims[output_label] = -1                              # Initialize cluster column with -1
-    df_dims.loc[filtered_data.index, output_label] = clusters # Assign cluster labels to the dataframe
-    cluster_labels = df_dims.set_index(dims).to_xarray()    # Convert dataframe to xarray (DataSet)
-    cluster_labels = cluster_labels[output_label]           # select only cluster labels
+    df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
+    clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
+    clusters = clusters[output_label]                       # select only cluster labels
     
     # 6. Save details as attributes
-    cluster_labels.attrs.update({
-        f'clusters': np.unique(clusters).astype(int),
+    clusters.attrs.update({
+        f'cluster_ids': np.unique(cluster_labels).astype(int),
         f"var_filter_func": inspect.getsource(var_filter_func) if var_filter_func else "None",
         f"shifts_filter_func": inspect.getsource(shifts_filter_func) if shifts_filter_func else "None",
         f"scaler": scaler,
@@ -102,15 +104,15 @@ def compute_clusters(
     })
     
     # Add saved params as attributes
-    cluster_labels.attrs.update(method_params)
+    clusters.attrs.update(method_params)
 
     # add git version
-    cluster_labels.attrs['toad_version'] = __version__
+    clusters.attrs['toad_version'] = __version__
 
     # 7. Merge the cluster labels back into the original data
     if merge_input:
-        return xr.merge([data, cluster_labels], combine_attrs="override") # xr.dataset
+        return xr.merge([data, clusters], combine_attrs="override") # xr.dataset
     else:
-        return cluster_labels # xr.dataarray
+        return clusters # xr.dataarray
 
 

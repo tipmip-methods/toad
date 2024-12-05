@@ -66,28 +66,27 @@ class TOADPlotter:
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
-    def plot_clusters_on_map(self, var, cluster_label=None, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
+    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
         """
         Plot the clusters on a map.
         
         Args: 
-            - cluster_label: custom cluster labels to plot, defaults to the {var}_cluster. 
+            - var: name of the variable for which clusters have been computed or the name of the custom cluster variable.
             - cluster_ids: which clusters to plot, defaults to all clusters
         """
-        if cluster_label is None:
-            cluster_label = self.td.get_clusters(var)
+        clusters = self.td.get_clusters(var)
 
         if ax is None:
             fig, ax = plt.subplots()
 
         if cluster_ids is None:
-            cluster_ids = np.unique(cluster_label)
+            cluster_ids = np.unique(clusters)
             cluster_ids = cluster_ids[cluster_ids != -1]
         
-        im = cluster_label.where(cluster_label.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
+        im = clusters.where(clusters.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 
         # add_colorbar(ax, im, 'Cluster IDs')
-        ax.set_title(f'{var}_cluster')
+        ax.set_title(f'{clusters.name}')
         return self
 
     def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None, time_dim="time"):
@@ -113,7 +112,7 @@ class TOADPlotter:
         Plot individual clusters on each their own map.
         """
         cluster_counts = self.td.get_cluster_counts(var)
-        n_clusters = np.min([len(self.td.get_clusters(var).clusters), max_clusters])
+        n_clusters = np.min([len(self.td.get_clusters(var).cluster_ids), max_clusters])
         nrows = int(np.ceil(n_clusters / ncols))
         # fig, axs = south_pole_plots(nrows, ncols, h=nrows*3)
         # Intsead of south_pole_plots:

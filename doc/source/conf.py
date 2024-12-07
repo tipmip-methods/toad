@@ -88,4 +88,4 @@ def linkcode_resolve(domain, info):
         linespec = ""
 
     filename = info['module'].replace('.', '/')
-    return "https://gitlab.pik-potsdam.de/sinal/toad/-/blob/main/%s.py%s" % (filename,linespec)
+    return "https://github.com/tipmip-methods/toad/tree/main/%s.py%s" % (filename,linespec)

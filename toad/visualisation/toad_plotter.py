@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib.figure
 
 
 class TOADPlotter:
@@ -17,7 +18,13 @@ class TOADPlotter:
         self.td = td
 
 
-    def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+    # TODO make function for contour plot: td.get_spatial_cluster_mask("thk", id).plot.contour(levels=1)
+    # TODO make function for plotting snap shots of cluster
+        # start, end = td.cluster_stats("thk").time.start(id), td.cluster_stats("thk").time.end(id)
+        # td.apply_cluster_mask("thk", "thk", cluster_id).sel(time=slice(start, end, 5)).plot(col='time', col_wrap=5, cmap='jet')
+
+
+    def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs) -> tuple[matplotlib.figure.Figure, np.ndarray]:
         """
         Plot maps with coastlines, gridlines, and optional borders.
         """
@@ -47,6 +54,7 @@ class TOADPlotter:
             if grid_labels:
                 axs.gridlines(draw_labels=grid_labels, linewidth=grid_width, color=grid_color, alpha=grid_alpha, linestyle=grid_style) # type: ignore
                 
+        # TODO fix type error
         return fig, axs
 
 
@@ -66,7 +74,7 @@ class TOADPlotter:
             ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
         return fig, axs
 
-    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
+    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
         """
         Plot the clusters on a map.
         
@@ -83,13 +91,13 @@ class TOADPlotter:
             cluster_ids = np.unique(clusters)
             cluster_ids = cluster_ids[cluster_ids != -1]
         
-        im = clusters.where(clusters.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
+        im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 
         # add_colorbar(ax, im, 'Cluster IDs')
         ax.set_title(f'{clusters.name}')
         return self
 
-    def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None, time_dim="time"):
+    def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None):
         """
         Plot a individual clusters on a map.
         """
@@ -97,12 +105,12 @@ class TOADPlotter:
             fig, ax = plt.subplots()
 
         clusters = self.td.get_clusters(var)
-        data_mask = self.td.data[var].max(dim=time_dim) > 0
+        data_mask = self.td.data[var].max(dim=self.td.time_dim) > 0
         if cluster_id == -1:
             # Completely un-clustered cells are those that never have a cluster_id higher than -1
-            clusters.where(data_mask).where(clusters.max(dim=time_dim) == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+            clusters.where(data_mask).where(clusters.max(dim=self.td.time_dim) == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         else:
-            clusters.where(data_mask).where(clusters == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+            clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         ax.set_title(f'{var}_cluster {cluster_id}')
         return self
 
@@ -124,41 +132,37 @@ class TOADPlotter:
             if(south_pole):
                 ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
         
-        for i, id in enumerate(self.td.get_cluster_ids(var, True)[:n_clusters]):
+        for i, id in enumerate(self.td.get_cluster_ids(var)[:n_clusters]):
             ax = axs.flat[i]
             self.plot_cluster_on_map(var, ax=ax, cluster_id=id, color=color)
             ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)
 
 
-    def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, plot_shifts=False, **plot_kwargs):
+    def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, **plot_kwargs):
         """
         Plot the time series of a cluster.
         """
-        cell = self.td.get_cluster_cell_data(var, cluster_id)
-        if(plot_shifts):
-            cell = [ts.get_shifts() for ts in cell]
-        else:
-            cell = [ts[var] for ts in cell]
+        cells = self.td.get_cluster_timeseries(var, cluster_id)
         
         if ax is None:
             fig, ax = plt.subplots()
 
 
         # Limit the number of trajectories to plot
-        max_trajectories = np.min([max_trajectories, len(cell)])
+        max_trajectories = np.min([max_trajectories, len(cells)])
 
         # Shuffle the cell to get a random sample
-        order = np.arange(len(cell))
+        order = np.arange(len(cells))
         np.random.shuffle(order) 
         order = order[:max_trajectories]
 
         for i in order:
-            cell[i].plot(ax=ax, **plot_kwargs)
+            cells[i].plot(ax=ax, **plot_kwargs)
         
-        if max_trajectories < len(cell):
-            ax.set_title(f'Random sample of {max_trajectories} from total {len(cell)} cell for {var} in cluster {cluster_id}')
+        if max_trajectories < len(cells):
+            ax.set_title(f'Random sample of {max_trajectories} from total {len(cells)} cell for {var} in cluster {cluster_id}')
         else:                                                                              
-            ax.set_title(f'{len(cell)} timeseries for {var} in cluster {cluster_id}')
+            ax.set_title(f'{len(cells)} timeseries for {var} in cluster {cluster_id}')
         return self
 
 

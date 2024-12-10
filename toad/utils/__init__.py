@@ -3,15 +3,20 @@ import functools
 from typing import Union, Optional, Tuple
 import xarray as xr
 <<<<<<< HEAD
+<<<<<<< HEAD
 import numpy as np
 import os
 import requests
 import zipfile
+=======
+import numpy as np
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.
 
+<<<<<<< HEAD
     >> Args:
         xr_da:
             Input DataArray or Dataset to get dimensions from
@@ -25,14 +30,29 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] =
     >> See Also:
         infer_dims:
             For full dimension inference including temporal dimension
+=======
+    Args:
+        xr_da: Input DataArray or Dataset to get dimensions from
+        tdim: Optional name of temporal dimension. If provided, all other dims are considered spatial.
+            If not provided, attempts to auto-detect spatial dims based on standard names.
+
+    Returns:
+        List of spatial dimension names as strings
+
+    See Also:
+        infer_dims: For full dimension inference including temporal dimension
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
     """
     return infer_dims(xr_da, tdim)[1]
         
         
+<<<<<<< HEAD
 =======
 
 
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 def infer_dims(
     xr_da: Union[xr.DataArray, xr.Dataset], 
     tdim: Optional[str] = None
@@ -145,6 +165,7 @@ def contains_value(x, value):
     """Check if x contains value, whether x is a scalar or sequence."""
     if np.isscalar(x):
         return x == value
+<<<<<<< HEAD
     return value in x
 
 # Include this once we have a published release to fetch test data
@@ -184,3 +205,6 @@ def contains_value(x, value):
 #     else:
 #         print(f"test_data directory already exists at {extract_path}")
 
+=======
+    return value in x
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)

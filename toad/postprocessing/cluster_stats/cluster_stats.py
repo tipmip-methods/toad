@@ -3,6 +3,7 @@ from toad.postprocessing.cluster_stats.cluster_space_stats import ClusterSpaceSt
 from toad.postprocessing.cluster_stats.cluster_general_stats import ClusterGeneralStats
 
 class ClusterStats:
+<<<<<<< HEAD
     """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
 
     def __init__(self, toad, var):
@@ -30,6 +31,33 @@ class ClusterStats:
     def general(self):
         """Access general statistics for clusters."""
         return ClusterGeneralStats(self.td, self.var)
+=======
+    def __init__(self, toad, var):
+        self.td = toad
+        self.var = var
+        
+        self._time_stats = None
+        self._space_stats = None
+        self._general_stats = None
+
+    @property
+    def time(self):
+        if self._time_stats is None:
+            self._time_stats = ClusterTimeStats(self.td, self.var)
+        return self._time_stats
+
+    @property
+    def space(self):
+        if self._space_stats is None:
+            self._space_stats = ClusterSpaceStats(self.td, self.var)
+        return self._space_stats
+
+    @property
+    def general(self):
+        if self._general_stats is None:
+            self._general_stats = ClusterGeneralStats(self.td, self.var)
+        return self._general_stats
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
     
 
 

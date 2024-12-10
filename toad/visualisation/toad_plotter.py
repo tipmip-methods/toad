@@ -19,6 +19,9 @@ class TOADPlotter:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
     # TODO make function for contour plot: td.get_spatial_cluster_mask("thk", id).plot.contour(levels=1)
     # TODO make function for plotting snap shots of cluster
         # start, end = td.cluster_stats("thk").time.start(id), td.cluster_stats("thk").time.end(id)
@@ -26,9 +29,12 @@ class TOADPlotter:
 
 
     def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs) -> tuple[matplotlib.figure.Figure, np.ndarray]:
+<<<<<<< HEAD
 =======
     def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         """
         Plot maps with coastlines, gridlines, and optional borders.
         """
@@ -87,10 +93,14 @@ class TOADPlotter:
         return fig, axs
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
 =======
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
+=======
+    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         """
         Plot the clusters on a map.
         
@@ -116,10 +126,14 @@ class TOADPlotter:
             cluster_ids = cluster_ids[cluster_ids != -1]
         
 <<<<<<< HEAD
+<<<<<<< HEAD
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 =======
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
+=======
+        im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
         # add_colorbar(ax, im, 'Cluster IDs')
         ax.set_title(f'{clusters.name}')
@@ -134,6 +148,7 @@ class TOADPlotter:
 
         clusters = self.td.get_clusters(var)
 <<<<<<< HEAD
+<<<<<<< HEAD
         data_mask = self.td.data[var].max(dim=self.td.time_dim) > 0
         if cluster_id == -1:
             # Completely un-clustered cells are those that never have a cluster_id higher than -1
@@ -142,12 +157,19 @@ class TOADPlotter:
             clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
 =======
         data_mask = self.td.data[var].max(dim=time_dim) > 0
+=======
+        data_mask = self.td.data[var].max(dim=self.td.time_dim) > 0
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         if cluster_id == -1:
             # Completely un-clustered cells are those that never have a cluster_id higher than -1
-            clusters.where(data_mask).where(clusters.max(dim=time_dim) == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+            clusters.where(data_mask).where(clusters.max(dim=self.td.time_dim) == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         else:
+<<<<<<< HEAD
             clusters.where(data_mask).where(clusters == cluster_id).max(dim=time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
 >>>>>>> efd56b8 (Fix plotting clusters)
+=======
+            clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         ax.set_title(f'{var}_cluster {cluster_id}')
         return self
 
@@ -176,6 +198,7 @@ class TOADPlotter:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, **plot_kwargs):
         """
         Plot the time series of a cluster.
@@ -192,12 +215,20 @@ class TOADPlotter:
         else:
             cell = [ts[var] for ts in cell]
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+    def plot_cluster_time_series(self, var, cluster_id, ax=None, max_trajectories=1_000, **plot_kwargs):
+        """
+        Plot the time series of a cluster.
+        """
+        cells = self.td.get_cluster_timeseries(var, cluster_id)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         
         if ax is None:
             fig, ax = plt.subplots()
 
 
         # Limit the number of trajectories to plot
+<<<<<<< HEAD
 <<<<<<< HEAD
         max_trajectories = np.min([max_trajectories, len(cells)])
 
@@ -209,10 +240,17 @@ class TOADPlotter:
         # Shuffle the cell to get a random sample
         order = np.arange(len(cell))
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+        max_trajectories = np.min([max_trajectories, len(cells)])
+
+        # Shuffle the cell to get a random sample
+        order = np.arange(len(cells))
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         np.random.shuffle(order) 
         order = order[:max_trajectories]
 
         for i in order:
+<<<<<<< HEAD
 <<<<<<< HEAD
             cells[i].plot(ax=ax, **plot_kwargs)
         
@@ -222,12 +260,19 @@ class TOADPlotter:
             ax.set_title(f'{len(cells)} timeseries for {var} in cluster {cluster_id}')
 =======
             cell[i].plot(ax=ax, **plot_kwargs)
+=======
+            cells[i].plot(ax=ax, **plot_kwargs)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         
-        if max_trajectories < len(cell):
-            ax.set_title(f'Random sample of {max_trajectories} from total {len(cell)} cell for {var} in cluster {cluster_id}')
+        if max_trajectories < len(cells):
+            ax.set_title(f'Random sample of {max_trajectories} from total {len(cells)} cell for {var} in cluster {cluster_id}')
         else:                                                                              
+<<<<<<< HEAD
             ax.set_title(f'{len(cell)} timeseries for {var} in cluster {cluster_id}')
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+            ax.set_title(f'{len(cells)} timeseries for {var} in cluster {cluster_id}')
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         return self
 
 

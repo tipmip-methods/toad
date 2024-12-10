@@ -9,9 +9,13 @@ from toad import shifts_detection, clustering, postprocessing, visualisation, pr
 from toad.utils import infer_dims
 from toad._version import __version__
 <<<<<<< HEAD
+<<<<<<< HEAD
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
 =======
 >>>>>>> 01b5596 (Moved _version.py inside toad package)
+=======
+from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
 
 class TOAD:
@@ -83,6 +87,19 @@ class TOAD:
         """ Access statistical methods. """
         return postprocessing.Stats(self)
 >>>>>>> c6fc662 (Docstring and type fixes)
+    
+
+    def cluster_stats(self, var):
+        """ Access cluster statistical methods. 
+        
+        Args:
+            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+        
+        Returns:
+            toad.postprocessing.cluster_stats.ClusterStats: ClusterStats object
+        """
+        return postprocessing.ClusterStats(self, var)
+
     
     def aggregation(self):
         """ Access aggregation methods. """
@@ -357,7 +374,7 @@ class TOAD:
             return self.data[shifts_var]
 
         # Tell the user about alternative shifts variables
-        all_shift_vars = [v for v in self.data.data_vars if '_dts' in v]
+        all_shift_vars: List[str] = [str(data_var) for data_var in self.data.data_vars if '_dts' in str(data_var)]
         raise ValueError((f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()." \
             f" Or did you mean to use any of these?: {', '.join(all_shift_vars)}" if all_shift_vars else ""))
         
@@ -388,34 +405,22 @@ class TOAD:
             return self.data[cluster_var]
 
         # Tell the user about alternative cluster variables
-        alt_cluster_vars = [v for v in self.data.data_vars if '_cluster' in v]
+        alt_cluster_vars: List[str] = [str(data_var) for data_var in self.data.data_vars if '_cluster' in str(data_var)]
         raise ValueError((f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()." \
             f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}" if alt_cluster_vars else ""))
         
 
-    def get_cluster_counts(self, var, sort=False):
-        """Calculate the number of cells (in space and time) in each cluster for a specified variable.
 
-        Each cell may belong to multiple clusters over time. This function computes the number
-        of unique cells in each cluster and allows optional sorting of the results.
-
+    def get_cluster_counts(self, var):
+        """Returns sorted dictionary with number of cells in both space and time for each cluster.
+        
         Args:
-            var: The name of the variable for which cluster counts are computed.
-                Requires the dataset to have a corresponding "{var}_cluster" key.
-            sort: If True, the resulting dictionary is sorted in descending order
-                by the number of cells in each cluster. Defaults to False.
-
+            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+        
         Returns:
-            dict: A dictionary where keys are cluster IDs (as integers) and values are the
-                number of unique cells in each cluster.
-
-        Raises:
-            ValueError: If cluster information for the specified variable is not found in the dataset.
-
-        Notes:
-            - The function counts the number of unique spatial cells that are part of each cluster,
-              regardless of the number of time steps they appear in the cluster. i: verify this.
+            dict: {cluster_id: count}
         """
+<<<<<<< HEAD
 
         # TODO: I think this actually returns the number of cells that are part of the cluster in 
         # both space and time, so if the same cell is part of the cluster for several time
@@ -448,6 +453,14 @@ class TOAD:
         shifts_var = f'{var}_dts{label_suffix}'
         if shifts_var in self.data:
             return self.data[shifts_var]
+=======
+        counts = {}
+        for cluster_id in self.get_clusters(var).cluster_ids:
+            count = self.get_cluster_mask(var, cluster_id).sum()
+            counts[int(cluster_id)] = int(count)
+        
+        return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
         # Tell the user about alternative shifts variables
         all_shift_vars: List[str] = [str(data_var) for data_var in self.data.data_vars if '_dts' in str(data_var)]
@@ -455,6 +468,7 @@ class TOAD:
             f" Or did you mean to use any of these?: {', '.join(all_shift_vars)}" if all_shift_vars else ""))
         
 
+<<<<<<< HEAD
     def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
         """
         Get cluster xr.DataArray for the specified variable.
@@ -521,10 +535,14 @@ class TOAD:
         >> Returns:
 =======
         Return list of cluster ids, optionally sorted by the number of cells in each cluster.
+=======
+    def get_cluster_ids(self, var):
+        """
+        Return list of cluster ids sorted by total number of cells in each cluster.
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
         Args:
-            var: Name of the variable in the dataset to get cluster ids for.
-            sort: If True, the cluster ids are sorted by the number of cells in each cluster. Defaults to False.
+            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
 
         Returns:
 >>>>>>> c6fc662 (Docstring and type fixes)
@@ -533,6 +551,7 @@ class TOAD:
         return np.array(list(self.get_cluster_counts(var).keys()))
     
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     def get_active_clusters_count_per_timestep(self, var):
         """Get number of active clusters for each timestep.
@@ -545,14 +564,18 @@ class TOAD:
         """ Returns a list of xr.datasets for each cell that at one point in time is 
         in the speicified cluster. Except if cluster_id=-1, the method will return 
         cells that are always in -1, i.e. cells that remain unclustered throughout time.
+=======
+    def get_cluster_counts_per_timestep(self, var):
+        """Get the number of cells in each cluster for a specified variable at each timestep.
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         
         Args:
-            var: Name of the variable in the dataset to get cluster cell data for.
-            cluster_id: The cluster id to get cell data for.
+            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
 
         Returns:
-            list: A list of xr.datasets for each cell that at one point in time is in the specified cluster.
+            xr.DataArray: The number of cells in each cluster for a specified variable at each timestep.
         """
+<<<<<<< HEAD
 >>>>>>> c6fc662 (Docstring and type fixes)
 
         >> Returns:
@@ -560,11 +583,15 @@ class TOAD:
         """
         clusters = self.get_clusters(var)
 <<<<<<< HEAD
+=======
+        clusters = self.get_clusters(var)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         return xr.DataArray(
             [len(np.unique(clusters.sel(**{self.time_dim: t}))) for t in self.data[self.time_dim]],
             coords={self.time_dim: self.data[self.time_dim]},
             dims=[self.time_dim]
         ).rename(f'Number of active clusters for {var}')
+<<<<<<< HEAD
 
 
     def get_cluster_mask(self, var:str, cluster_id:Union[int,List[int]]) -> xr.DataArray:
@@ -992,6 +1019,24 @@ class Clustering():
             xr.DataArray: Time series as xarray DataArray. If aggregation="raw", includes cell_xy dimension.
         """
         cluster_var = cluster_var if cluster_var else var
+=======
+
+
+    def get_cluster_mask(self, var:str, cluster_id:Union[int,List[int]]) -> xr.DataArray:
+        """ Returns a 3D boolean mask (time x space x space) indicating which points belong to the specified cluster(s). 
+
+        Args:
+            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            cluster_id (int or list): cluster id(s) to apply the mask for
+        Returns:
+            xr.DataArray: Mask for the cluster label
+        """
+        clusters = self.get_clusters(var)
+        return clusters.isin(cluster_id)
+
+    def apply_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
+        """Apply the cluster mask to a variable
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         
 <<<<<<< HEAD
         if keep_full_timeseries:
@@ -1005,17 +1050,177 @@ class Clustering():
             mask = self.get_cluster_mask(cluster_var, cluster_id)
 =======
         Args:
-            cluster_lbl (int or list): cluster label to apply the mask for
+            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
+            apply_to_var: The variable to apply the mask to
+            cluster_id: The cluster id to apply the mask for
+        
+        Returns:
+            xr.DataArray: The masked variable
+        """
+        mask = self.get_cluster_mask(var, cluster_id)
+        return self.data[apply_to_var].where(mask)
+
+
+    def get_spatial_cluster_mask(self, var:str, cluster_id:Union[int,List[int]]) -> xr.DataArray:
+        """ Returns a 2D boolean mask indicating which grid cells belonged to the specified cluster at any point in time.
+
+        I.e. a grid cell is True if it belonged to the specified cluster at any point in time during the entire timeseries.
+
+        Args:
+            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
+            cluster_id (int or list): cluster label to apply the mask for
 
         Returns:
             xr.DataArray: Mask for the cluster label
 >>>>>>> c6fc662 (Docstring and type fixes)
 
+<<<<<<< HEAD
         # Apply mask
         data = self.data[var].where(mask)
 
         # First aggregate spatially
         data = self._aggregate_spatial(data, aggregation, percentile)
+=======
+        """
+        
+        # Notify user of better masking for cluster_id = -1
+        if contains_value(cluster_id, -1):
+            self.logger.info("Hint: If you want to get the mask for unclustered cells, use get_permanent_unclustered_mask() instead.")
+
+        return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
+
+
+    def apply_spatial_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
+        """Apply the spatial cluster mask to a variable
+        
+        Args:
+            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
+            apply_to_var: The variable to apply the mask to
+            cluster_id: The cluster id to apply the mask for
+        
+        Returns:
+            xr.DataArray: The masked variable
+        """
+        mask = self.get_spatial_cluster_mask(var, cluster_id)
+        return self.data[apply_to_var].where(mask)
+
+
+    def get_permanent_cluster_mask(self, var:str, cluster_id:int) -> xr.DataArray:
+        """ Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1)"""
+        clusters = self.get_clusters(var)
+        return (clusters == cluster_id).all(dim=self.time_dim)
+
+
+    def get_permanent_unclustered_mask(self, var:str) -> xr.DataArray:
+        """ Create the space distribution for cells that are always unclustered (i.e. -1)"""
+        return self.get_permanent_cluster_mask(var, -1)
+
+
+    def get_cluster_spatial_density(self, var:str, cluster_id:int) -> xr.DataArray:
+        """For each grid cell, returns the fraction of total timesteps (between 0-1) where that cell belonged to the specified cluster."""
+        density = self.get_cluster_mask(var, cluster_id).mean(dim=self.time_dim)
+        density = density.rename(f'{density.name}_spatial_density')
+        return density
+
+
+    def get_cluster_temporal_density(self, var:str, cluster_id:int) -> xr.DataArray:
+        """For each timestep, returns the fraction of cells belonging to the specified cluster out of all cells"""
+        density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
+        density = density.rename(f'{density.name}_temporal_density')
+        return density
+
+
+    def get_cluster_temporal_footprint(self, var:str, cluster_id:int) -> xr.DataArray:
+        """For each timestep, returns a boolean mask indicating whether any grid cell belonged to the specified cluster."""
+        footprint = self.get_cluster_mask(var, cluster_id).any(dim=self.space_dims)
+        footprint = footprint.rename(f'{footprint.name}_temporal_footprint')
+        return footprint
+
+
+    def get_total_cluster_temporal_density(self, var: str) -> xr.DataArray:
+        """For each timestep, returns the fraction of all grid cells that belong to any cluster other than -1."""
+        # Get the mask for all clusters except -1
+        non_noise_mask = self.get_cluster_mask(var, -1) == 0
+        # Calculate the mean over the spatial dimensions
+        density = non_noise_mask.mean(dim=self.space_dims)
+        # Rename the result for clarity
+        density = density.rename(f'{var}_total_cluster_temporal_density')
+        return density
+    
+
+    def get_cluster_data(self, var: str, cluster_id: Union[int, List[int]]) -> xr.Dataset:
+        """Get raw data for specified cluster(s) with mask applied.
+
+        Args:
+            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            cluster_id: Single cluster ID or list of cluster IDs
+        
+        Returns:
+            Masked data as xarray DataArray
+        """
+
+        # use the unclustered mask if cluster_id == -1
+        if is_equal_to(cluster_id, -1): # checks if cluster_id is a scalar and equals -1
+            mask = self.get_permanent_unclustered_mask(var)
+        else:
+            mask = self.get_cluster_mask(var, cluster_id)
+
+        return self.data.where(mask)
+
+
+    def _aggregate_spatial(
+        self, 
+        data: xr.DataArray,
+        method: str = "raw",
+        percentile: Optional[float] = None
+    ) -> xr.DataArray:
+        """Aggregate data across spatial dimensions.
+
+        Args:
+            data: Data to aggregate
+            method: Aggregation method:
+                - "mean": Average across space
+                - "median": Median across space  
+                - "sum": Sum across space
+                - "std": Standard deviation across space
+                - "percentile": Percentile across space (requires percentile arg)
+                - "raw": Return data for each grid cell separately (default).
+            percentile: Percentile value between 0-1 when using percentile aggregation
+        
+        Returns:
+            Aggregated data. If method="raw", includes cell_xy dimension.
+        """
+        if method == "mean":
+            return data.mean(dim=self.space_dims)
+        elif method == "median": 
+            return data.median(dim=self.space_dims)
+        elif method == "sum":
+            return data.sum(dim=self.space_dims)
+        elif method == "std":
+            return data.std(dim=self.space_dims)
+        elif method == "percentile":
+            if percentile is None:
+                raise ValueError("percentile argument required for percentile aggregation")
+            return data.quantile(percentile, dim=self.space_dims)
+        elif method == "raw":
+            result = data.stack(cell_xy=self.space_dims).transpose()
+            return result.dropna(dim="cell_xy", how="all")
+        else:
+            raise ValueError(f"Unknown aggregation method: {method}")
+
+
+    def get_cluster_timeseries(
+        self, 
+        var: str, 
+        cluster_id: Union[int, List[int]],
+        cluster_var: Optional[str] = None,
+        aggregation: Literal["raw", "mean", "sum", "std", "median", "percentile"] = "raw",
+        percentile: Optional[float] = None,
+        normalize: Optional[Literal["first", "max", "last"]] = None,
+        keep_full_timeseries: bool = True
+    ) -> xr.DataArray:
+        """Get time series for cluster, optionally aggregated across space.
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         
 <<<<<<< HEAD
         # Normalise
@@ -1040,37 +1245,65 @@ class Clustering():
         return data
 =======
         Args:
-            cluster_lbl (int or list): cluster label to apply the mask for
-            how (str or tuple): how to calculate the temporal properties
+            var: Variable name to extract time series from
+            cluster_var: Variable name to extract cluster ids from. Default to None and is attemped to be inferred from var.
+            cluster_id: Single cluster ID or list of cluster IDs
+            aggregation: How to aggregate spatial data:
+                - "mean": Average across space
+                - "median": Median across space  
+                - "sum": Sum across space
+                - "std": Standard deviation across space
+                - "percentile": Percentile across space (requires percentile arg)
+                - "raw": Return data for each grid cell separately
+            percentile: Percentile value between 0-1 when using percentile aggregation
+            normalize: 
+                - "first": Normalize by the first non-zero, non-nan timestep
+                - "max": Normalize by the maximum value
+                - "last": Normalize by the last non-zero, non-nan timestep
+                - "none": Do not normalize
+            keep_full_timeseries: If True, returns full time series of cluster cells. If False, only returns time series of cells when they were in the cluster. Defaults to True.
 
         Returns:
-            Temporal properties of the cluster label
+            Time series as xarray DataArray. If aggregation="raw", includes cell_xy dimension.
         """
-        # TODO: verify this works and move to postprocessing/stats.py
-        if type(how)== str:
-            how = (how,)
+        cluster_var = cluster_var if cluster_var else var
+        
+        if keep_full_timeseries:
+            # Handle unclustered case (-1)
+            if is_equal_to(cluster_id, -1):
+                mask = self.get_permanent_unclustered_mask(cluster_var)
+            else:
+                mask = self.get_spatial_cluster_mask(cluster_var, cluster_id)
+        else:
+            # Original behavior - only keep timesteps where cells are in cluster
+            mask = self.get_cluster_mask(cluster_var, cluster_id)
 
-        # spatial mask does not make sense for t-properties (would always be the
-        # same)
-        mask = self.simple_mask(cluster_lbl)
-        dimT = xr.where( mask, mask.__getattr__(self.tdim), np.nan)
+        # Apply mask
+        data = self.data[var].where(mask)
 
-        if 'mean' in how:
-            return dimT.mean().values
-        elif 'median' in how:
-            return dimT.median().values
-        elif 'std' in how:
-            return dimT.std().values
-        elif 'perc' in how:
-            try:
-                # takes the (first) numeric value to be found in how 
-                pval = [arg for arg in how if type(arg)==float][0]
-                return dimT.quantile(pval, skipna=True)
-            except IndexError:
-                raise TypeError("using perc needs additional numerical arg specifying which percentile, like how=('perc',0.2)") from None
-        elif 'dist' in how:
-            return dimT
+        # First aggregate spatially
+        data = self._aggregate_spatial(data, aggregation, percentile)
+        
+        # Normalise
+        if normalize:
+            if normalize == "first":
+                filtered = data.where(data != 0).dropna(dim=self.time_dim)
+                scalar = filtered.isel({self.time_dim: 0}) if len(filtered[self.time_dim]) > 0 else np.nan # get first non-zero, non-nan timestep if exists
+            elif normalize == "max":
+                scalar = float(data.max())
+            elif normalize == "last":
+                filtered = data.where(data != 0).dropna(dim=self.time_dim)
+                scalar = filtered.isel({self.time_dim: -1}) if len(filtered[self.time_dim]) > 0 else np.nan # get last non-zero, non-nan timestep if exists
+            else:
+                raise ValueError(f"Unknown normalization method: {normalize}")
+        
+            if scalar == 0 or np.isnan(scalar) or scalar is None:
+                self.logger.error(f"Failed to normalise by {normalize} = {scalar}")
+            else:
+                normalized = data / scalar
+                data = normalized.where(np.isfinite(normalized))
 
+<<<<<<< HEAD
     def sprops(
             self, 
             cluster_lbl,
@@ -1136,3 +1369,8 @@ class Clustering():
 
     # End of Clustering object
 >>>>>>> c6fc662 (Docstring and type fixes)
+=======
+        return data
+    
+    # end of TOAD object
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)

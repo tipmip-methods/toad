@@ -1,8 +1,14 @@
 import numpy as np
+<<<<<<< HEAD
+=======
+import xarray as xr
+from toad.utils import get_space_dims
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 from toad.utils import all_functions
 import inspect
 
 class ClusterTimeStats:
+<<<<<<< HEAD
     """Class containing functions for calculating time-related statistics for clusters, such as start time, peak time, etc."""
 
     def __init__(self, toad, var):
@@ -15,6 +21,17 @@ class ClusterTimeStats:
         """
         self.td = toad
         self.var = var
+=======
+    """ This class contains functions that calculate time-related statistics for clusters, such as start time, peak time, etc. """
+    # TODO, currently assumes float as time units. Should we make these functions work with other time units? 
+
+    def __init__(self, toad, var):
+        self.td = toad
+        self.var = var
+        self.space_dims = get_space_dims(self.td.data, self.td.time_dim)
+        self.cluster_var = self.td.get_clusters(self.var).name
+        self.cluster_ids = self.td.data[self.cluster_var].cluster_ids
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
     def start(self, cluster_id) -> float:
         """Return the start time of the cluster"""
@@ -30,18 +47,27 @@ class ClusterTimeStats:
     
     def peak(self, cluster_id) -> float:
         """Return the time of the largest cluster temporal density"""
+<<<<<<< HEAD
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+=======
+        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         return float(ctd[self.td.time_dim][ctd.argmax()].values)
 
     def peak_density(self, cluster_id) -> float:
         """Return the largest cluster temporal density"""
+<<<<<<< HEAD
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+=======
+        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         return float(ctd.max().values)
 
 
     def iqr(self, cluster_id, lower_quantile: float, upper_quantile: float) -> tuple[float, float]:
         """Get start and end time of the specified interquantile range of the cluster temporal density.
         
+<<<<<<< HEAD
         >> Args:
             cluster_id:
                 ID of the cluster
@@ -55,6 +81,17 @@ class ClusterTimeStats:
                 (start_time, end_time) of the interquantile range
         """
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+=======
+        Args:
+            cluster_id: ID of the cluster
+            lower_quantile: Lower bound of the interquantile range (0-1)
+            upper_quantile: Upper bound of the interquantile range (0-1)
+            
+        Returns:
+            tuple: (start_time, end_time) of the interquantile range
+        """
+        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
         cum_dist = ctd.cumsum()
         
         # Find both quantiles

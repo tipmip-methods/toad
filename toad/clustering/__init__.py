@@ -28,6 +28,7 @@ def compute_clusters(
         overwrite: bool = False,
         merge_input: bool = True,
 <<<<<<< HEAD
+<<<<<<< HEAD
         sort_by_size: bool = True,
     ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
@@ -66,6 +67,9 @@ def compute_clusters(
 
         """
 =======
+=======
+        sort_by_size: bool = True,
+>>>>>>> 1787555 (Rename cluster ids by size after computation)
     ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
@@ -79,6 +83,7 @@ def compute_clusters(
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
+            sort_by_size: Whether to reorder clusters by size. Defaults to True.
 
         Returns:
             xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
@@ -145,6 +150,9 @@ def compute_clusters(
     df_dims[output_label] = -1                              # Initialize cluster column with -1
     df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 1787555 (Rename cluster ids by size after computation)
 
     if sort_by_size:
         # Rename clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)
@@ -155,8 +163,11 @@ def compute_clusters(
         df_dims.loc[filtered_data.index, output_label] = cluster_labels
     
     # Convert to xarray
+<<<<<<< HEAD
 =======
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
+=======
+>>>>>>> 1787555 (Rename cluster ids by size after computation)
     clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
     clusters = clusters[output_label]                       # select only cluster labels
     

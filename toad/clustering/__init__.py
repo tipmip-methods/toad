@@ -23,6 +23,7 @@ def compute_clusters(
         output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
+        sort_by_size: bool = True,
     ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
@@ -36,6 +37,7 @@ def compute_clusters(
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
+            sort_by_size: Whether to reorder clusters by size. Defaults to True.
 
         Returns:
             xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
@@ -91,6 +93,16 @@ def compute_clusters(
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
     df_dims[output_label] = -1                              # Initialize cluster column with -1
     df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
+
+    if sort_by_size:
+        # Rename clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)
+        valid_labels = cluster_labels[cluster_labels != -1]
+        unique_labels, counts = np.unique(valid_labels, return_counts=True)
+        label_mapping = dict(zip(unique_labels[np.argsort(counts)[::-1]], range(len(unique_labels))))
+        cluster_labels = np.array([label_mapping.get(label, -1) for label in cluster_labels])
+        df_dims.loc[filtered_data.index, output_label] = cluster_labels
+    
+    # Convert to xarray
     clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
     clusters = clusters[output_label]                       # select only cluster labels
     

@@ -174,6 +174,7 @@ class TOAD:
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
+        sort_by_size: bool = True,
     ) -> Union[xr.DataArray, None]:
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
@@ -187,6 +188,7 @@ class TOAD:
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             return_results_directly: Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
+            sort_by_size: Whether to reorder clusters by size. Defaults to True.
 
         Returns:
             If `return_results_directly` is `True`, returns an `xarray.DataArray` containing cluster labels for the data 
@@ -207,6 +209,7 @@ class TOAD:
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
             merge_input=not return_results_directly,
+            sort_by_size=sort_by_size,
         )
 
         if return_results_directly and isinstance(results, xr.DataArray):

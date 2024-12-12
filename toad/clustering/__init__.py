@@ -88,6 +88,7 @@ def compute_clusters(
     # 3. Perform clustering
     logger.info(f'Applying clustering method {method}')
     cluster_labels = method.fit_predict(scaled_coords, importance_weights)
+    cluster_labels = np.array(cluster_labels) # make sure it's a numpy array
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims

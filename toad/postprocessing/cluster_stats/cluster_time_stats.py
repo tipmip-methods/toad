@@ -1,19 +1,18 @@
 import numpy as np
-import xarray as xr
-from toad.utils import get_space_dims
 from toad.utils import all_functions
 import inspect
 
 class ClusterTimeStats:
-    """ This class contains functions that calculate time-related statistics for clusters, such as start time, peak time, etc. """
-    # TODO, currently assumes float as time units. Should we make these functions work with other time units? 
+    """Class containing functions for calculating time-related statistics for clusters, such as start time, peak time, etc."""
 
     def __init__(self, toad, var):
+        """
+        Args:
+            toad (TOAD): TOAD object
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        """
         self.td = toad
         self.var = var
-        self.space_dims = get_space_dims(self.td.data, self.td.time_dim)
-        self.cluster_var = self.td.get_clusters(self.var).name
-        self.cluster_ids = self.td.data[self.cluster_var].cluster_ids
 
     def start(self, cluster_id) -> float:
         """Return the start time of the cluster"""

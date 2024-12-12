@@ -28,12 +28,12 @@ class ClusterTimeStats:
     
     def peak(self, cluster_id) -> float:
         """Return the time of the largest cluster temporal density"""
-        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         return float(ctd[self.td.time_dim][ctd.argmax()].values)
 
     def peak_density(self, cluster_id) -> float:
         """Return the largest cluster temporal density"""
-        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         return float(ctd.max().values)
 
 
@@ -48,7 +48,7 @@ class ClusterTimeStats:
         Returns:
             tuple: (start_time, end_time) of the interquantile range
         """
-        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         cum_dist = ctd.cumsum()
         
         # Find both quantiles

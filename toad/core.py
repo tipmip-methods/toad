@@ -311,14 +311,14 @@ class TOAD:
         return np.array(list(self.get_cluster_counts(var).keys()))
     
 
-    def get_cluster_counts_per_timestep(self, var):
-        """Get the number of cells in each cluster for a specified variable at each timestep.
+    def get_active_clusters_count_per_timestep(self, var):
+        """Get number of active clusters for each timestep.
         
         Args:
             var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
         Returns:
-            xr.DataArray: The number of cells in each cluster for a specified variable at each timestep.
+            xr.DataArray: Number of active clusters for each timestep.
         """
         clusters = self.get_clusters(var)
         return xr.DataArray(
@@ -385,9 +385,24 @@ class TOAD:
             cluster_id (int): The cluster id to apply the mask for
         
         Returns:
-            xr.DataArray: The masked variable
+            xr.DataArray: All data (regardless of cluster) masked by the spatial extend of the specified cluster.
         """
         mask = self.get_spatial_cluster_mask(var, cluster_id)
+        return self.data[apply_to_var].where(mask)
+
+
+    def apply_temporal_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
+        """Apply the temporal cluster mask to a variable
+        
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            apply_to_var: The variable to apply the mask to
+            cluster_id (int): The cluster id to apply the mask for
+        
+        Returns:
+            xr.DataArray: All data (regardless of cluster) masked by the temporal extend of the specified cluster.
+        """
+        mask = self.get_temporal_cluster_mask(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
 
@@ -417,7 +432,7 @@ class TOAD:
         return self.get_permanent_cluster_mask(var, -1)
 
 
-    def get_cluster_spatial_density(self, var:str, cluster_id:int) -> xr.DataArray:
+    def get_cluster_temporal_density(self, var:str, cluster_id:int) -> xr.DataArray:
         """Calculate the temporal density of a cluster at each grid cell.
         
         Args:
@@ -425,29 +440,29 @@ class TOAD:
             cluster_id (int): The cluster id to calculate density for.
             
         Returns:
-            xr.DataArray: Fraction (0-1) of timesteps each cell belonged to the cluster.
+            xr.DataArray: 2D spatial array where each grid cell contains a fraction (0-1) representing the proportion of timesteps that cell belonged to the specified cluster.
         """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.time_dim)
-        density = density.rename(f'{density.name}_spatial_density')
+        density = density.rename(f'{density.name}_temporal_density')
         return density
 
 
-    def get_cluster_temporal_density(self, var:str, cluster_id:int) -> xr.DataArray:
-        """Calculate the temporal density of a cluster across all grid cells.
+    def get_cluster_spatial_density(self, var:str, cluster_id:int) -> xr.DataArray:
+        """Calculate the spatial density of a cluster across all grid cells.
         
         Args:
             var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             cluster_id (int): The cluster id to calculate density for.
             
         Returns:
-            xr.DataArray: Fraction (0-1) of all grid cells belonging to the cluster at each timestep.
+            xr.DataArray: 1D timeseries containing the fraction (0-1) of grid cells that belonged to the specified cluster at each timestep.
         """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
-        density = density.rename(f'{density.name}_temporal_density')
+        density = density.rename(f'{density.name}_spatial_density')
         return density
 
 
-    def get_cluster_temporal_footprint(self, var:str, cluster_id:int) -> xr.DataArray:
+    def get_temporal_cluster_mask(self, var:str, cluster_id:int) -> xr.DataArray:
         """Calculate a temporal footprint indicating cluster presence at each timestep.
         
         For each timestep, returns a boolean mask indicating whether any grid cell belonged 
@@ -468,7 +483,7 @@ class TOAD:
         return footprint
 
 
-    def get_total_cluster_temporal_density(self, var: str) -> xr.DataArray:
+    def get_total_spatial_temporal_density(self, var: str) -> xr.DataArray:
         """Calculate the fraction of all grid cells that belong to any cluster at each timestep.
         
         For each timestep, calculates what fraction of all grid cells belong to any cluster,
@@ -500,7 +515,7 @@ class TOAD:
             cluster_id: Single cluster ID or list of cluster IDs
         
         Returns:
-            Masked data as xarray DataArray
+            DataSet: Full dataset masked by the cluster id
 
         Note: 
             - If cluster_id == -1, returns the unclustered mask.
@@ -631,3 +646,4 @@ class TOAD:
         return data
     
     # end of TOAD object
+

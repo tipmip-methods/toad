@@ -53,16 +53,12 @@ class TOAD:
         """ Access preprocessing methods. """
         return preprocessing.Preprocess(self)
     
-    def stats(self):
-        """ Access statistical methods. """
-        return postprocessing.Stats(self)
-    
 
     def cluster_stats(self, var):
         """ Access cluster statistical methods. 
         
         Args:
-            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         
         Returns:
             toad.postprocessing.cluster_stats.ClusterStats: ClusterStats object
@@ -227,7 +223,7 @@ class TOAD:
         Get shifts xr.DataArray for the specified variable.
 
         Args:
-            var (str): Either the name of the variable for which shifts have been computed (say temperature) or the name of the custom shifts variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             label_suffix (str): If you added a suffix to the shifts variable, help the function find it. Defaults to "".
 
         Returns:
@@ -258,7 +254,7 @@ class TOAD:
         Get cluster xr.DataArray for the specified variable.
 
         Args:
-            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             label_suffix (str): If you added a suffix to the cluster variable, help the function find it. Defaults to "".
 
         Returns:
@@ -289,7 +285,7 @@ class TOAD:
         """Returns sorted dictionary with number of cells in both space and time for each cluster.
         
         Args:
-            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         
         Returns:
             dict: {cluster_id: count}
@@ -307,7 +303,7 @@ class TOAD:
         Return list of cluster ids sorted by total number of cells in each cluster.
 
         Args:
-            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
         Returns:
             list: A list of cluster ids.
@@ -319,7 +315,7 @@ class TOAD:
         """Get the number of cells in each cluster for a specified variable at each timestep.
         
         Args:
-            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
         Returns:
             xr.DataArray: The number of cells in each cluster for a specified variable at each timestep.
@@ -336,7 +332,7 @@ class TOAD:
         """ Returns a 3D boolean mask (time x space x space) indicating which points belong to the specified cluster(s). 
 
         Args:
-            var (str): Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             cluster_id (int or list): cluster id(s) to apply the mask for
         Returns:
             xr.DataArray: Mask for the cluster label
@@ -348,7 +344,7 @@ class TOAD:
         """Apply the cluster mask to a variable
         
         Args:
-            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             apply_to_var: The variable to apply the mask to
             cluster_id: The cluster id to apply the mask for
         
@@ -365,11 +361,11 @@ class TOAD:
         I.e. a grid cell is True if it belonged to the specified cluster at any point in time during the entire timeseries.
 
         Args:
-            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
-            cluster_id (int or list): cluster label to apply the mask for
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id (int or list): cluster id to apply the mask for
 
         Returns:
-            xr.DataArray: Mask for the cluster label
+            xr.DataArray: Mask for the cluster id
 
         """
         
@@ -384,9 +380,9 @@ class TOAD:
         """Apply the spatial cluster mask to a variable
         
         Args:
-            var (str): Name of the variable in the dataset to get cluster ids for or the custom cluster label.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             apply_to_var: The variable to apply the mask to
-            cluster_id: The cluster id to apply the mask for
+            cluster_id (int): The cluster id to apply the mask for
         
         Returns:
             xr.DataArray: The masked variable
@@ -396,39 +392,97 @@ class TOAD:
 
 
     def get_permanent_cluster_mask(self, var:str, cluster_id:int) -> xr.DataArray:
-        """ Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1)"""
+        """ Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1)
+        
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id (int): The cluster id
+
+        Returns:
+            xr.DataArray: Boolean mask where True indicates cells that always belonged to the specified cluster.
+        """
         clusters = self.get_clusters(var)
         return (clusters == cluster_id).all(dim=self.time_dim)
 
 
     def get_permanent_unclustered_mask(self, var:str) -> xr.DataArray:
-        """ Create the space distribution for cells that are always unclustered (i.e. -1)"""
+        """ Create the spatial mask for cells that are always unclustered (i.e. -1)
+        
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            
+        Returns:
+            xr.DataArray: Boolean mask where True indicates cells that were never clustered (always had value -1).
+        """
         return self.get_permanent_cluster_mask(var, -1)
 
 
     def get_cluster_spatial_density(self, var:str, cluster_id:int) -> xr.DataArray:
-        """For each grid cell, returns the fraction of total timesteps (between 0-1) where that cell belonged to the specified cluster."""
+        """Calculate the temporal density of a cluster at each grid cell.
+        
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id (int): The cluster id to calculate density for.
+            
+        Returns:
+            xr.DataArray: Fraction (0-1) of timesteps each cell belonged to the cluster.
+        """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.time_dim)
         density = density.rename(f'{density.name}_spatial_density')
         return density
 
 
     def get_cluster_temporal_density(self, var:str, cluster_id:int) -> xr.DataArray:
-        """For each timestep, returns the fraction of cells belonging to the specified cluster out of all cells"""
+        """Calculate the temporal density of a cluster across all grid cells.
+        
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id (int): The cluster id to calculate density for.
+            
+        Returns:
+            xr.DataArray: Fraction (0-1) of all grid cells belonging to the cluster at each timestep.
+        """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
         density = density.rename(f'{density.name}_temporal_density')
         return density
 
 
     def get_cluster_temporal_footprint(self, var:str, cluster_id:int) -> xr.DataArray:
-        """For each timestep, returns a boolean mask indicating whether any grid cell belonged to the specified cluster."""
+        """Calculate a temporal footprint indicating cluster presence at each timestep.
+        
+        For each timestep, returns a boolean mask indicating whether any grid cell belonged 
+        to the specified cluster. This is useful for determining when a cluster was active,
+        regardless of its spatial extent.
+
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+                or custom cluster variable name.
+            cluster_id (int): The cluster ID to calculate the temporal footprint for.
+
+        Returns:
+            xr.DataArray: Boolean array with True indicating timesteps where the cluster existed
+                somewhere in the spatial domain.
+        """
         footprint = self.get_cluster_mask(var, cluster_id).any(dim=self.space_dims)
         footprint = footprint.rename(f'{footprint.name}_temporal_footprint')
         return footprint
 
 
     def get_total_cluster_temporal_density(self, var: str) -> xr.DataArray:
-        """For each timestep, returns the fraction of all grid cells that belong to any cluster other than -1."""
+        """Calculate the fraction of all grid cells that belong to any cluster at each timestep.
+        
+        For each timestep, calculates what fraction of all grid cells belong to any cluster,
+        excluding noise points (cluster ID -1). This gives a measure of how much of the spatial
+        domain is covered by clusters at each point in time.
+
+        Args:
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+                or custom cluster variable name.
+
+        Returns:
+            xr.DataArray: Fraction (0-1) of grid cells belonging to any cluster at each timestep.
+                The output is named '{var}_total_cluster_temporal_density'.
+        """
         # Get the mask for all clusters except -1
         non_noise_mask = self.get_cluster_mask(var, -1) == 0
         # Calculate the mean over the spatial dimensions
@@ -442,11 +496,15 @@ class TOAD:
         """Get raw data for specified cluster(s) with mask applied.
 
         Args:
-            var: Either the name of the variable for which clusters have been computed (say temperature) or the name of the custom cluster variable.
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             cluster_id: Single cluster ID or list of cluster IDs
         
         Returns:
             Masked data as xarray DataArray
+
+        Note: 
+            - If cluster_id == -1, returns the unclustered mask.
+            - If cluster_id is a list, returns the union of the masks for each cluster id.
         """
 
         # use the unclustered mask if cluster_id == -1

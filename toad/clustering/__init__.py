@@ -138,12 +138,15 @@ def compute_clusters(
 <<<<<<< HEAD
     cluster_labels = method.fit_predict(scaled_coords, importance_weights)
     cluster_labels = np.array(cluster_labels) # make sure it's a numpy array
+<<<<<<< HEAD
 =======
     clusters = method.fit_predict(scaled_coords, importance_weights)
 >>>>>>> c6fc662 (Docstring and type fixes)
 =======
     cluster_labels = method.fit_predict(scaled_coords, importance_weights)
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
+=======
+>>>>>>> bc5ef07 (Fix: cluster_labels should be np.array)
 
     # 5. Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims

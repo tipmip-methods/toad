@@ -2,8 +2,26 @@ import warnings
 import functools
 from typing import Union, Optional, Tuple
 import xarray as xr
+import numpy as np
 
 
+def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
+    """Get spatial dimensions from an xarray DataArray or Dataset.
+
+    Args:
+        xr_da: Input DataArray or Dataset to get dimensions from
+        tdim: Optional name of temporal dimension. If provided, all other dims are considered spatial.
+            If not provided, attempts to auto-detect spatial dims based on standard names.
+
+    Returns:
+        List of spatial dimension names as strings
+
+    See Also:
+        infer_dims: For full dimension inference including temporal dimension
+    """
+    return infer_dims(xr_da, tdim)[1]
+        
+        
 def infer_dims(
     xr_da: Union[xr.DataArray, xr.Dataset], 
     tdim: Optional[str] = None
@@ -73,3 +91,21 @@ def deprecated(message=None):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def all_functions(obj) -> list[str]:
+    return [x for x in dir(obj) if callable(getattr(obj, x)) and not x.startswith('__')]
+
+
+def is_equal_to(x, value):
+    """Check if x equals value, whether x is a scalar or sequence."""
+    if np.isscalar(x):
+        return x == value
+    return np.array_equal(x, [value])
+
+
+def contains_value(x, value):
+    """Check if x contains value, whether x is a scalar or sequence."""
+    if np.isscalar(x):
+        return x == value
+    return value in x

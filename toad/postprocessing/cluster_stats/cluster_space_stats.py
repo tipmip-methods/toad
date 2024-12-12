@@ -4,10 +4,14 @@ import inspect
         
 class ClusterSpaceStats:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ba8e9d6 (Clean up docstrings)
     """Class containing functions for calculating space-related statistics for clusters, such as mean, median, std, etc."""
 
     def __init__(self, toad, var):
         """
+<<<<<<< HEAD
         >> Args:
             toad : (TOAD)
                 TOAD object
@@ -18,6 +22,13 @@ class ClusterSpaceStats:
 =======
     def __init__(self, toad, var):
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        Args:
+            toad (TOAD): TOAD object
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        """
+
+>>>>>>> ba8e9d6 (Clean up docstrings)
         self.td = toad
         self.var = var
         # Initialize other necessary attributes

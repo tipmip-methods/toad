@@ -4,6 +4,7 @@ from toad.postprocessing.cluster_stats.cluster_general_stats import ClusterGener
 
 class ClusterStats:
 <<<<<<< HEAD
+<<<<<<< HEAD
     """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
 
     def __init__(self, toad, var):
@@ -32,32 +33,40 @@ class ClusterStats:
         """Access general statistics for clusters."""
         return ClusterGeneralStats(self.td, self.var)
 =======
+=======
+    """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
+
+>>>>>>> ba8e9d6 (Clean up docstrings)
     def __init__(self, toad, var):
+        """
+        Args:
+            toad (TOAD): TOAD object
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        """
         self.td = toad
         self.var = var
-        
-        self._time_stats = None
-        self._space_stats = None
-        self._general_stats = None
 
     @property
     def time(self):
-        if self._time_stats is None:
-            self._time_stats = ClusterTimeStats(self.td, self.var)
-        return self._time_stats
+        """Access time-related statistics for clusters."""
+        return ClusterTimeStats(self.td, self.var)
 
     @property
     def space(self):
-        if self._space_stats is None:
-            self._space_stats = ClusterSpaceStats(self.td, self.var)
-        return self._space_stats
+        """Access space-related statistics for clusters."""
+        return ClusterSpaceStats(self.td, self.var)
 
     @property
     def general(self):
+<<<<<<< HEAD
         if self._general_stats is None:
             self._general_stats = ClusterGeneralStats(self.td, self.var)
         return self._general_stats
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        """Access general statistics for clusters."""
+        return ClusterGeneralStats(self.td, self.var)
+>>>>>>> ba8e9d6 (Clean up docstrings)
     
 
 

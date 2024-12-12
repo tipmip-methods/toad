@@ -647,3 +647,25 @@ class TOAD:
     
     # end of TOAD object
 
+
+@xr.register_dataarray_accessor("toad")
+class TOADAccessor:
+    """Accessor for xarray DataArrays providing TOAD-specific functionality."""
+    
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
+        
+    def to_timeseries(self):
+        """Convert spatial data to timeseries format by stacking spatial dimensions.
+            
+        Returns:
+            DataArray with dimensions [time, cell_xy] suitable for timeseries plotting.
+            
+        Example:
+            >>> data.toad.to_timeseries().plot.line(x="time", add_legend=False, color='k', alpha=0.1);
+        """
+        td = TOAD(self._obj)
+        return (self._obj
+                .stack(cell_xy=td.space_dims)
+                .transpose("cell_xy", td.time_dim)
+                .dropna(dim="cell_xy", how="all"))

@@ -63,19 +63,27 @@ class ClusterTimeStats:
     def peak(self, cluster_id) -> float:
         """Return the time of the largest cluster temporal density"""
 <<<<<<< HEAD
-        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
-=======
-        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
->>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
-        return float(ctd[self.td.time_dim][ctd.argmax()].values)
-
-    def peak_density(self, cluster_id) -> float:
-        """Return the largest cluster temporal density"""
 <<<<<<< HEAD
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
 =======
         ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+>>>>>>> 35114a8 (Renaming in core.py)
+        return float(ctd[self.td.time_dim][ctd.argmax()].values)
+
+    def peak_density(self, cluster_id) -> float:
+        """Return the largest cluster temporal density"""
+<<<<<<< HEAD
+<<<<<<< HEAD
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+=======
+        ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
+>>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+>>>>>>> 35114a8 (Renaming in core.py)
         return float(ctd.max().values)
 
 
@@ -105,8 +113,12 @@ class ClusterTimeStats:
         Returns:
             tuple: (start_time, end_time) of the interquantile range
         """
+<<<<<<< HEAD
         ctd = self.td.get_cluster_temporal_density(self.var, cluster_id)
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+>>>>>>> 35114a8 (Renaming in core.py)
         cum_dist = ctd.cumsum()
         
         # Find both quantiles

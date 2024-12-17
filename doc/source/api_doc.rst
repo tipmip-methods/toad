@@ -1,64 +1,18 @@
-API
-===
+#############
+API reference
+#############
 
 :Date: |today|
 
-.. automodule:: toad
-	:members:
-	:member-order: bysource
+This page provides an auto-generated summary of TOAD's API.
+
+Top-level functions
+===================
 
 
-clustering
-----------
+.. autosummary::
+	:toctree: generated/
 
-Clustering tools.
-
-.. toctree::
-	:maxdepth: 1
-	:glob:
-
-	api/clustering/*
-
-Post-Processing
----------------
-
-Postprocessing tools.
-
-.. toctree::
-	:maxdepth: 1
-	:glob:
-
-	api/postprocessing/*
-
-Shifts Detection
-----------------
-
-Shifts detection tools.
-
-.. toctree::
-	:maxdepth: 1
-	:glob:
-
-	api/shifts_detection/*
-
-Utils
------
-
-Utility tools.
-
-.. toctree::
-	:maxdepth: 1
-	:glob:
-
-	api/utils/*
-
-Visualisation
--------------
-
-Visualisation tools.
-
-.. toctree::
-	:maxdepth: 1
-	:glob:
-
-	api/visualisation/*
+	toad.TOAD
+	toad.core.Clustering
+	toad.TOADPlotter

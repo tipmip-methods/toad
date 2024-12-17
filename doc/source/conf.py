@@ -35,11 +35,14 @@ master_doc = 'sidebar_main_nav_links'
 modindex_common_prefix = ['toad.']	# ignored prefixes for module index sorting
 
 
+remove_from_toctrees = ["generated/*"]    # remove generated files from the table of contents, this folder is created by the sphinx-apidoc command
+
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinxawesome_theme'
-html_static_path = ['_static','resources']
+html_static_path = ['resources']
 
 # -> Theme Specific HTML ouptut options
 html_sidebars = {

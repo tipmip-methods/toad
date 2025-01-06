@@ -237,10 +237,14 @@ class TOAD:
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
 <<<<<<< HEAD
+<<<<<<< HEAD
         scaler: Optional[str] = 'StandardScaler',
 =======
         scaler: str = 'StandardScaler',
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
+=======
+        scaler: Optional[str] = 'StandardScaler',
+>>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,

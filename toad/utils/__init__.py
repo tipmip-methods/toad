@@ -8,9 +8,12 @@ import numpy as np
 import os
 import requests
 import zipfile
+<<<<<<< HEAD
 =======
 import numpy as np
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+>>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
 
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
@@ -166,6 +169,9 @@ def contains_value(x, value):
     if np.isscalar(x):
         return x == value
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
     return value in x
 
 # Include this once we have a published release to fetch test data
@@ -205,6 +211,9 @@ def contains_value(x, value):
 #     else:
 #         print(f"test_data directory already exists at {extract_path}")
 
+<<<<<<< HEAD
 =======
     return value in x
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+>>>>>>> d35b270 (Merge TOADtorial repo with toad repo)

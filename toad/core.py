@@ -166,7 +166,7 @@ class TOAD:
         shifts_filter_func: Callable[[float], bool],
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
-        scaler: str = 'StandardScaler',
+        scaler: Optional[str] = 'StandardScaler',
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,

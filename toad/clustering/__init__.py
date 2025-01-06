@@ -19,7 +19,7 @@ def compute_clusters(
         shifts_filter_func: Callable[[float], bool],
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
-        scaler: str = 'StandardScaler',
+        scaler: Optional[str] = 'StandardScaler',
         output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
@@ -56,7 +56,7 @@ def compute_clusters(
     if shifts_label not in all_vars:
         raise ValueError(f'Shifts not found at {shifts_label}. Please run shifts on {var} first, or provide a custom "shifts_label"')
     if data[shifts_label].ndim != 3:
-        raise ValueError('data must be 3-dimensional!')
+        raise ValueError('data must be 3-dimensional')
     
     # 1. Set output label
     output_label = f'{var}_cluster{output_label_suffix}'

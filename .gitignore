@@ -6,4 +6,7 @@ __pycache__/
 **/.ipynb_checkpoints/
 data/
 
+# Include this once we have a published release to fetch test data
+# tutorials/test_data
+
 *playground*

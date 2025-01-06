@@ -61,7 +61,7 @@ def compute_shifts(
 
     # check that data_array is 3-dimensional
     if data_array.ndim != 3:
-        raise ValueError('data must be 3-dimensional!')
+        raise ValueError('data must be 3-dimensional')
     
     # check that time dim consists of ints or floats
     if not (np.issubdtype(data_array[time_dim].dtype, np.integer) or np.issubdtype(data_array[time_dim].dtype, np.floating)):

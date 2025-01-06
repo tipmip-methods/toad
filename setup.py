@@ -14,7 +14,7 @@ setup(
     author_email='sina.loriani@pik-potsdam.de',
     maintainer='Jakob Harteg',
     maintainer_email='jakob.harteg@pik-potsdam.de',
-    packages=find_packages(),
+    packages=find_packages(exclude=["tutorials"]),
     install_requires = [
         'numpy',
         'matplotlib',

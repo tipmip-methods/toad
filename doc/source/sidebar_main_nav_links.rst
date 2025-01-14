@@ -3,7 +3,7 @@
 	:includehidden:
 	
 	index
-	TOADtorial <https://www.pik-potsdam.de/~lukasro/toadtorial/sidebar_main_nav_links.html>
+	tutorials
 	api_doc
 	references
 

@@ -25,9 +25,13 @@ extensions = [
 	'sphinx.ext.autodoc',
 	'sphinx.ext.autosummary',
     'sphinx.ext.linkcode',
+	#'sphinx.ext.viewcode',
+	'myst_nb',					# allows to include Jupyter Notebooks and Markdowns 
 ]
 myst_fence_as_directive = ["mermaid"]
 myst_heading_anchors = 2		# depth of implicit target for cross references -> needed for git_version_control.rst
+
+nb_execution_mode = "off"  # Prevent myst_nb from executing notebooks
 
 templates_path = ['_templates']
 exclude_patterns = []
@@ -42,7 +46,10 @@ remove_from_toctrees = ["generated/*"]    # remove generated files from the tabl
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinxawesome_theme'
-html_static_path = ['resources']
+html_static_path = ['_static','resources']
+html_css_files = [
+    'custom.css',
+]
 
 # -> Theme Specific HTML ouptut options
 html_sidebars = {

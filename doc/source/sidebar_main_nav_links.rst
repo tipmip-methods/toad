@@ -1,9 +1,7 @@
 .. toctree::
-	:maxdepth: 1
+	:maxdepth: 2
 	:includehidden:
 	
-	index
+	getting_started
 	tutorials
-	api_doc
 	references
-

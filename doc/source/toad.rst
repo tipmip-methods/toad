@@ -1,6 +1,0 @@
-﻿toad
-====
-
-.. automodule:: toad
-
-   

@@ -43,11 +43,9 @@ and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 =======
 >>>>>>> b758836 (reintroduce index page)
 .. toctree::
-	:maxdepth: 1
+	:maxdepth: 2
 	:includehidden:
 	
-	index
+	getting_started
 	tutorials
-	api_doc
 	references
-

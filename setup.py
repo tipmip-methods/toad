@@ -15,6 +15,7 @@ setup(
     maintainer='Jakob Harteg',
     maintainer_email='jakob.harteg@pik-potsdam.de',
     packages=find_packages(exclude=["tutorials"]),
+    # TODO: add version bounds for dependencies
     install_requires = [
         'numpy',
         'matplotlib',

@@ -64,7 +64,6 @@ def compute_clusters(
     # Check if the output_label is already in the data
     if output_label in data and merge_input:
         if overwrite:
-            logger.warning(f'Overwriting variable {output_label}')
             data = data.drop_vars(output_label)
         else:
             logger.warning(f'{output_label} already exists. Please pass overwrite=True to overwrite it.')

@@ -1,7 +1,7 @@
 import logging
 from typing import Union, Optional
 import xarray as xr
-from _version import __version__
+from toad._version import __version__
 import numpy as np
 
 from toad.shifts_detection.methods.base import ShiftsMethod
@@ -13,22 +13,39 @@ def compute_shifts(
         var: str,
         method: ShiftsMethod,
         time_dim: str = "time",
-        output_label: Optional[str] = None,
+        output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
     ) -> Union[xr.Dataset, xr.DataArray]:
-    """Implementation of shift detection logic.
-    
-    Internal function called by TOAD.compute_shifts(). 
-    See that method's documentation for usage details.
-    
-    Additional params:
-        merge_input: Whether to merge results into input dataset (True) or return separately (False)
+    """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
+
+        >> Args:
+            var:
+                Name of the variable in the dataset to analyze for abrupt shifts.
+            method:
+                The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+            time_dim:
+                Name of the dimension along which the time-series analysis is performed. Defaults to "time".
+            output_label_suffix:
+                A suffix to add to the output label. Defaults to "".
+            overwrite:
+                Whether to overwrite existing variable. Defaults to False.
+            merge_input:
+                Whether to merge results into input dataset (True) or return separately (False)
+            
+        >> Returns:
+            - xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the detected shifts.
+            - xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the detected shifts.
+
+        >> Raises:
+            ValueError:
+                If data is invalid or required parameters are missing
     """
     
     # 1. Set output label
-    default_name = f'{var}_dts'
-    output_label = output_label or default_name
+    output_label = f'{var}_dts{output_label_suffix}'
+
+    # Check if the output_label is already in the data
     if output_label in data and merge_input:
         if overwrite:
             logger.warning(f'Overwriting variable {output_label}')
@@ -51,7 +68,8 @@ def compute_shifts(
 
     # check that data_array is 3-dimensional
     if data_array.ndim != 3:
-        raise ValueError('data must be 3-dimensional!')
+        raise ValueError('data must be 3-dimensional')
+    
     # check that time dim consists of ints or floats
     if not (np.issubdtype(data_array[time_dim].dtype, np.integer) or np.issubdtype(data_array[time_dim].dtype, np.floating)):
         raise ValueError('time dimension must consist of integers or floats.')
@@ -73,7 +91,7 @@ def compute_shifts(
     # 5. Save details as attributes
     shifts.attrs.update({
         'time_dim': time_dim,
-        'method': method.__class__.__name__,
+        'method_name': method.__class__.__name__,
     })
 
     # Add method params as separate attributes

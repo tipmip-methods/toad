@@ -28,6 +28,12 @@ extensions = [
 	#'sphinx.ext.viewcode',
 	'myst_nb',					# allows to include Jupyter Notebooks and Markdowns 
 ]
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'show-inheritance': True,
+}
+autosummary_generate = True
 myst_fence_as_directive = ["mermaid"]
 myst_heading_anchors = 2		# depth of implicit target for cross references -> needed for git_version_control.rst
 
@@ -74,8 +80,11 @@ def linkcode_resolve(domain, info):
     
     modname = info["module"]
     fullname = info["fullname"]
+    print(f"modname: {modname}")
+    print(f"fullname: {fullname}")
 
     submod = sys.modules.get(modname)
+    print(f"submod: {submod}")
     if submod is None:
         return None
 
@@ -85,17 +94,28 @@ def linkcode_resolve(domain, info):
             obj = getattr(obj, part)
         except AttributeError:
             return None
-                
+                 
     try:
+        # Get the source file and line numbers
+        sourcefile = inspect.getsourcefile(obj)
+        print(f"sourcefile: {sourcefile}")
+        if sourcefile is None:
+            return None
+        
         source, lineno = inspect.getsourcelines(obj)
     except OSError:
         lineno = None
 
     # identify start and end line number of code in source file
-    if lineno:
-        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
-    else:
-        linespec = ""
+    linespec = f"#L{lineno}-L{lineno + len(source) - 1}" if lineno else ""
 
-    filename = info['module'].replace('.', '/')
-    return "https://github.com/tipmip-methods/toad/tree/main/%s.py%s" % (filename,linespec)
+    # Adjust for objects imported into __init__.py
+    # Use the actual source file instead of relying on the module name
+    relpath = os.path.relpath(sourcefile, start=os.path.dirname(sys.modules["toad"].__file__))
+    print(f"relpath: {relpath}")
+
+
+    # Build the GitHub URL
+    return f"https://github.com/tipmip-methods/toad/tree/main/{relpath}{linespec}"
+    #filename = info['module'].replace('.', '/')
+    #return "https://github.com/tipmip-methods/toad/tree/main/%s.py%s" % (filename,linespec)

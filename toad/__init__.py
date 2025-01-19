@@ -6,7 +6,6 @@ from toad.core import TOAD
 from toad.shifts_detection import compute_shifts
 from toad.clustering import compute_clusters
 from toad.visualisation import TOADPlotter
-from toad.postprocessing.stats import Stats
 
 __all__ = ["TOAD", "compute_shifts", "compute_clusters", "TOADPlotter"]
 

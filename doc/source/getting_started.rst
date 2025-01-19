@@ -6,8 +6,17 @@
 .. TOAD documentation master file, created by
    Lukas Röhrich, November 2023
 
+###############
 Getting Started
 ###############
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+	
+   installation
+   package_overview
+   quick_start
 
 .. note::
 
@@ -40,11 +49,3 @@ Contributors:
 * Jonathan Donges: Conceptualisation
 * Ann Kristin Klose: Ice Sheets, conceptualisation
 * Ricarda Winkelmann: Ice Sheets, conceptualisation
-
-
-.. toctree::
-	:maxdepth: 1
-	
-    installation
-    package_overview
-    quick_start

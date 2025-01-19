@@ -1,5 +1,5 @@
 #############
-API reference
+API Reference
 #############
 
 :Date: |today|
@@ -12,7 +12,9 @@ Top-level functions
 
 .. autosummary::
 	:toctree: generated/
+	:recursive:
 
 	toad.TOAD
-	toad.core.Clustering
+	toad.compute_shifts
+	toad.compute_clusters
 	toad.TOADPlotter

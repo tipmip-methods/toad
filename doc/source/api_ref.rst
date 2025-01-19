@@ -6,7 +6,7 @@ API Reference
 
 This page provides an auto-generated summary of TOAD's API.
 
-Top-level functions
+Top-Level Functions
 ===================
 
 

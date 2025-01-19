@@ -3,6 +3,9 @@ import xarray as xr
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from typing import Optional
+import pandas as pd
+from typing import Union
+
 
 def prepare_dataframe(
         data: xr.Dataset,
@@ -10,39 +13,40 @@ def prepare_dataframe(
         var_dts: str,
         var_func: Optional[Callable[[float], bool]] = None,
         dts_func: Optional[Callable[[float], bool]] = None,
-        scaler: str = 'StandardScaler'
-    ):
+        scaler: Union[str, None] = 'StandardScaler'
+    ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 
-    This function converts the specified variables from an xarray Dataset to Pandas
-    DataFrames, applies optional filtering functions and scales the coordinates 
+    This function converts specified variables from an xarray Dataset to Pandas
+    DataFrames, applies optional filtering functions, and scales the coordinates 
     for clustering. It also calculates importance weights based on the detection
     time series (dts) variable.
 
-    Args:
-        data (xr.Dataset): The input xarray Dataset containing the variable to be 
-            clustered and its detection time series (dts).
-        var (str): The name of the variable in the Dataset to be clustered.
-        var_func (Callable[[float], bool], optional): A function to filter the 
-            `var` values. Defaults to a function that keeps all values.
-        dts_func (Callable[[float], bool], optional): A function to filter the 
-            `dts` values. Defaults to a function that filters values based on 
-            `min_abruptness` in the calling function.
-        scaler (str, optional): The scaler to use for normalizing coordinates. 
-            Options are 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+    >> Args:
+        data:
+            The input xarray Dataset containing the variable to be clustered and its detection time series.
+        var:
+            The name of the variable in the Dataset to be clustered.
+        var_dts:
+            The name of the detection time series variable in the Dataset.
+        var_func:
+            A function to filter the `var` values. Defaults to keeping all values.
+        dts_func:
+            A function to filter the `dts` values. Defaults to keeping all values.
+        scaler:
+            The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
 
-    Returns:
-        tuple: A tuple containing:
-            - filtered_data_pandas (pd.DataFrame): A Pandas DataFrame of the 
-              filtered data, including the original coordinates and the `dts` variable.
-            - dims (list): A list of dimension names from the original xarray Dataset.
-            - importance_weights (np.ndarray): A 1D NumPy array of the absolute values 
-              of the `dts` variable, used as sample weights for clustering.
-            - scaled_coords (np.ndarray): A 2D NumPy array of the scaled coordinates 
-              for clustering.
+    >> Returns:
+        tuple:
+            A tuple containing:
+            - A Pandas DataFrame of the filtered data, including the original coordinates and the `dts` variable
+            - A list of dimension names from the original xarray Dataset
+            - A 1D NumPy array of the absolute values of the `dts` variable, used as sample weights
+            - A 2D NumPy array of the scaled coordinates for clustering
 
-    Raises:
-        ValueError: If no data remains after filtering.
+    >> Raises:
+        ValueError:
+            If no data remains after filtering.
     """
     
     # Convert the specified variables to Pandas DataFrames

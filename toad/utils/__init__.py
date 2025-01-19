@@ -1,63 +1,92 @@
-import xarray as xr
-
-
-def infer_dims(xr_da: xr.DataArray, tdim=None):
-    """
-    Infers the temporal and spatial dimensions from an xarray DataArray.
-
-    Parameters:
-    -----------
-    xr_da : xarray.DataArray
-        The input DataArray from which to infer dimensions.
-    tdim : str, optional
-        The name of the temporal dimension. If provided, it will be used to 
-        distinguish between temporal and spatial dimensions. If not provided, 
-        the function will attempt to auto-detect the temporal dimension based 
-        on standard spatial dimension names.
-
-    Returns:
-    --------
-    tuple
-        A tuple containing the temporal dimension (str) and a list of spatial 
-        dimensions (list of str).
-
-    Raises:
-    -------
-    AssertionError
-        If the provided temporal dimension is not in the dimensions of the dataset.
-
-    Notes:
-    ------
-    - If `tdim` is provided, the function will use it to identify the temporal 
-      dimension and consider all other dimensions as spatial.
-    - If `tdim` is not provided, the function will attempt to auto-detect the 
-      temporal dimension by looking for standard spatial dimension pairs such as 
-      ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
-    """
-
-    # spatial dims are all non-temporal dims
-    if tdim:
-        sdims = list(xr_da.dims)
-        assert tdim in xr_da.dims, f"provided temporal dim '{tdim}' is not in the dimensions of the dataset!"
-        sdims.remove(tdim)
-        sdims = sorted(sdims)
-        # print(f"inferring spatial dims {sdims} given temporal dim '{tdim}'")
-        return (tdim, sdims)
-    # check if one of the standard combinations in present and auto-infer
-    else:
-        for pair in [('x','y'),('lat','lon'),('latitude','longitude')]:
-            if all(i in list(xr_da.dims) for i in pair):
-                sdims = pair
-                tdim = list(xr_da.dims)
-                for sd in sdims:
-                    tdim.remove(sd)
-
-                # print(f"auto-detecting: spatial dims {sdims}, temporal dim '{tdim[0]}'")
-                return (tdim[0], sdims)
-            
-
 import warnings
 import functools
+from typing import Union, Optional, Tuple
+import xarray as xr
+import numpy as np
+import os
+import requests
+import zipfile
+
+
+def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
+    """Get spatial dimensions from an xarray DataArray or Dataset.
+
+    >> Args:
+        xr_da:
+            Input DataArray or Dataset to get dimensions from
+        tdim:
+            Optional name of temporal dimension. If provided, all other dims are considered spatial. 
+            If not provided, attempts to auto-detect spatial dims based on standard names.
+
+    >> Returns:
+        List of spatial dimension names as strings
+
+    >> See Also:
+        infer_dims:
+            For full dimension inference including temporal dimension
+    """
+    return infer_dims(xr_da, tdim)[1]
+        
+        
+def infer_dims(
+    xr_da: Union[xr.DataArray, xr.Dataset], 
+    tdim: Optional[str] = None
+) -> Tuple[str, list[str]]:
+    """
+    Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
+
+    >> Args:
+        xr_da:
+            The input DataArray or Dataset from which to infer dimensions.
+        >> tdim: (Optional)
+            The name of the temporal dimension. If provided, it will be used to 
+            distinguish between temporal and spatial dimensions. If not provided, 
+            the function will attempt to auto-detect the temporal dimension based 
+            on standard spatial dimension names.
+
+    >> Returns:
+        - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
+
+    >> Raises:
+        ValueError:
+            If the provided temporal dimension is not in the dimensions of the dataset.
+        ValueError:
+            If unable to infer temporal and spatial dimensions.
+
+    >> Notes:
+
+        - If `tdim` is provided, the function will use it to identify the temporal 
+          dimension and consider all other dimensions as spatial.
+        - If `tdim` is not provided, the function will attempt to auto-detect the 
+          temporal dimension by looking for standard spatial dimension pairs such as 
+          ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
+        
+    >> Examples:
+        >>> infer_dims(dataset)
+        ('time', ['x', 'y'])
+    """
+
+    # Spatial dims are all non-temporal dims
+    if tdim:
+        sdims = list(xr_da.dims)
+        if tdim not in xr_da.dims:
+            raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions of the dataset!")
+        sdims.remove(tdim)
+        sdims = [str(dim) for dim in sdims]
+        sdims = sorted(sdims)
+        return tdim, sdims
+    else:
+        # Auto-detect standard spatial dimension combinations
+        for pair in [('x', 'y'), ('lat', 'lon'), ('latitude', 'longitude')]:
+            if all(dim in xr_da.dims for dim in pair):
+                sdims = list(pair)
+                remaining_dims = [dim for dim in xr_da.dims if dim not in sdims]
+                if len(remaining_dims) == 1:  # Ensure a single temporal dimension is left
+                    tdim = str(remaining_dims[0])  # Explicitly convert to str
+                    return tdim, sdims
+
+        raise ValueError("Unable to infer temporal and spatial dimensions. Please provide `tdim` explicitly.")
+
 
 def deprecated(message=None):
     """ Mark functions as deprecated with @deprecated decorator"""
@@ -73,3 +102,59 @@ def deprecated(message=None):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def all_functions(obj) -> list[str]:
+    return [x for x in dir(obj) if callable(getattr(obj, x)) and not x.startswith('__')]
+
+
+def is_equal_to(x, value):
+    """Check if x equals value, whether x is a scalar or sequence."""
+    if np.isscalar(x):
+        return x == value
+    return np.array_equal(x, [value])
+
+
+def contains_value(x, value):
+    """Check if x contains value, whether x is a scalar or sequence."""
+    if np.isscalar(x):
+        return x == value
+    return value in x
+
+# Include this once we have a published release to fetch test data
+# def download_test_data():
+#     """Download test data sets 
+
+#     """
+#     url = "https://github.com/tipmip-methods/toad/releases/download/[TAG_NAME]/test_data.zip"
+#     extract_path = os.path.join(os.getcwd(), "test_data")  # Save to the current working directory
+#     download_path = os.path.join(extract_path, "test_data.zip")
+
+#     if not os.path.exists(extract_path):
+#         print("Downloading test data...")
+#         os.makedirs(extract_path, exist_ok=True)
+#         response = requests.get(url, stream=True)
+#         response.raise_for_status()
+
+#         total_size = int(response.headers.get('content-length', 0))
+#         downloaded_size = 0
+
+#         with open(download_path, "wb") as f:
+#             for chunk in response.iter_content(chunk_size=8192):
+#                 if chunk:
+#                     f.write(chunk)
+#                     downloaded_size += len(chunk)
+#                     # Print progress
+#                     done = int(50 * downloaded_size / total_size)
+#                     print(f"\r[{'=' * done}{' ' * (50 - done)}] {downloaded_size / total_size:.2%}", end='')
+
+#         print("\nExtracting test data...")
+#         with zipfile.ZipFile(download_path, "r") as zip_ref:
+#             zip_ref.extractall(extract_path)
+
+#         os.remove(download_path)
+
+#         print(f"Test data extracted to: {extract_path}")
+#     else:
+#         print(f"test_data directory already exists at {extract_path}")
+

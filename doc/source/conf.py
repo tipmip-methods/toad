@@ -80,11 +80,8 @@ def linkcode_resolve(domain, info):
     
     modname = info["module"]
     fullname = info["fullname"]
-    print(f"modname: {modname}")
-    print(f"fullname: {fullname}")
 
     submod = sys.modules.get(modname)
-    print(f"submod: {submod}")
     if submod is None:
         return None
 
@@ -98,7 +95,6 @@ def linkcode_resolve(domain, info):
     try:
         # Get the source file and line numbers
         sourcefile = inspect.getsourcefile(obj)
-        print(f"sourcefile: {sourcefile}")
         if sourcefile is None:
             return None
         
@@ -112,10 +108,6 @@ def linkcode_resolve(domain, info):
     # Adjust for objects imported into __init__.py
     # Use the actual source file instead of relying on the module name
     relpath = os.path.relpath(sourcefile, start=os.path.dirname(sys.modules["toad"].__file__))
-    print(f"relpath: {relpath}")
-
 
     # Build the GitHub URL
-    return f"https://github.com/tipmip-methods/toad/tree/main/{relpath}{linespec}"
-    #filename = info['module'].replace('.', '/')
-    #return "https://github.com/tipmip-methods/toad/tree/main/%s.py%s" % (filename,linespec)
+    return f"https://github.com/tipmip-methods/toad/tree/main/toad/{relpath}{linespec}"

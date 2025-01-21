@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-from _version import __version__
+from toad._version import __version__
 
 def readme():
     with open('README.md') as f:
@@ -14,7 +14,8 @@ setup(
     author_email='sina.loriani@pik-potsdam.de',
     maintainer='Jakob Harteg',
     maintainer_email='jakob.harteg@pik-potsdam.de',
-    packages=find_packages(),
+    packages=find_packages(exclude=["tutorials"]),
+    # TODO: add version bounds for dependencies
     install_requires = [
         'numpy',
         'matplotlib',

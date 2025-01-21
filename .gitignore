@@ -7,4 +7,7 @@ __pycache__/
 data/
 doc/source/generated/*
 
+# Include this once we have a published release to fetch test data
+# tutorials/test_data
+
 *playground*

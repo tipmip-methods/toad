@@ -22,6 +22,7 @@ def prepare_dataframe(
     for clustering. It also calculates importance weights based on the detection
     time series (dts) variable.
 
+
     >> Args:
         data:
             The input xarray Dataset containing the variable to be clustered and its detection time series.

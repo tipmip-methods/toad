@@ -54,7 +54,6 @@ def infer_dims(
             If unable to infer temporal and spatial dimensions.
 
     >> Notes:
-
         - If `tdim` is provided, the function will use it to identify the temporal 
           dimension and consider all other dimensions as spatial.
         - If `tdim` is not provided, the function will attempt to auto-detect the 

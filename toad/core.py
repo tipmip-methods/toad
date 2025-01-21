@@ -59,6 +59,7 @@ class TOAD:
     def cluster_stats(self, var):
         """ Access cluster statistical methods. 
         
+
         >> Args:
             var : (str)
                 Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
@@ -90,7 +91,7 @@ class TOAD:
             level:
                 The logging level to set. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
         
-        >> Examples: 
+        >> Examples:
             Used like this:         
                 logger.debug("This is a debug message.")
                 logger.info("This is an info message.")
@@ -213,7 +214,6 @@ class TOAD:
 
         >> Raises:
             ValueError: If data is invalid or required parameters are missing
-
         """
         results = clustering.compute_clusters(
             data=self.data,
@@ -671,7 +671,6 @@ class TOAD:
                 If True, returns full time series of cluster cells. If False, only returns time series of cells when they were in the cluster. Defaults to True.
 
         >> Returns:
-            xr.DataArray: Time series as xarray DataArray. If aggregation="raw", includes cell_xy dimension.
         """
         cluster_var = cluster_var if cluster_var else var
         
@@ -710,4 +709,28 @@ class TOAD:
                 normalized = data / scalar
                 data = normalized.where(np.isfinite(normalized))
 
-        return data
+        return data    
+    # end of TOAD object
+
+
+@xr.register_dataarray_accessor("toad")
+class TOADAccessor:
+    """Accessor for xarray DataArrays providing TOAD-specific functionality."""
+    
+    def __init__(self, xarray_obj):
+        self._obj = xarray_obj
+        
+    def to_timeseries(self):
+        """Convert spatial data to timeseries format by stacking spatial dimensions.
+            
+        Returns:
+            DataArray with dimensions [time, cell_xy] suitable for timeseries plotting.
+            
+        Example:
+            >>> data.toad.to_timeseries().plot.line(x="time", add_legend=False, color='k', alpha=0.1);
+        """
+        td = TOAD(self._obj)
+        return (self._obj
+                .stack(cell_xy=td.space_dims)
+                .transpose("cell_xy", td.time_dim)
+                .dropna(dim="cell_xy", how="all"))

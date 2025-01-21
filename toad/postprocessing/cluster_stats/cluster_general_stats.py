@@ -50,7 +50,7 @@ class ClusterGeneralStats:
                 - "max": Normalize by the maximum value
                 - "last": Normalize by the last non-zero, non-nan timestep
                 - "none": Do not normalize
-
+                
         >> Returns:
             - score: Cluster score between 0-1.
             - If return_score_fit is True:

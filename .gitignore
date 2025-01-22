@@ -6,6 +6,7 @@ __pycache__/
 **/.ipynb_checkpoints/
 data/
 doc/source/generated/*
+doc/build.log
 
 # Include this once we have a published release to fetch test data
 # tutorials/test_data

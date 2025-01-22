@@ -26,11 +26,14 @@ toad:
 	@echo ">> Files copied."
 	@echo ">> Deleting build directory..."
 	rm -r $(BUILDDIR)
+	@echo ">> Build directory deleted."
 	@echo ">> Building documentation..."
 	make html > build.log 2>&1
 	@echo ">> Documentation built."
+	@echo ">> Removing tutorial files..."
 	rm -r $(TUTORIAL_DEST)
 	@echo ">> Tutorial files removed."
+	@echo ">> Script done. Good Bye!"
 
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option. $(O) is meant as a shortcut for $(SPHINXOPTS).

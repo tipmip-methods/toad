@@ -22,23 +22,32 @@ def prepare_dataframe(
     for clustering. It also calculates importance weights based on the detection
     time series (dts) variable.
 
-    Args:
-        data: The input xarray Dataset containing the variable to be clustered and its detection time series.
-        var: The name of the variable in the Dataset to be clustered.
-        var_dts: The name of the detection time series variable in the Dataset.
-        var_func: A function to filter the `var` values. Defaults to keeping all values.
-        dts_func: A function to filter the `dts` values. Defaults to keeping all values.
-        scaler: The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
 
-    Returns:
-        tuple: A tuple containing:
+    >> Args:
+        data:
+            The input xarray Dataset containing the variable to be clustered and its detection time series.
+        var:
+            The name of the variable in the Dataset to be clustered.
+        var_dts:
+            The name of the detection time series variable in the Dataset.
+        var_func:
+            A function to filter the `var` values. Defaults to keeping all values.
+        dts_func:
+            A function to filter the `dts` values. Defaults to keeping all values.
+        scaler:
+            The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
+
+    >> Returns:
+        tuple:
+            A tuple containing:
             - A Pandas DataFrame of the filtered data, including the original coordinates and the `dts` variable
             - A list of dimension names from the original xarray Dataset
             - A 1D NumPy array of the absolute values of the `dts` variable, used as sample weights
             - A 2D NumPy array of the scaled coordinates for clustering
 
-    Raises:
-        ValueError: If no data remains after filtering.
+    >> Raises:
+        ValueError:
+            If no data remains after filtering.
     """
     
     # Convert the specified variables to Pandas DataFrames

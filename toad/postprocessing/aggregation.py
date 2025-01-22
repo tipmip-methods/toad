@@ -4,7 +4,7 @@ class Aggregation:
     """
     Aggregation methods for TOAD objects.
     
-    Note: TO BE IMPLEMENTED
+    >> Note: TO BE IMPLEMENTED
     """
     # TODO not sure how much of this should work through the toad class directly as we will want to combine many different datasets
 

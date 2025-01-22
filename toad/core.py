@@ -16,9 +16,11 @@ class TOAD:
     Main object for interacting with TOAD.
     TOAD (Tippping and Other Abrupt events Detector) is a framework for detecting and clustering spatio-temporal patterns in spatio-temporal data.
 
-    Args:
-        data (xr.Dataset or str): The input data. If a string, it is interpreted as a path to a netCDF file.
-        log_level (str): The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'WARNING'.
+    >> Args:
+        data : (xr.Dataset or str)
+            The input data. If a string, it is interpreted as a path to a netCDF file.
+        log_level : (str)
+            The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'WARNING'.
     """
     
     data: xr.Dataset
@@ -57,10 +59,12 @@ class TOAD:
     def cluster_stats(self, var):
         """ Access cluster statistical methods. 
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         
-        Returns:
+        >> Returns:
             toad.postprocessing.cluster_stats.ClusterStats: ClusterStats object
         """
         return postprocessing.ClusterStats(self, var)
@@ -83,10 +87,11 @@ class TOAD:
     def set_log_level(self, level):
         """Sets the logging level for the TOAD logger.
 
-        Args:
-            level: The logging level to set. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
+        >> Args:
+            level:
+                The logging level to set. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.
         
-        Examples: 
+        >> Examples:
             Used like this:         
                 logger.debug("This is a debug message.")
                 logger.info("This is an info message.")
@@ -128,20 +133,27 @@ class TOAD:
     ) -> Union[xr.DataArray, None]:
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
-        Args:
-            var: Name of the variable in the dataset to analyze for abrupt shifts.
-            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
-            time_dim: Name of the dimension along which the time-series analysis is performed. Defaults to "time".
-            output_label_suffix: A suffix to add to the output label. Defaults to "".
-            overwrite: Whether to overwrite existing variable. Defaults to False.
-            return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
+        >> Args:
+            var:
+                Name of the variable in the dataset to analyze for abrupt shifts.
+            method:
+                The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+            time_dim:
+                Name of the dimension along which the time-series analysis is performed. Defaults to "time".
+            output_label_suffix:
+                A suffix to add to the output label. Defaults to "".
+            overwrite:
+                Whether to overwrite existing variable. Defaults to False.
+            return_results_directly:
+                Whether to return the detected shifts directly or merge into the original dataset. Defaults to False.
 
-        Returns:
+        >> Returns:
             - If `return_results_directly` is `True`, returns an `xarray.DataArray` containing the detected shifts. 
             - If `return_results_directly` is `False`, the detected shifts are merged into the original dataset, and the function returns `None`.
 
-        Raises:
-            ValueError: If data is invalid or required parameters are missing
+        >> Raises:
+            ValueError:
+                If data is invalid or required parameters are missing
         """
         results = shifts_detection.compute_shifts(
             data=self.data, 
@@ -174,25 +186,34 @@ class TOAD:
     ) -> Union[xr.DataArray, None]:
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
-        Args:
-            var: Name of the variable in the dataset to cluster.
-            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
-            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
-            shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
-            scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label_suffix: A suffix to add to the output label. Defaults to "".
-            overwrite: Whether to overwrite existing variable. Defaults to False.
-            return_results_directly: Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
-            sort_by_size: Whether to reorder clusters by size. Defaults to True.
+        >> Args:
+            var:
+                Name of the variable in the dataset to cluster.
+            method:
+                The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
+            shifts_filter_func:
+                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+            var_filter_func:
+                A callable used to filter the primary variable before clustering. Defaults to None.
+            shifts_label:
+                Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            scaler:
+                The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+            output_label_suffix:
+                A suffix to add to the output label. Defaults to "".
+            overwrite:
+                Whether to overwrite existing variable. Defaults to False.
+            return_results_directly:
+                Whether to return the clustering results directly or merge into the original dataset. Defaults to False.
+            sort_by_size:
+                Whether to reorder clusters by size. Defaults to True.
 
-        Returns:
+        >> Returns:
             If `return_results_directly` is `True`, returns an `xarray.DataArray` containing cluster labels for the data 
             points. Otherwise, the clustering results are merged into the original dataset, and the function returns `None`.
 
-        Raises:
+        >> Raises:
             ValueError: If data is invalid or required parameters are missing
-
         """
         results = clustering.compute_clusters(
             data=self.data,
@@ -222,15 +243,19 @@ class TOAD:
         """
         Get shifts xr.DataArray for the specified variable.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            label_suffix (str): If you added a suffix to the shifts variable, help the function find it. Defaults to "".
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            label_suffix : (str)
+                If you added a suffix to the shifts variable, help the function find it. Defaults to "".
 
-        Returns:
-            xarray.DataArray: The shifts xr.DataArray for the specified variable.
+        >> Returns:
+            xarray.DataArray:
+            The shifts xr.DataArray for the specified variable.
 
-        Raises:
-            ValueError: Failed to find valid shifts xr.DataArray for the given var. Note: An xr.DataArray is only considered a shifts label if it contains _dts in its name.
+        >> Raises:
+            ValueError:
+                Failed to find valid shifts xr.DataArray for the given var. Note: An xr.DataArray is only considered a shifts label if it contains _dts in its name.
         """
         
         # Check if the variable is a shifts variable
@@ -253,15 +278,19 @@ class TOAD:
         """
         Get cluster xr.DataArray for the specified variable.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            label_suffix (str): If you added a suffix to the cluster variable, help the function find it. Defaults to "".
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            label_suffix : (str)
+                If you added a suffix to the cluster variable, help the function find it. Defaults to "".
 
-        Returns:
-            xarray.DataArray: The clusters xr.DataArray for the specified variable.
+        >> Returns:
+            xarray.DataArray:
+                The clusters xr.DataArray for the specified variable.
 
-        Raises:
-            ValueError: Failed to find valid cluster xr.DataArray for the given var. An xr.DataArray is only considered a cluster label if it contains _cluster in its name.
+        >> Raises:
+            ValueError:
+                Failed to find valid cluster xr.DataArray for the given var. An xr.DataArray is only considered a cluster label if it contains _cluster in its name.
         """
         
         # Check if the variable is a cluster variable
@@ -284,10 +313,11 @@ class TOAD:
     def get_cluster_counts(self, var):
         """Returns sorted dictionary with number of cells in both space and time for each cluster.
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         
-        Returns:
+        >> Returns:
             dict: {cluster_id: count}
         """
         counts = {}
@@ -302,10 +332,11 @@ class TOAD:
         """
         Return list of cluster ids sorted by total number of cells in each cluster.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
-        Returns:
+        >> Returns:
             list: A list of cluster ids.
         """
         return np.array(list(self.get_cluster_counts(var).keys()))
@@ -314,10 +345,11 @@ class TOAD:
     def get_active_clusters_count_per_timestep(self, var):
         """Get number of active clusters for each timestep.
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
 
-        Returns:
+        >> Returns:
             xr.DataArray: Number of active clusters for each timestep.
         """
         clusters = self.get_clusters(var)
@@ -331,10 +363,12 @@ class TOAD:
     def get_cluster_mask(self, var:str, cluster_id:Union[int,List[int]]) -> xr.DataArray:
         """ Returns a 3D boolean mask (time x space x space) indicating which points belong to the specified cluster(s). 
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id (int or list): cluster id(s) to apply the mask for
-        Returns:
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id : (int or list)
+                cluster id(s) to apply the mask for
+        >> Returns:
             xr.DataArray: Mask for the cluster label
         """
         clusters = self.get_clusters(var)
@@ -343,12 +377,15 @@ class TOAD:
     def apply_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
         """Apply the cluster mask to a variable
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to
-            cluster_id: The cluster id to apply the mask for
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            apply_to_var: 
+                The variable to apply the mask to
+            cluster_id:
+                The cluster id to apply the mask for
         
-        Returns:
+        >> Returns:
             xr.DataArray: The masked variable
         """
         mask = self.get_cluster_mask(var, cluster_id)
@@ -360,11 +397,13 @@ class TOAD:
 
         I.e. a grid cell is True if it belonged to the specified cluster at any point in time during the entire timeseries.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id (int or list): cluster id to apply the mask for
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id : (int or list)
+                cluster id to apply the mask for
 
-        Returns:
+        >> Returns:
             xr.DataArray: Mask for the cluster id
 
         """
@@ -379,12 +418,15 @@ class TOAD:
     def apply_spatial_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
         """Apply the spatial cluster mask to a variable
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to
-            cluster_id (int): The cluster id to apply the mask for
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            apply_to_var:
+                The variable to apply the mask to
+            cluster_id : (int)
+                The cluster id to apply the mask for
         
-        Returns:
+        >> Returns:
             xr.DataArray: All data (regardless of cluster) masked by the spatial extend of the specified cluster.
         """
         mask = self.get_spatial_cluster_mask(var, cluster_id)
@@ -394,12 +436,15 @@ class TOAD:
     def apply_temporal_cluster_mask(self, var: str, apply_to_var: str, cluster_id: int) -> xr.DataArray:
         """Apply the temporal cluster mask to a variable
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to
-            cluster_id (int): The cluster id to apply the mask for
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            apply_to_var:
+                The variable to apply the mask to
+            cluster_id : (int)
+                The cluster id to apply the mask for
         
-        Returns:
+        >> Returns:
             xr.DataArray: All data (regardless of cluster) masked by the temporal extend of the specified cluster.
         """
         mask = self.get_temporal_cluster_mask(var, cluster_id)
@@ -409,11 +454,13 @@ class TOAD:
     def get_permanent_cluster_mask(self, var:str, cluster_id:int) -> xr.DataArray:
         """ Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1)
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id (int): The cluster id
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id : (int)
+                The cluster id
 
-        Returns:
+        >> Returns:
             xr.DataArray: Boolean mask where True indicates cells that always belonged to the specified cluster.
         """
         clusters = self.get_clusters(var)
@@ -423,10 +470,11 @@ class TOAD:
     def get_permanent_unclustered_mask(self, var:str) -> xr.DataArray:
         """ Create the spatial mask for cells that are always unclustered (i.e. -1)
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
             
-        Returns:
+        >> Returns:
             xr.DataArray: Boolean mask where True indicates cells that were never clustered (always had value -1).
         """
         return self.get_permanent_cluster_mask(var, -1)
@@ -435,11 +483,13 @@ class TOAD:
     def get_cluster_temporal_density(self, var:str, cluster_id:int) -> xr.DataArray:
         """Calculate the temporal density of a cluster at each grid cell.
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id (int): The cluster id to calculate density for.
+        >> Args:
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id : (int)
+                The cluster id to calculate density for.
             
-        Returns:
+        >> Returns:
             xr.DataArray: 2D spatial array where each grid cell contains a fraction (0-1) representing the proportion of timesteps that cell belonged to the specified cluster.
         """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.time_dim)
@@ -450,11 +500,13 @@ class TOAD:
     def get_cluster_spatial_density(self, var:str, cluster_id:int) -> xr.DataArray:
         """Calculate the spatial density of a cluster across all grid cells.
         
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id (int): The cluster id to calculate density for.
+        >> Args:
+            var:
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id:
+                The cluster id to calculate density for.
             
-        Returns:
+        >> Returns:
             xr.DataArray: 1D timeseries containing the fraction (0-1) of grid cells that belonged to the specified cluster at each timestep.
         """
         density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
@@ -469,12 +521,14 @@ class TOAD:
         to the specified cluster. This is useful for determining when a cluster was active,
         regardless of its spatial extent.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+        >> Args:
+            var:
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
                 or custom cluster variable name.
-            cluster_id (int): The cluster ID to calculate the temporal footprint for.
+            cluster_id:
+                The cluster ID to calculate the temporal footprint for.
 
-        Returns:
+        >> Returns:
             xr.DataArray: Boolean array with True indicating timesteps where the cluster existed
                 somewhere in the spatial domain.
         """
@@ -490,11 +544,12 @@ class TOAD:
         excluding noise points (cluster ID -1). This gives a measure of how much of the spatial
         domain is covered by clusters at each point in time.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+        >> Args:
+            var:
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
                 or custom cluster variable name.
 
-        Returns:
+        >> Returns:
             xr.DataArray: Fraction (0-1) of grid cells belonging to any cluster at each timestep.
                 The output is named '{var}_total_cluster_temporal_density'.
         """
@@ -510,14 +565,16 @@ class TOAD:
     def get_cluster_data(self, var: str, cluster_id: Union[int, List[int]]) -> xr.Dataset:
         """Get raw data for specified cluster(s) with mask applied.
 
-        Args:
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
-            cluster_id: Single cluster ID or list of cluster IDs
+        >> Args:
+            var:
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+            cluster_id:
+                Single cluster ID or list of cluster IDs
         
-        Returns:
-            DataSet: Full dataset masked by the cluster id
+        >> Returns:
+            xr.Dataset: Full dataset masked by the cluster id
 
-        Note: 
+        >> Note: 
             - If cluster_id == -1, returns the unclustered mask.
             - If cluster_id is a list, returns the union of the masks for each cluster id.
         """
@@ -539,19 +596,22 @@ class TOAD:
     ) -> xr.DataArray:
         """Aggregate data across spatial dimensions.
 
-        Args:
-            data: Data to aggregate
-            method: Aggregation method:
+        >> Args:
+            data:
+                Data to aggregate
+            method:
+                Aggregation method:
                 - "mean": Average across space
                 - "median": Median across space  
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
                 - "raw": Return data for each grid cell separately (default).
-            percentile: Percentile value between 0-1 when using percentile aggregation
+            percentile:
+                Percentile value between 0-1 when using percentile aggregation
         
-        Returns:
-            Aggregated data. If method="raw", includes cell_xy dimension.
+        >> Returns:
+            xr.DataArray: Aggregated data. If method="raw", includes cell_xy dimension.
         """
         if method == "mean":
             return data.mean(dim=self.space_dims)
@@ -584,27 +644,33 @@ class TOAD:
     ) -> xr.DataArray:
         """Get time series for cluster, optionally aggregated across space.
         
-        Args:
-            var: Variable name to extract time series from
-            cluster_var: Variable name to extract cluster ids from. Default to None and is attemped to be inferred from var.
-            cluster_id: Single cluster ID or list of cluster IDs
-            aggregation: How to aggregate spatial data:
+        >> Args:
+            var:
+                Variable name to extract time series from
+            cluster_var: 
+                Variable name to extract cluster ids from. Default to None and is attemped to be inferred from var.
+            cluster_id: 
+                Single cluster ID or list of cluster IDs
+            aggregation: 
+                How to aggregate spatial data:
                 - "mean": Average across space
                 - "median": Median across space  
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
                 - "raw": Return data for each grid cell separately
-            percentile: Percentile value between 0-1 when using percentile aggregation
-            normalize: 
+            percentile: 
+                Percentile value between 0-1 when using percentile aggregation
+            normalize:
                 - "first": Normalize by the first non-zero, non-nan timestep
                 - "max": Normalize by the maximum value
                 - "last": Normalize by the last non-zero, non-nan timestep
                 - "none": Do not normalize
-            keep_full_timeseries: If True, returns full time series of cluster cells. If False, only returns time series of cells when they were in the cluster. Defaults to True.
 
-        Returns:
-            Time series as xarray DataArray. If aggregation="raw", includes cell_xy dimension.
+            keep_full_timeseries: 
+                If True, returns full time series of cluster cells. If False, only returns time series of cells when they were in the cluster. Defaults to True.
+
+        >> Returns:
         """
         cluster_var = cluster_var if cluster_var else var
         
@@ -643,8 +709,7 @@ class TOAD:
                 normalized = data / scalar
                 data = normalized.where(np.isfinite(normalized))
 
-        return data
-    
+        return data    
     # end of TOAD object
 
 

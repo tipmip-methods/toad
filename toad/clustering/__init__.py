@@ -27,26 +27,40 @@ def compute_clusters(
     ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
 
-        Args:
-            var: Name of the variable in the dataset to cluster.
-            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
-            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
-            shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
-            scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label_suffix: A suffix to add to the output label. Defaults to "".
-            overwrite: Whether to overwrite existing variable. Defaults to False.
-            merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
-            sort_by_size: Whether to reorder clusters by size. Defaults to True.
+        >> Args:
+            var:
+                Name of the variable in the dataset to cluster.
+            method:
+                The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
+            shifts_filter_func:
+                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+            var_filter_func:
+                A callable used to filter the primary variable before clustering. Defaults to None.
+            shifts_label:
+                Name of the variable containing precomputed shifts. Defaults to {var}_dts.
+            scaler:
+                The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+            output_label_suffix:
+                A suffix to add to the output label. Defaults to "".
+            overwrite:
+                Whether to overwrite existing variable. Defaults to False.
+            merge_input:
+                Whether to merge the clustering results with the input dataset. Defaults to True.
+            sort_by_size:
+                Whether to reorder clusters by size. Defaults to True.
 
-        Returns:
-            xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
-            xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
+        >> Returns:
+            xr.Dataset:
+                If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
+            xr.DataArray:
+                If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
 
-        Raises:
-            ValueError: If data is invalid or required parameters are missing
+        >> Raises:
+            ValueError:
+                If data is invalid or required parameters are missing
 
     """
+    
     # TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
 
     # Check shifts var

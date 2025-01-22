@@ -12,10 +12,9 @@ sys.path.insert(0, module_path)
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'TOAD'
-copyright = '2023, Sina Loriani'
-author = 'Sina Loriani'
-release = '0.2'
+project = 'toad'
+copyright = '2024, Lukas Röhrich'
+author = 'Lukas Röhrich'
 language = 'en'
 
 # -- General configuration ---------------------------------------------------
@@ -26,93 +25,44 @@ extensions = [
 	'sphinx.ext.autodoc',
 	'sphinx.ext.autosummary',
     'sphinx.ext.linkcode',
+	#'sphinx.ext.viewcode',
+	'myst_nb',					# allows to include Jupyter Notebooks and Markdowns 
 ]
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'show-inheritance': True,
+}
+autosummary_generate = True
+myst_fence_as_directive = ["mermaid"]
+myst_heading_anchors = 2		# depth of implicit target for cross references -> needed for git_version_control.rst
+
+nb_execution_mode = "off"  # Prevent myst_nb from executing notebooks
 
 templates_path = ['_templates']
-master_doc = 'sitemap'		# master toctree document
 exclude_patterns = []
-pygments_style = 'sphinx'	# syntax highlighting
+master_doc = 'sidebar_main_nav_links'
 modindex_common_prefix = ['toad.']	# ignored prefixes for module index sorting
+
+
+remove_from_toctrees = ["generated/*"]    # remove generated files from the table of contents, this folder is created by the sphinx-apidoc command
 
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'python_docs_theme'
-#html_theme = 'classic'
-html_static_path = ['_static']
-#html_css_files = ['default.css']       # specify path to custom .css file in html_static_path
+html_theme = 'sphinxawesome_theme'
+html_static_path = ['_static','resources']
+html_css_files = [
+    'custom.css',
+]
+
+# -> Theme Specific HTML ouptut options
 html_sidebars = {
-	'**': [
-		'globaltoc.html',
-		'searchbox.html',
-		]
-	}
-
-
-# -- Options for HTMLHelp output ------------------------------------------
-
-# Output file base name for HTML help builder.
-htmlhelp_basename = 'toaddoc'
-
-
-# -- Options for LaTeX output ---------------------------------------------
-
-latex_elements = {
-    # The paper size ('letterpaper' or 'a4paper').
-    #
-    'papersize': 'a4paper',
-
-    # The font size ('10pt', '11pt' or '12pt').
-    #
-    'pointsize': '10pt',
-
-    # Additional stuff for the LaTeX preamble.
-    #
-    # 'preamble': '',
-
-    # Latex figure (float) alignment
-    #
-    # 'figure_align': 'htbp',
+  "**": ['sidebar_main_nav_links.html', 'sidebar_toc.html']
 }
-
-# Grouping the document tree into LaTeX files. List of tuples
-# (source start file, target name, title,
-#  author, documentclass [howto, manual, or own class]).
-latex_documents = [
-    (master_doc, 'toad.tex', u'toad Documentation',
-    u'Sinal Loriani and pyunicorn authors', 'manual', False),
-]
-
-# The name of an image file (relative to this directory) to place at the top of
-# the title page.
-latex_logo = '_static/logo.png'
-
-# If true, show URL addresses after external links.
-latex_show_urls = 'inline'
-
-
-# -- Options for manual page output ---------------------------------------
-
-# One entry per manual page. List of tuples
-# (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'toad', u'toad Documentation',
-     [author], 1)
-]
-
-
-# -- Options for Texinfo output -------------------------------------------
-
-# Grouping the document tree into Texinfo files. List of tuples
-# (source start file, target name, title, author,
-#  dir menu entry, description, category)
-texinfo_documents = [
-    (master_doc, 'toad', u'toad Documentation',
-     author, 'toad', 'One line description of project.',
-     'Miscellaneous'),
-]
-
+html_logo = 'resources/toad.png'
+html_permalinks_icon = "<span>¶</span>"                     # change the default anchor icon, paragraph mark only appears when hovering over the heading
 
 # -- Function for sphinx extention linkcode -------------------------------
 
@@ -141,17 +91,23 @@ def linkcode_resolve(domain, info):
             obj = getattr(obj, part)
         except AttributeError:
             return None
-                
+                 
     try:
+        # Get the source file and line numbers
+        sourcefile = inspect.getsourcefile(obj)
+        if sourcefile is None:
+            return None
+        
         source, lineno = inspect.getsourcelines(obj)
     except OSError:
         lineno = None
 
     # identify start and end line number of code in source file
-    if lineno:
-        linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
-    else:
-        linespec = ""
+    linespec = f"#L{lineno}-L{lineno + len(source) - 1}" if lineno else ""
 
-    filename = info['module'].replace('.', '/')
-    return "https://gitlab.pik-potsdam.de/sinal/toad/-/blob/main/%s.py%s" % (filename,linespec)
+    # Adjust for objects imported into __init__.py
+    # Use the actual source file instead of relying on the module name
+    relpath = os.path.relpath(sourcefile, start=os.path.dirname(sys.modules["toad"].__file__))
+
+    # Build the GitHub URL
+    return f"https://github.com/tipmip-methods/toad/tree/main/toad/{relpath}{linespec}"

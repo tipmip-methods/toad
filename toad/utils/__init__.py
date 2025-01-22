@@ -11,16 +11,19 @@ import zipfile
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.
 
-    Args:
-        xr_da: Input DataArray or Dataset to get dimensions from
-        tdim: Optional name of temporal dimension. If provided, all other dims are considered spatial.
+    >> Args:
+        xr_da:
+            Input DataArray or Dataset to get dimensions from
+        tdim:
+            Optional name of temporal dimension. If provided, all other dims are considered spatial. 
             If not provided, attempts to auto-detect spatial dims based on standard names.
 
-    Returns:
+    >> Returns:
         List of spatial dimension names as strings
 
-    See Also:
-        infer_dims: For full dimension inference including temporal dimension
+    >> See Also:
+        infer_dims:
+            For full dimension inference including temporal dimension
     """
     return infer_dims(xr_da, tdim)[1]
         
@@ -32,28 +35,32 @@ def infer_dims(
     """
     Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
 
-    Args:
-        xr_da: The input DataArray or Dataset from which to infer dimensions.
-        tdim: (Optional) The name of the temporal dimension. If provided, it will be used to 
+    >> Args:
+        xr_da:
+            The input DataArray or Dataset from which to infer dimensions.
+        >> tdim: (Optional)
+            The name of the temporal dimension. If provided, it will be used to 
             distinguish between temporal and spatial dimensions. If not provided, 
             the function will attempt to auto-detect the temporal dimension based 
             on standard spatial dimension names.
 
-    Returns:
+    >> Returns:
         - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
 
-    Raises:
-        ValueError: If the provided temporal dimension is not in the dimensions of the dataset.
-        ValueError: If unable to infer temporal and spatial dimensions.
+    >> Raises:
+        ValueError:
+            If the provided temporal dimension is not in the dimensions of the dataset.
+        ValueError:
+            If unable to infer temporal and spatial dimensions.
 
-    Notes:
+    >> Notes:
         - If `tdim` is provided, the function will use it to identify the temporal 
           dimension and consider all other dimensions as spatial.
         - If `tdim` is not provided, the function will attempt to auto-detect the 
           temporal dimension by looking for standard spatial dimension pairs such as 
           ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
         
-    Examples:
+    >> Examples:
         >>> infer_dims(dataset)
         ('time', ['x', 'y'])
     """

@@ -78,9 +78,11 @@ class TOADPlotter:
         """
         Plot the clusters on a map.
         
-        Args: 
-            - var: name of the variable for which clusters have been computed or the name of the custom cluster variable.
-            - cluster_ids: which clusters to plot, defaults to all clusters
+        >> Args: 
+            var:
+                name of the variable for which clusters have been computed or the name of the custom cluster variable.
+            cluster_ids:
+                which clusters to plot, defaults to all clusters
         """
         clusters = self.td.get_clusters(var)
 

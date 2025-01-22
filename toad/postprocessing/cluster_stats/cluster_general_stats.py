@@ -6,9 +6,11 @@ class ClusterGeneralStats:
     """ General cluster statistics, such as cluster score."""
     def __init__(self, toad, var):
         """
-        Args:
-            toad (TOAD): TOAD object
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            toad : (TOAD)
+                TOAD object
+            var:
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         """
         self.td = toad
         self.var = var
@@ -29,23 +31,27 @@ class ClusterGeneralStats:
         indicates perfect linear function. Higher scores mean more abrupt shifts.
         Score is calculated by fitting linear regression and evaluating residuals.
 
-        Args:
-            cluster_id: id of the cluster to score.
-            return_score_fit: If True, returns linear regression fit along with score.
-            aggregation: How to aggregate spatial data:
+        >> Args:
+            cluster_id:
+                id of the cluster to score.
+            return_score_fit:
+                If True, returns linear regression fit along with score.
+            aggregation: 
+                How to aggregate spatial data:
                 - "mean": Average across space
                 - "median": Median across space  
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
-            percentile: Percentile value between 0-1 when using percentile aggregation
+            percentile:
+                Percentile value between 0-1 when using percentile aggregation
             normalize: 
                 - "first": Normalize by the first non-zero, non-nan timestep
                 - "max": Normalize by the maximum value
                 - "last": Normalize by the last non-zero, non-nan timestep
                 - "none": Do not normalize
-
-        Returns:
+                
+        >> Returns:
             - score: Cluster score between 0-1.
             - If return_score_fit is True:
                 - tuple: (score, linear fit)

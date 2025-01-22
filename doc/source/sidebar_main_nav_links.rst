@@ -46,6 +46,6 @@ and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 	:maxdepth: 2
 	:includehidden:
 	
-	getting_started
+	index
 	tutorials
 	references

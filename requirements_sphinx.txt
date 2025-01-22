@@ -1,2 +1,2 @@
 sphinx
-python_docs_theme
+sphinxawesome_theme

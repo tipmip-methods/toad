@@ -5,6 +5,9 @@ __pycache__/
 **/dask-worker-space/
 **/.ipynb_checkpoints/
 data/
+doc/source/generated/*
+doc/build.log
+doc/source/tutorials
 
 # Include this once we have a published release to fetch test data
 # tutorials/test_data

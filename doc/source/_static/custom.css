@@ -1,0 +1,27 @@
+/* Custom CSS to fix code block colors at jupyter notebook */
+.highlight {
+    background-color: #2e3440; /* Dark background */
+    color: #d8dee9; /* Light text color */
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.highlight .n { color: #1c9b26; } /* Name colors (like name of functions in code blocks) */
+.highlight .o { color: #414244#81a1c1; } /* Operators */
+.highlight .s { color: #608544; } /* Strings */
+
+/* Adjust inline code */
+code {
+    background-color: #cfd0d1; /* Inline code background */
+    color: #6e6e6e; /* Inline code text + Block code text*/
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+label {
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    background-color: rgba(110, 110, 110, 0.1); /* Semi-transparent black background */
+    }

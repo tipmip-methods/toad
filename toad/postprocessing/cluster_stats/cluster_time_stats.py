@@ -7,9 +7,11 @@ class ClusterTimeStats:
 
     def __init__(self, toad, var):
         """
-        Args:
-            toad (TOAD): TOAD object
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        >> Args:
+            toad : (TOAD)
+                TOAD object
+            var : (str)
+                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
         """
         self.td = toad
         self.var = var
@@ -40,13 +42,17 @@ class ClusterTimeStats:
     def iqr(self, cluster_id, lower_quantile: float, upper_quantile: float) -> tuple[float, float]:
         """Get start and end time of the specified interquantile range of the cluster temporal density.
         
-        Args:
-            cluster_id: ID of the cluster
-            lower_quantile: Lower bound of the interquantile range (0-1)
-            upper_quantile: Upper bound of the interquantile range (0-1)
+        >> Args:
+            cluster_id:
+                ID of the cluster
+            lower_quantile:
+                Lower bound of the interquantile range (0-1)
+            upper_quantile:
+                Upper bound of the interquantile range (0-1)
             
-        Returns:
-            tuple: (start_time, end_time) of the interquantile range
+        >> Returns:
+            tuple :
+                (start_time, end_time) of the interquantile range
         """
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         cum_dist = ctd.cumsum()

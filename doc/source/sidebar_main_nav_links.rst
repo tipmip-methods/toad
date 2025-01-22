@@ -2,6 +2,6 @@
 	:maxdepth: 2
 	:includehidden:
 	
-	getting_started
+	index
 	tutorials
 	references

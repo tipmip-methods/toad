@@ -1,5 +1,5 @@
 
-![TOAD](doc/source/_static/logo.png)
+![TOAD](doc/source/resources/toad.png)
 
 # TOAD
 **T**ipping and **O**ther **A**brupt events **D**etector. 
@@ -21,7 +21,7 @@ The TOAD pipeline consists of three main components:
 3. **Synthesis:** Generate plots and summaries of the identified clusters, facilitating insights and interpretation of the results.
 
 <div align="center">
-    <img src="doc/source/_static/TOAD_pipeline.png" width="1000px" alt="TOAD pipeline overview">
+    <img src="doc/source/resources/TOAD_pipeline.png" width="1000px" alt="TOAD pipeline overview">
 </div>
 
 TOAD's core functionality is exposed through the `TOAD` class, which analyzes netCDF files or xarray datasets. The two primary methods - `compute_shifts` and `compute_clusters` - handle the main analysis steps. Additional helper functions and visualization tools make it easy to explore and understand the results.

@@ -14,6 +14,7 @@ setup(
     author_email='sina.loriani@pik-potsdam.de',
     maintainer='Jakob Harteg',
     maintainer_email='jakob.harteg@pik-potsdam.de',
+    url='https://github.com/tipmip-methods/toad',
     packages=find_packages(exclude=["tutorials"]),
     # TODO: add version bounds for dependencies
     install_requires = [

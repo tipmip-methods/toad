@@ -1,0 +1,61 @@
+# toml-file started Feb 2025 by Lukas Röhrich
+#
+# This file acts as aconfiguration file for the toad packages
+# by Potsdam Institute for Climate Impact Research, GER
+#
+# Tutorial on how to setup this config file:
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+
+# choose build-backend
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools",
+    ]
+
+# basic metadata
+[project]
+name = "toad"
+dynamic = ["version",]
+description = "Tipping and Other Abrupt events Detector"
+readme = "README.md"
+keywords = ["tipping", "tipping points", "climate"]
+authors = [
+    {name = "Sina Loriani", email = "sina.loriani@pik-potsdam.de"}
+]
+maintainers = [
+    {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"}
+]
+classifiers = [
+    "Topic :: Scientific :: Climate",
+    "Intended Audience :: Climate Scientists",
+    "Programming Language :: Python",
+]
+
+dependencies = [
+        "numpy",
+        "matplotlib",
+        "scipy",
+        "scikit-learn",
+        "xarray",
+        "scipy",
+        "seaborn",
+        "netcdf4",
+        "ipykernel",
+        "dask",
+        "distributed",
+        "cartopy",
+        "hdbscan",
+        "requests",
+]
+
+[tool.setuptools]
+packages = ["toad"]
+
+[tool.setuptools.dynamic]
+version = {attr = "toad._version.__version__"}
+
+[project.urls]
+Homepage = "https://tipmip.pik-potsdam.de/"
+Documentation = "https://www.pik-potsdam.de/~lukasro/toad/#"
+Repository = "https://github.com/tipmip-methods/toad"

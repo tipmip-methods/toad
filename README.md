@@ -5,9 +5,11 @@
 **T**ipping and **O**ther **A**brupt events **D**etector. 
 
 ## Installation
-TODO: Update command once package is published/installable
+Until TOAD is published on pip/conda you can install it like this: 
 ```bash
-pip install (to be added)
+$ git clone https://github.com/tipmip-methods/toad.git
+$ cd toad
+$ pip install .
 ```
 
 ## What is TOAD? 
@@ -55,9 +57,9 @@ For more details, please see the [tutorial](https://github.com/tipmip-methods/to
 
 ## Development
 ```bash
-git clone (to be added)
-cd toad
-pip install -e .
+$ git clone https://github.com/tipmip-methods/toad.git
+$ cd toad
+$ pip install -e .
 ```
 The `-e` flag installs the package in "editable" mode, which means changes to the source code are immediately reflected without needing to reinstall.
 
@@ -96,9 +98,9 @@ others to use very specific versions of the code if needed.
 ## Note on using older version of TOAD
 Version 0.2 of TOAD is still available on the `toad-alpha` branch. The package there has been renamed from `toad` to `toad-alpha` such that it can be used alongside the most recent version of toad if cloned locally: 
 ```bash
-git clone (to be added) :: toad-alpha
-cd toad
-pip install -e .
+$ git clone -b toad_alpha https://github.com/tipmip-methods/toad.git toad_alpha
+$ cd toad_alpha
+$ pip install .
 ```
 Then
 ``` python

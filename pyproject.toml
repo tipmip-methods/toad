@@ -38,14 +38,8 @@ dependencies = [
         "scipy",
         "scikit-learn",
         "xarray",
-        "scipy",
-        "seaborn",
-        "netcdf4",
-        "ipykernel",
-        "dask",
-        "distributed",
+        "netcdf4", # pipreqs didn't find this, but needed for xarray
         "cartopy",
-        "hdbscan",
         "requests",
 ]
 

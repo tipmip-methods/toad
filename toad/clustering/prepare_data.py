@@ -1,87 +1,46 @@
-from typing import Callable
-import xarray as xr
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from typing import Optional
 import pandas as pd
-from typing import Union
+import xarray as xr
+from typing import Optional, Union, Callable
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
 
 
-def prepare_dataframe(
-        data: xr.Dataset,
-        var: str, 
-        var_dts: str,
-        time_dim: str,
-        space_dims: list[str],
-        var_func: Optional[Callable[[float], bool]] = None,
-        dts_func: Optional[Callable[[float], bool]] = None,
-        scaler: Union[str, None] = 'StandardScaler',
-    ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
-    """Prepare data for clustering by filtering, extracting coordinates, and scaling.
+# TODO: this is should be removed from package, just used as a dev helper function 
+def prepare_dataframe(data: xr.Dataset, 
+                        var: str, 
+                        shifts_label: Optional[str] = None, 
+                        time_dim: str = "time", 
+                        space_dims: list[str] = ["lon", "lat"],
+                        var_filter_func: Callable = lambda _: True,
+                        shifts_filter_func: Callable = lambda _: True,
+                        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler()
+    ) -> tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
+    """Helper function for getting clustering input data."""
 
-    This function converts specified variables from an xarray Dataset to Pandas
-    DataFrames, applies optional filtering functions, and scales the coordinates 
-    for clustering. It also calculates importance weights based on the detection
-    time series (dts) variable.
+    shifts_label = shifts_label if shifts_label else f'{var}_dts'
+        
+    df_data = {
+        'var': data[var].to_dataframe().reset_index(),
+        'dts': data[shifts_label].to_dataframe().reset_index()
+    }
 
-
-    >> Args:
-        data:
-            The input xarray Dataset containing the variable to be clustered and its detection time series.
-        var:
-            The name of the variable in the Dataset to be clustered.
-        var_dts:
-            The name of the detection time series variable in the Dataset.
-        var_func:
-            A function to filter the `var` values. Defaults to keeping all values.
-        dts_func:
-            A function to filter the `dts` values. Defaults to keeping all values.
-        scaler:
-            The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
-
-    >> Returns:
-        tuple:
-            A tuple containing:
-            - A Pandas DataFrame of the filtered data, including the original coordinates and the `dts` variable
-            - A list of dimension names from the original xarray Dataset
-            - A 1D NumPy array of the absolute values of the `dts` variable, used as sample weights
-            - A 2D NumPy array of the scaled coordinates for clustering
-
-    >> Raises:
-        ValueError:
-            If no data remains after filtering.
-    """
+    # Create combined mask
+    mask = (
+        np.vectorize(var_filter_func)(df_data['var'][var]) & 
+        np.vectorize(shifts_filter_func)(df_data['dts'][shifts_label])
+    )
     
-    # Convert the specified variables to Pandas DataFrames
-    var_data = data[var].to_dataframe().reset_index()
-    dts_data = data[var_dts].to_dataframe().reset_index()
-
-    # Apply filtering functions, defaulting to keeping all values if not provided
-    var_func = var_func if var_func else lambda x: True
-    dts_func = dts_func if dts_func else lambda x: True
-
-    # Use vectorized filtering to create masks
-    var_mask = np.vectorize(var_func)(var_data[var])
-    dts_mask = np.vectorize(dts_func)(dts_data[var_dts])
-    filtered_data_pandas = dts_data.loc[var_mask & dts_mask]
-
-    # throw error if no data left
-    if filtered_data_pandas.empty:
+    # Apply mask
+    filtered_df = df_data['dts'][mask]
+    if filtered_df.empty:
         raise ValueError('No data left after filtering.')
 
-    # Extract dimension names and coordinates
-    dims = [time_dim] + space_dims # explicitly: first time, then space
-    coords = filtered_data_pandas[dims].to_numpy()
-
-    # Scale if scaler is not None
-    if scaler == 'StandardScaler':
-        coords = StandardScaler().fit_transform(coords)
-    elif scaler == 'MinMaxScaler':
-        coords = MinMaxScaler().fit_transform(coords)
-    elif scaler is not None:
-        raise ValueError(f"Invalid scaler: {scaler}. Please choose 'StandardScaler', 'MinMaxScaler' or None.")
+    # Get coordinates and scale them if needed
+    dims = np.array([time_dim] + space_dims)
+    coords = filtered_df[dims].to_numpy()
+    coords = scaler.fit_transform(coords) if scaler else coords
 
     # Compute importance weights as the absolute values of the dts variable
-    importance_weights = np.abs(filtered_data_pandas[var_dts].to_numpy())
+    weights = np.abs(filtered_df[shifts_label].to_numpy())
 
-    return filtered_data_pandas, dims, importance_weights, coords
+    return filtered_df, dims, weights, coords

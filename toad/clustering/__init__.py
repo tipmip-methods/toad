@@ -6,9 +6,10 @@ from toad._version import __version__
 import inspect
 from typing import Optional, Union
 
-from toad.clustering.prepare_data import prepare_dataframe
 from sklearn.base import ClusterMixin
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, MaxAbsScaler
 
+from toad.clustering.prepare_data import prepare_dataframe
 
 logger = logging.getLogger("TOAD")
 
@@ -16,8 +17,8 @@ def compute_clusters(
         data: xr.Dataset,
         var : str,
         method : ClusterMixin,
-        shifts_filter_func: Callable[[float], bool],
-        var_filter_func: Optional[Callable[[float], bool]] = None,
+        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
+        var_filter_func: Callable = lambda _: True,     # empty filtering function as default
         shifts_label: Optional[str] = None,
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -25,6 +26,7 @@ def compute_clusters(
 =======
         time_dim: str = "time",
         space_dims: list[str] = ["lon", "lat"],
+<<<<<<< HEAD
 >>>>>>> 9a2a22a (Dim fixes for clustering)
         scaler: Optional[str] = 'StandardScaler',
 =======
@@ -33,6 +35,9 @@ def compute_clusters(
 =======
         scaler: Optional[str] = 'StandardScaler',
 >>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
+=======
+        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
+>>>>>>> 7aa71ab (Minor clustering refactoring)
         output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
@@ -48,13 +53,13 @@ def compute_clusters(
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
             shifts_filter_func:
-                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
             var_filter_func:
-                A callable used to filter the primary variable before clustering. Defaults to None.
+                A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
             shifts_label:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
-                The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+                The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:
@@ -102,9 +107,13 @@ def compute_clusters(
             ValueError: If data is invalid or required parameters are missing
 
     """
+<<<<<<< HEAD
 >>>>>>> c6fc662 (Docstring and type fixes)
     # TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
 
+=======
+    
+>>>>>>> 7aa71ab (Minor clustering refactoring)
     # Check shifts var
     all_vars = list(data.data_vars.keys())
     shifts_label = shifts_label if shifts_label else f'{var}_dts'  # default to {var}_dts
@@ -114,7 +123,9 @@ def compute_clusters(
     if data[shifts_label].ndim != 3:
         raise ValueError('data must be 3-dimensional')
     
-    # 1. Set output label
+    # 1. Preprocessing ======================================================
+
+    # Set output label
     output_label = f'{var}_cluster{output_label_suffix}'
 
     # Check if the output_label is already in the data
@@ -125,13 +136,28 @@ def compute_clusters(
             logger.warning(f'{output_label} already exists. Please pass overwrite=True to overwrite it.')
             return data
 
-    # 2. Preprocessing
+    # Convert to pandas dataframe
+    df_data = {
+        'var': data[var].to_dataframe().reset_index(),
+        'dts': data[shifts_label].to_dataframe().reset_index()
+    }
 
-    # Prepare the data for clustering
-    # filtered_data is a pandas df that contains the indeces of the data that passed the filters (var_func and dts_func)
-    filtered_data, dims, importance_weights, scaled_coords = prepare_dataframe(
-        data, var, shifts_label, time_dim, space_dims, var_filter_func, shifts_filter_func, scaler
+    # filter df with var_filter_func and shifts_filter_func
+    mask = (
+        df_data['var'][var].apply(var_filter_func) & 
+        df_data['dts'][shifts_label].apply(shifts_filter_func)
     )
+    filtered_df = df_data['dts'][mask]
+    if filtered_df.empty:
+        raise ValueError('No data left after filtering.')
+
+    # Get coordinates and scale them if needed
+    dims = [time_dim] + space_dims
+    coords = filtered_df[dims].to_numpy()
+    coords = scaler.fit_transform(coords) if scaler else coords
+
+    # Compute importance weights as the absolute values of the dts variable
+    weights = np.abs(filtered_df[shifts_label].to_numpy())
 
     # Save method params before clustering (because they might change during clustering)
     method_params = {
@@ -140,8 +166,9 @@ def compute_clusters(
         if value is not None
     }
 
-    # 3. Perform clustering
+    # 2. Perform clustering ==================================================
     logger.info(f'Applying clustering method {method}')
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
     cluster_labels = method.fit_predict(scaled_coords, importance_weights)
@@ -155,10 +182,19 @@ def compute_clusters(
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
 =======
 >>>>>>> bc5ef07 (Fix: cluster_labels should be np.array)
+=======
+    cluster_labels = np.array(method.fit_predict(coords, weights))
+    
+    # 3. Postprocessing =====================================================
+>>>>>>> 7aa71ab (Minor clustering refactoring)
 
-    # 5. Convert back to xarray DataArray
+    # Rename cluster labels to reflect size
+    cluster_labels = sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
+
+    # Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
     df_dims[output_label] = -1                              # Initialize cluster column with -1
+<<<<<<< HEAD
     df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -179,9 +215,12 @@ def compute_clusters(
 >>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
 =======
 >>>>>>> 1787555 (Rename cluster ids by size after computation)
+=======
+    df_dims.loc[filtered_df.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
+>>>>>>> 7aa71ab (Minor clustering refactoring)
     clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
     clusters = clusters[output_label]                       # select only cluster labels
-    
+
     # 6. Save details as attributes
     clusters.attrs.update({
         f'cluster_ids': np.unique(cluster_labels).astype(int),
@@ -203,4 +242,11 @@ def compute_clusters(
     else:
         return clusters # xr.dataarray
 
+
+def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
+    """Sort clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)
+    """
+    unique_labels, counts = np.unique(cluster_labels[cluster_labels != -1], return_counts=True) # ignore -1
+    label_mapping = dict(zip(unique_labels[np.argsort(counts)[::-1]], range(len(unique_labels))))
+    return np.array([label_mapping.get(label, -1) for label in cluster_labels])
 

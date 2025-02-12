@@ -11,12 +11,16 @@ from toad._version import __version__
 <<<<<<< HEAD
 <<<<<<< HEAD
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
+<<<<<<< HEAD
 =======
 >>>>>>> 01b5596 (Moved _version.py inside toad package)
 =======
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 
+=======
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
+>>>>>>> 7aa71ab (Minor clustering refactoring)
 
 class TOAD:
     """
@@ -241,9 +245,10 @@ class TOAD:
         self,
         var : str,
         method : ClusterMixin,
-        shifts_filter_func: Callable[[float], bool],
-        var_filter_func: Optional[Callable[[float], bool]] = None,
+        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
+        var_filter_func: Callable = lambda _: True,     # empty filtering function as default
         shifts_label: Optional[str] = None,
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
         scaler: Optional[str] = 'StandardScaler',
@@ -253,6 +258,9 @@ class TOAD:
 =======
         scaler: Optional[str] = 'StandardScaler',
 >>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
+=======
+        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
+>>>>>>> 7aa71ab (Minor clustering refactoring)
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -268,13 +276,13 @@ class TOAD:
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
             shifts_filter_func:
-                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
             var_filter_func:
-                A callable used to filter the primary variable before clustering. Defaults to None.
+                A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
             shifts_label:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
-                The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+                The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:

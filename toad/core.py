@@ -39,15 +39,23 @@ class TOAD:
         elif isinstance(data, (xr.Dataset, xr.DataArray)):
             self.data = data  # Original data
         
+        # rename longitude and latitude to lon and lat
+        if 'longitude' in self.data.dims:
+            self.data = self.data.rename({'longitude': 'lon'})
+            logging.info("Renamed longitude to lon")
+        if 'latitude' in self.data.dims:
+            self.data = self.data.rename({'latitude': 'lat'})
+            logging.info("Renamed latitude to lat")
+        
+        # Save time dim for later
         self.time_dim = time_dim
-        self.space_dims = get_space_dims(self.data, self.time_dim)
 
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level) 
 
-
+    
     # # ======================================================================
     # #               Module functions
     # # ======================================================================
@@ -222,6 +230,8 @@ class TOAD:
             shifts_filter_func=shifts_filter_func,
             var_filter_func=var_filter_func,
             shifts_label=shifts_label,
+            time_dim=self.time_dim,
+            space_dims=self.space_dims,
             scaler=scaler,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
@@ -239,6 +249,11 @@ class TOAD:
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
+
+    @property
+    def space_dims(self):
+        return get_space_dims(self.data, self.time_dim)
+        
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
         Get shifts xr.DataArray for the specified variable.
@@ -694,6 +709,7 @@ class TOAD:
         if normalize:
             if normalize == "first":
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
+                # todo: this crashes
                 scalar = filtered.isel({self.time_dim: 0}) if len(filtered[self.time_dim]) > 0 else np.nan # get first non-zero, non-nan timestep if exists
             elif normalize == "max":
                 scalar = float(data.max())

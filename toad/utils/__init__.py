@@ -71,6 +71,10 @@ def infer_dims(
         if tdim not in xr_da.dims:
             raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions of the dataset!")
         sdims.remove(tdim)
+
+        # remove any dims that contains the bnds
+        sdims = [dim for dim in sdims if 'bnds' not in dim]
+
         sdims = [str(dim) for dim in sdims]
         sdims = sorted(sdims)
         return tdim, sdims

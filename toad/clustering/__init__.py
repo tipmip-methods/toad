@@ -19,6 +19,8 @@ def compute_clusters(
         shifts_filter_func: Callable[[float], bool],
         var_filter_func: Optional[Callable[[float], bool]] = None,
         shifts_label: Optional[str] = None,
+        time_dim: str = "time",
+        space_dims: list[str] = ["lon", "lat"],
         scaler: Optional[str] = 'StandardScaler',
         output_label_suffix: str = "",
         overwrite: bool = False,
@@ -88,7 +90,7 @@ def compute_clusters(
     # Prepare the data for clustering
     # filtered_data is a pandas df that contains the indeces of the data that passed the filters (var_func and dts_func)
     filtered_data, dims, importance_weights, scaled_coords = prepare_dataframe(
-        data, var, shifts_label, var_filter_func, shifts_filter_func, scaler
+        data, var, shifts_label, time_dim, space_dims, var_filter_func, shifts_filter_func, scaler
     )
 
     # Save method params before clustering (because they might change during clustering)

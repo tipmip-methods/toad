@@ -18,8 +18,11 @@ def prepare_dataframe(
         data: xr.Dataset,
         var: str, 
         var_dts: str,
+        time_dim: str,
+        space_dims: list[str],
         var_func: Optional[Callable[[float], bool]] = None,
         dts_func: Optional[Callable[[float], bool]] = None,
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
         scaler: Union[str, None] = 'StandardScaler'
@@ -29,6 +32,9 @@ def prepare_dataframe(
 =======
         scaler: Union[str, None] = 'StandardScaler'
 >>>>>>> 404d1af (Type fix)
+=======
+        scaler: Union[str, None] = 'StandardScaler',
+>>>>>>> 9a2a22a (Dim fixes for clustering)
     ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
     """Prepare data for clustering by filtering, extracting coordinates, and scaling.
 
@@ -95,8 +101,7 @@ def prepare_dataframe(
         raise ValueError('No data left after filtering.')
 
     # Extract dimension names and coordinates
-    # dims = list(data.sizes.keys())
-    dims = list(data[var].dims) # take var dims instead of dataset dims, as they may not be the same.
+    dims = [time_dim] + space_dims # explicitly: first time, then space
     coords = filtered_data_pandas[dims].to_numpy()
 
     # Scale if scaler is not None

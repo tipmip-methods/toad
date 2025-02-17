@@ -28,6 +28,7 @@ class TOADPlotter:
         # td.apply_cluster_mask("thk", "thk", cluster_id).sel(time=slice(start, end, 5)).plot(col='time', col_wrap=5, cmap='jet')
 
 
+<<<<<<< HEAD
     def map_plots(self, nrows=1, ncols=1, projection=ccrs.PlateCarree(), resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs) -> tuple[matplotlib.figure.Figure, np.ndarray]:
 <<<<<<< HEAD
 =======
@@ -35,6 +36,23 @@ class TOADPlotter:
 >>>>>>> c6fc662 (Docstring and type fixes)
 =======
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+    def map_plots(self, 
+            nrows=1, 
+            ncols=1, 
+            projection=ccrs.PlateCarree(), 
+            resolution="110m", 
+            linewidth=(0.5, 0.25), 
+            grid_labels=True, 
+            grid_style='--', 
+            grid_width=0.5, 
+            grid_color='gray', 
+            grid_alpha=0.5, 
+            figsize=None, 
+            borders=True, 
+            **kwargs
+        ) -> tuple[matplotlib.figure.Figure, np.ndarray]:
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         """
         Plot maps with coastlines, gridlines, and optional borders.
         """
@@ -94,6 +112,7 @@ class TOADPlotter:
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
 =======
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", time_dim="time"):
@@ -101,6 +120,27 @@ class TOADPlotter:
 =======
     def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20"):
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+
+    def north_pole_plots(self, nrows=1, ncols=1, resolution="110m", linewidth=(0.5, 0.25), grid_labels=True, grid_style='--', grid_width=0.5, grid_color='gray', grid_alpha=0.5, figsize=None, borders=True, **kwargs):
+        """
+        Plot maps with coastlines, gridlines, and optional borders at the North Pole.
+        """
+        fig, axs = self.map_plots(nrows, ncols, projection=ccrs.NorthPolarStereo(), resolution=resolution, linewidth=linewidth, grid_labels=grid_labels, grid_style=grid_style, grid_width=grid_width, grid_color=grid_color, grid_alpha=grid_alpha, figsize=figsize, borders=borders, **kwargs)
+        if isinstance(axs, np.ndarray):
+            axs_flat = axs.flat
+        else:
+            axs_flat = [axs]
+
+        for ax in axs_flat:
+            ax.coastlines(resolution="110m", linewidth=linewidth[0]) # type: ignore
+            # ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
+        return fig, axs
+
+
+
+    def plot_clusters_on_map(self, var, cluster_ids=None, ax=None, cmap="tab20", **kwargs):
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         """
         Plot the clusters on a map.
         
@@ -127,6 +167,7 @@ class TOADPlotter:
         
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 =======
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
@@ -134,12 +175,15 @@ class TOADPlotter:
 =======
         im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False)
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+        im = clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(ax=ax, cmap=cmap, add_colorbar=False, **kwargs)
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
         # add_colorbar(ax, im, 'Cluster IDs')
         ax.set_title(f'{clusters.name}')
         return self
 
-    def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None):
+    def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None, **kwargs):
         """
         Plot a individual clusters on a map.
         """
@@ -154,6 +198,7 @@ class TOADPlotter:
             # Completely un-clustered cells are those that never have a cluster_id higher than -1
             clusters.where(data_mask).where(clusters.max(dim=self.td.time_dim) == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
         else:
+<<<<<<< HEAD
             clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
 =======
         data_mask = self.td.data[var].max(dim=time_dim) > 0
@@ -170,11 +215,14 @@ class TOADPlotter:
 =======
             clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False)
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+            clusters.where(data_mask).where(clusters == cluster_id).max(dim=self.td.time_dim).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False, **kwargs)
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         ax.set_title(f'{var}_cluster {cluster_id}')
         return self
 
 
-    def plot_clusters_on_maps(self, var, max_clusters = 5, ncols = 5, color="k", south_pole=False):
+    def plot_clusters_on_maps(self, var, max_clusters = 5, ncols = 5, color="k", south_pole=False, **kwargs):
         """
         Plot individual clusters on each their own map.
         """
@@ -193,7 +241,7 @@ class TOADPlotter:
         
         for i, id in enumerate(self.td.get_cluster_ids(var)[:n_clusters]):
             ax = axs.flat[i]
-            self.plot_cluster_on_map(var, ax=ax, cluster_id=id, color=color)
+            self.plot_cluster_on_map(var, ax=ax, cluster_id=id, color=color, **kwargs)
             ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)
 
 

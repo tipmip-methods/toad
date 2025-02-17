@@ -5,11 +5,12 @@ from typing import Callable
 from toad._version import __version__
 import inspect
 from typing import Optional, Union
+from toad.utils import get_space_dims, reorder_space_dims
 
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, MaxAbsScaler
+from toad.regridding.base import BaseRegridder
 
-from toad.clustering.prepare_data import prepare_dataframe
 
 logger = logging.getLogger("TOAD")
 
@@ -25,6 +26,7 @@ def compute_clusters(
 <<<<<<< HEAD
 =======
         time_dim: str = "time",
+<<<<<<< HEAD
         space_dims: list[str] = ["lon", "lat"],
 <<<<<<< HEAD
 >>>>>>> 9a2a22a (Dim fixes for clustering)
@@ -38,6 +40,11 @@ def compute_clusters(
 =======
         scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
 >>>>>>> 7aa71ab (Minor clustering refactoring)
+=======
+        space_dims: Optional[list[str]] = None,
+        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
+        regridder: Optional[BaseRegridder] = None,
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         output_label_suffix: str = "",
         overwrite: bool = False,
         merge_input: bool = True,
@@ -60,6 +67,8 @@ def compute_clusters(
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+            regridder:
+                The regridding method to use from `toad.clustering.regridding`. When provided, filtered data points are regridded and transformed from lat/lon to x/y/z coordinates for clustering using Euclidean distance. Defaults to None.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:
@@ -79,6 +88,7 @@ def compute_clusters(
             ValueError:
                 If data is invalid or required parameters are missing
 
+<<<<<<< HEAD
         """
 =======
 =======
@@ -105,6 +115,10 @@ def compute_clusters(
 
         Raises:
             ValueError: If data is invalid or required parameters are missing
+=======
+        >> Notes: 
+            For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
     """
 <<<<<<< HEAD
@@ -113,22 +127,48 @@ def compute_clusters(
 
 =======
     
+<<<<<<< HEAD
 >>>>>>> 7aa71ab (Minor clustering refactoring)
+=======
+    '''
+    Overview of the clustering process:
+    1. Input Validation
+        - Verify shifts variable exists in dataset
+        - Check data has required 3 dimensions
+        - Validate dimension names and ordering
+    2. Preprocessing
+        - Generate output label with optional suffix
+        - Check for existing results and handle overwrite
+        - Convert xarray Dataset/DataArray to pandas DataFrame
+        - Apply user-defined filtering on variables and shifts
+        - Extract spatial and temporal coordinates
+        - Apply optional regridding to standardize coordinates
+        - Scale coordinates using sklearn preprocessing
+        - Calculate weights from shift magnitudes
+    3. Clustering
+        - Store clustering parameters as metadata
+        - Fit clustering model to coordinates using weights
+        - Generate cluster labels for each point
+    4. Postprocessing
+        - Sort clusters by size if requested
+        - Convert cluster labels to xarray format
+        - Add clustering parameters as attributes
+        - Optionally merge results with input dataset
+        - Return Dataset or DataArray based on merge_input
+    '''
+
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
     # Check shifts var
     all_vars = list(data.data_vars.keys())
     shifts_label = shifts_label if shifts_label else f'{var}_dts'  # default to {var}_dts
     
     if shifts_label not in all_vars:
         raise ValueError(f'Shifts not found at {shifts_label}. Please run shifts on {var} first, or provide a custom "shifts_label"')
-    if data[shifts_label].ndim != 3:
-        raise ValueError('data must be 3-dimensional')
-    
-    # 1. Preprocessing ======================================================
+    if data[shifts_label].ndim != 3: 
+        raise ValueError('data must be 3-dimensional') # TODO: make it work for 2D data
 
-    # Set output label
+    # Set output label and check if already in data
     output_label = f'{var}_cluster{output_label_suffix}'
-
-    # Check if the output_label is already in the data
     if output_label in data and merge_input:
         if overwrite:
             data = data.drop_vars(output_label)
@@ -136,13 +176,11 @@ def compute_clusters(
             logger.warning(f'{output_label} already exists. Please pass overwrite=True to overwrite it.')
             return data
 
-    # Convert to pandas dataframe
+    # Extract and filter data for clustering
     df_data = {
         'var': data[var].to_dataframe().reset_index(),
         'dts': data[shifts_label].to_dataframe().reset_index()
     }
-
-    # filter df with var_filter_func and shifts_filter_func
     mask = (
         df_data['var'][var].apply(var_filter_func) & 
         df_data['dts'][shifts_label].apply(shifts_filter_func)
@@ -151,14 +189,22 @@ def compute_clusters(
     if filtered_df.empty:
         raise ValueError('No data left after filtering.')
 
-    # Get coordinates and scale them if needed
+    # Handle dimensions
+    space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
+    space_dims = reorder_space_dims(space_dims)
     dims = [time_dim] + space_dims
-    coords = filtered_df[dims].to_numpy()
-    coords = scaler.fit_transform(coords) if scaler else coords
-
-    # Compute importance weights as the absolute values of the dts variable
-    weights = np.abs(filtered_df[shifts_label].to_numpy())
-
+    
+    # Get coordinates and weights
+    coords = filtered_df[dims].to_numpy() # convert to numpy, usually in this order [time, lat, lon] or [time, x, y]
+    weights = np.abs(filtered_df[shifts_label].to_numpy()) # take absolute value of shifts as weights
+    
+    # Regrid and scale
+    if regridder:
+        coords, weights = regridder.regrid(coords, weights)
+        coords = geodetic_to_cartesian(time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2])
+    if scaler:
+        coords = scaler.fit_transform(coords)
+        
     # Save method params before clustering (because they might change during clustering)
     method_params = {
         f'method_{param}': str(value) 
@@ -166,7 +212,17 @@ def compute_clusters(
         if value is not None
     }
 
-    # 2. Perform clustering ==================================================
+    # Save regridder params
+    regridder_params = {}
+    if(regridder):
+        regridder_params["regridder_name"] = regridder.__class__.__name__
+        regridder_params.update({
+            f'regridder_{param}': str(value) 
+            for param, value in dict(sorted(vars(regridder).items())).items() 
+            if value is not None and type(value) in [int, float, str] # regridder has other params (such as coords and df) which we don't want to save
+        })
+
+    # Perform clustering
     logger.info(f'Applying clustering method {method}')
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -184,12 +240,19 @@ def compute_clusters(
 >>>>>>> bc5ef07 (Fix: cluster_labels should be np.array)
 =======
     cluster_labels = np.array(method.fit_predict(coords, weights))
+<<<<<<< HEAD
     
     # 3. Postprocessing =====================================================
 >>>>>>> 7aa71ab (Minor clustering refactoring)
+=======
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
-    # Rename cluster labels to reflect size
+    # Sort cluster labels by size
     cluster_labels = sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
+
+    # Regrid back
+    if regridder:
+        cluster_labels = regridder.regrid_clusters_back(cluster_labels) # regridder holds the original coordinates    
 
     # Convert back to xarray DataArray
     df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
@@ -219,28 +282,27 @@ def compute_clusters(
     df_dims.loc[filtered_df.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
 >>>>>>> 7aa71ab (Minor clustering refactoring)
     clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
-    clusters = clusters[output_label]                       # select only cluster labels
+    clusters = clusters[output_label]    
+    
+    # Transpose if dimensions don't match
+    if clusters.sizes.keys() != data[dims].sizes.keys():
+        print("transposing")
+        clusters = clusters.transpose(*data[dims].sizes.keys())
 
-    # 6. Save details as attributes
+    # Save details as attributes
     clusters.attrs.update({
         f'cluster_ids': np.unique(cluster_labels).astype(int),
         f"var_filter_func": inspect.getsource(var_filter_func) if var_filter_func else "None",
         f"shifts_filter_func": inspect.getsource(shifts_filter_func) if shifts_filter_func else "None",
         f"scaler": scaler,
         f'method_name': method.__class__.__name__,
+        'toad_version': __version__,
+        **method_params,
+        **regridder_params,
     })
-    
-    # Add saved params as attributes
-    clusters.attrs.update(method_params)
 
-    # add git version
-    clusters.attrs['toad_version'] = __version__
-
-    # 7. Merge the cluster labels back into the original data
-    if merge_input:
-        return xr.merge([data, clusters], combine_attrs="override") # xr.dataset
-    else:
-        return clusters # xr.dataarray
+    # Merge the cluster labels back into the original data
+    return xr.merge([data, clusters], combine_attrs="override") if merge_input else clusters
 
 
 def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
@@ -250,3 +312,25 @@ def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
     label_mapping = dict(zip(unique_labels[np.argsort(counts)[::-1]], range(len(unique_labels))))
     return np.array([label_mapping.get(label, -1) for label in cluster_labels])
 
+
+def geodetic_to_cartesian(time, lat, lon, height=0) -> np.ndarray:
+    """Convert geodetic coordinates (time, lat, lon) to Cartesian coordinates (time, x, y, z)"""
+    
+    # WGS84 parameters
+    a = 6378.137  # semi-major axis (km)
+    b = 6356.752  # semi-minor axis (km)
+    e2 = 1 - (b**2 / a**2)  # eccentricity squared
+    
+    # Convert latitude and longitude to radians
+    lat_rad = np.deg2rad(lat)
+    lon_rad = np.deg2rad(lon)
+    
+    # Radius of curvature in the prime vertical
+    N = a / np.sqrt(1 - e2 * np.sin(lat_rad)**2)
+    
+    # Cartesian coordinates
+    x = (N + height) * np.cos(lat_rad) * np.cos(lon_rad)
+    y = (N + height) * np.cos(lat_rad) * np.sin(lon_rad)
+    z = (b**2 / a**2 * N + height) * np.sin(lat_rad)
+    
+    return np.column_stack((time, x, y, z)) # Shape: (n, 4)

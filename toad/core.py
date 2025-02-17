@@ -4,13 +4,14 @@ import numpy as np
 from typing import List, Union, Callable, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
 
 from toad import shifts_detection, clustering, postprocessing, visualisation, preprocessing
-from toad.utils import infer_dims
 from toad._version import __version__
 <<<<<<< HEAD
 <<<<<<< HEAD
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 >>>>>>> 01b5596 (Moved _version.py inside toad package)
@@ -21,6 +22,9 @@ from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
 =======
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
 >>>>>>> 7aa71ab (Minor clustering refactoring)
+=======
+from toad.regridding.base import BaseRegridder
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
 class TOAD:
     """
@@ -63,7 +67,9 @@ class TOAD:
         if 'latitude' in self.data.dims:
             self.data = self.data.rename({'latitude': 'lat'})
             logging.info("Renamed latitude to lat")
-        
+
+        # TODO: check that self.space_dims returns two values only, if not, raise eror and tell user to specify space_dims manually (new param in TOAD init)
+
         # Save time dim for later
         self.time_dim = time_dim
 
@@ -260,7 +266,11 @@ class TOAD:
 >>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
 =======
         scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
+<<<<<<< HEAD
 >>>>>>> 7aa71ab (Minor clustering refactoring)
+=======
+        regridder: Optional[BaseRegridder] = None,
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -283,6 +293,8 @@ class TOAD:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+            regridder:
+                The regridding method to use from `toad.clustering.regridding`. When provided, filtered data points are regridded and transformed from lat/lon to x/y/z coordinates for clustering using Euclidean distance. Defaults to None.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:
@@ -324,6 +336,12 @@ class TOAD:
 >>>>>>> c6fc662 (Docstring and type fixes)
             ValueError: If data is invalid or required parameters are missing
 
+<<<<<<< HEAD
+=======
+        >> Notes: 
+            For global datasets, use `toad.regridding.HealPixRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
+            
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
         """
         results = clustering.compute_clusters(
             data=self.data,
@@ -335,6 +353,7 @@ class TOAD:
             time_dim=self.time_dim,
             space_dims=self.space_dims,
             scaler=scaler,
+            regridder=regridder,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
             merge_input=not return_results_directly,

@@ -1,10 +1,11 @@
 import warnings
 import functools
-from typing import Union, Optional, Tuple
+from typing import Union
 import xarray as xr
 <<<<<<< HEAD
 <<<<<<< HEAD
 import numpy as np
+<<<<<<< HEAD
 import os
 import requests
 import zipfile
@@ -14,11 +15,14 @@ import numpy as np
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
 =======
 >>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
+=======
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
 
-def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
+def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     >> Args:
         xr_da:
@@ -26,10 +30,17 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] =
         tdim:
             Optional name of temporal dimension. If provided, all other dims are considered spatial. 
             If not provided, attempts to auto-detect spatial dims based on standard names.
+=======
+    Args:
+        xr_da: Input DataArray or Dataset to get dimensions from
+        tdim: Name of temporal dimension. All other dims are considered spatial.
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
-    >> Returns:
-        List of spatial dimension names as strings
+    Returns:
+        List of spatial dimension names as strings. If standard spatial dims 
+        (x/y, y/x) or (lon/lat, lat/lon) are found, returns only those.
 
+<<<<<<< HEAD
     >> See Also:
         infer_dims:
             For full dimension inference including temporal dimension
@@ -45,9 +56,32 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] =
     See Also:
         infer_dims: For full dimension inference including temporal dimension
 >>>>>>> 7d33054 ([Breaking changes] Refactored timeseries and Clustering + stats)
+=======
+    Raises:
+        ValueError: If provided temporal dim is not in the dimensions
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
     """
-    return infer_dims(xr_da, tdim)[1]
+    if tdim not in xr_da.dims:
+        raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions!")
+
+    # Check for standard spatial dim pairs
+    for pair in [('x', 'y'), ('lon', 'lat')]:
+        if all(dim in xr_da.dims for dim in pair):
+            return sorted(list(pair), key=lambda x: list(xr_da.dims).index(x)) # keep original order from xr_da
+
+    # Fallback: use all non-temporal dims
+    sdims = list(xr_da.dims)
+    sdims.remove(tdim)
+    return [str(dim) for dim in sdims if 'bnds' not in str(dim)]
+
+
+def reorder_space_dims(space_dims: list[str]) -> list[str]:
+    """Reorder space dimensions to ensure lat comes before lon if both present.
+    
+    Args:
+        space_dims: List of spatial dimension names
         
+<<<<<<< HEAD
         
 <<<<<<< HEAD
 =======
@@ -60,9 +94,18 @@ def infer_dims(
     xr_da: Union[xr.DataArray, xr.Dataset], 
     tdim: Optional[str] = None
 ) -> Tuple[str, list[str]]:
+=======
+    Returns:
+        Reordered list with lat before lon if both present, otherwise original list
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
     """
-    Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
+    if all(dim in space_dims for dim in ['lat', 'lon']):
+        return [dim for dim in ['lat', 'lon'] if dim in space_dims] + [
+            dim for dim in space_dims if dim not in ['lat', 'lon']
+        ]
+    return space_dims
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     >> Args:
         xr_da:
@@ -139,6 +182,8 @@ def infer_dims(
                     return tdim, sdims
 
         raise ValueError("Unable to infer temporal and spatial dimensions. Please provide `tdim` explicitly.")
+=======
+>>>>>>> ffe41d0 (Added optional regridding for clustering)
 
 
 def deprecated(message=None):
@@ -178,6 +223,7 @@ def contains_value(x, value):
 >>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
     return value in x
 
+        
 # Include this once we have a published release to fetch test data
 # def download_test_data():
 #     """Download test data sets 

@@ -1,90 +1,53 @@
 import warnings
 import functools
-from typing import Union, Optional, Tuple
+from typing import Union
 import xarray as xr
 import numpy as np
-import os
-import requests
-import zipfile
 
 
-def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: Optional[str] = None) -> list[str]:
+def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.
 
-    >> Args:
-        xr_da:
-            Input DataArray or Dataset to get dimensions from
-        tdim:
-            Optional name of temporal dimension. If provided, all other dims are considered spatial. 
-            If not provided, attempts to auto-detect spatial dims based on standard names.
+    Args:
+        xr_da: Input DataArray or Dataset to get dimensions from
+        tdim: Name of temporal dimension. All other dims are considered spatial.
 
-    >> Returns:
-        List of spatial dimension names as strings
+    Returns:
+        List of spatial dimension names as strings. If standard spatial dims 
+        (x/y, y/x) or (lon/lat, lat/lon) are found, returns only those.
 
-    >> See Also:
-        infer_dims:
-            For full dimension inference including temporal dimension
+    Raises:
+        ValueError: If provided temporal dim is not in the dimensions
     """
-    return infer_dims(xr_da, tdim)[1]
+    if tdim not in xr_da.dims:
+        raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions!")
+
+    # Check for standard spatial dim pairs
+    for pair in [('x', 'y'), ('lon', 'lat')]:
+        if all(dim in xr_da.dims for dim in pair):
+            return sorted(list(pair), key=lambda x: list(xr_da.dims).index(x)) # keep original order from xr_da
+
+    # Fallback: use all non-temporal dims
+    sdims = list(xr_da.dims)
+    sdims.remove(tdim)
+    return [str(dim) for dim in sdims if 'bnds' not in str(dim)]
+
+
+def reorder_space_dims(space_dims: list[str]) -> list[str]:
+    """Reorder space dimensions to ensure lat comes before lon if both present.
+    
+    Args:
+        space_dims: List of spatial dimension names
         
-        
-def infer_dims(
-    xr_da: Union[xr.DataArray, xr.Dataset], 
-    tdim: Optional[str] = None
-) -> Tuple[str, list[str]]:
+    Returns:
+        Reordered list with lat before lon if both present, otherwise original list
     """
-    Infers the temporal and spatial dimensions from an xarray DataArray or Dataset.
+    if all(dim in space_dims for dim in ['lat', 'lon']):
+        return [dim for dim in ['lat', 'lon'] if dim in space_dims] + [
+            dim for dim in space_dims if dim not in ['lat', 'lon']
+        ]
+    return space_dims
 
-    >> Args:
-        xr_da:
-            The input DataArray or Dataset from which to infer dimensions.
-        >> tdim: (Optional)
-            The name of the temporal dimension. If provided, it will be used to 
-            distinguish between temporal and spatial dimensions. If not provided, 
-            the function will attempt to auto-detect the temporal dimension based 
-            on standard spatial dimension names.
-
-    >> Returns:
-        - A tuple containing the time dimension as a string and a list of spatial dimensions as strings.
-
-    >> Raises:
-        ValueError:
-            If the provided temporal dimension is not in the dimensions of the dataset.
-        ValueError:
-            If unable to infer temporal and spatial dimensions.
-
-    >> Notes:
-        - If `tdim` is provided, the function will use it to identify the temporal 
-          dimension and consider all other dimensions as spatial.
-        - If `tdim` is not provided, the function will attempt to auto-detect the 
-          temporal dimension by looking for standard spatial dimension pairs such as 
-          ('x', 'y'), ('lat', 'lon'), or ('latitude', 'longitude').
-        
-    >> Examples:
-        >>> infer_dims(dataset)
-        ('time', ['x', 'y'])
-    """
-
-    # Spatial dims are all non-temporal dims
-    if tdim:
-        sdims = list(xr_da.dims)
-        if tdim not in xr_da.dims:
-            raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions of the dataset!")
-        sdims.remove(tdim)
-        sdims = [str(dim) for dim in sdims]
-        sdims = sorted(sdims)
-        return tdim, sdims
-    else:
-        # Auto-detect standard spatial dimension combinations
-        for pair in [('x', 'y'), ('lat', 'lon'), ('latitude', 'longitude')]:
-            if all(dim in xr_da.dims for dim in pair):
-                sdims = list(pair)
-                remaining_dims = [dim for dim in xr_da.dims if dim not in sdims]
-                if len(remaining_dims) == 1:  # Ensure a single temporal dimension is left
-                    tdim = str(remaining_dims[0])  # Explicitly convert to str
-                    return tdim, sdims
-
-        raise ValueError("Unable to infer temporal and spatial dimensions. Please provide `tdim` explicitly.")
 
 
 def deprecated(message=None):
@@ -120,6 +83,7 @@ def contains_value(x, value):
         return x == value
     return value in x
 
+        
 # Include this once we have a published release to fetch test data
 # def download_test_data():
 #     """Download test data sets 

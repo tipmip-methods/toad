@@ -4,12 +4,12 @@ import numpy as np
 from typing import List, Union, Callable, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
 
 from toad import shifts_detection, clustering, postprocessing, visualisation, preprocessing
-from toad.utils import infer_dims
 from toad._version import __version__
 from toad.utils import get_space_dims, is_equal_to, contains_value, deprecated
-
+from toad.regridding.base import BaseRegridder
 
 class TOAD:
     """
@@ -39,15 +39,25 @@ class TOAD:
         elif isinstance(data, (xr.Dataset, xr.DataArray)):
             self.data = data  # Original data
         
+        # rename longitude and latitude to lon and lat
+        if 'longitude' in self.data.dims:
+            self.data = self.data.rename({'longitude': 'lon'})
+            logging.info("Renamed longitude to lon")
+        if 'latitude' in self.data.dims:
+            self.data = self.data.rename({'latitude': 'lat'})
+            logging.info("Renamed latitude to lat")
+
+        # TODO: check that self.space_dims returns two values only, if not, raise eror and tell user to specify space_dims manually (new param in TOAD init)
+
+        # Save time dim for later
         self.time_dim = time_dim
-        self.space_dims = get_space_dims(self.data, self.time_dim)
 
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level) 
 
-
+    
     # # ======================================================================
     # #               Module functions
     # # ======================================================================
@@ -175,10 +185,11 @@ class TOAD:
         self,
         var : str,
         method : ClusterMixin,
-        shifts_filter_func: Callable[[float], bool],
-        var_filter_func: Optional[Callable[[float], bool]] = None,
+        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
+        var_filter_func: Callable = lambda _: True,     # empty filtering function as default
         shifts_label: Optional[str] = None,
-        scaler: Optional[str] = 'StandardScaler',
+        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
+        regridder: Optional[BaseRegridder] = None,
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -192,13 +203,15 @@ class TOAD:
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
             shifts_filter_func:
-                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
+                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
             var_filter_func:
-                A callable used to filter the primary variable before clustering. Defaults to None.
+                A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
             shifts_label:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
-                The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
+                The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+            regridder:
+                The regridding method to use from `toad.clustering.regridding`. When provided, filtered data points are regridded and transformed from lat/lon to x/y/z coordinates for clustering using Euclidean distance. Defaults to None.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:
@@ -214,6 +227,10 @@ class TOAD:
 
         >> Raises:
             ValueError: If data is invalid or required parameters are missing
+
+        >> Notes: 
+            For global datasets, use `toad.regridding.HealPixRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
+            
         """
         results = clustering.compute_clusters(
             data=self.data,
@@ -222,7 +239,10 @@ class TOAD:
             shifts_filter_func=shifts_filter_func,
             var_filter_func=var_filter_func,
             shifts_label=shifts_label,
+            time_dim=self.time_dim,
+            space_dims=self.space_dims,
             scaler=scaler,
+            regridder=regridder,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
             merge_input=not return_results_directly,
@@ -239,6 +259,11 @@ class TOAD:
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
+
+    @property
+    def space_dims(self):
+        return get_space_dims(self.data, self.time_dim)
+        
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
         Get shifts xr.DataArray for the specified variable.
@@ -694,6 +719,7 @@ class TOAD:
         if normalize:
             if normalize == "first":
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
+                # todo: this crashes
                 scalar = filtered.isel({self.time_dim: 0}) if len(filtered[self.time_dim]) > 0 else np.nan # get first non-zero, non-nan timestep if exists
             elif normalize == "max":
                 scalar = float(data.max())

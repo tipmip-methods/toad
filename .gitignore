@@ -10,6 +10,9 @@ doc/build.log
 doc/source/tutorials
 *venv*
 
+# Coverage reports from pytest-cov 
+.coverage
+
 # Include this once we have a published release to fetch test data
 # tutorials/test_data
 

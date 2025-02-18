@@ -33,7 +33,7 @@ classifiers = [
 ]
 
 dependencies = [
-        "numpy",
+        "numpy", # set to =2.0.0 when we add numba
         "matplotlib",
         "scipy",
         "scikit-learn",
@@ -41,6 +41,8 @@ dependencies = [
         "netcdf4", # pipreqs didn't find this, but needed for xarray
         "cartopy",
         "requests",
+        "healpy",
+        "pandas",
 ]
 
 [tool.setuptools]

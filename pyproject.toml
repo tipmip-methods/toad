@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["toad"]
+packages = {find = {}}
 
 [tool.setuptools.dynamic]
 version = {attr = "toad._version.__version__"}

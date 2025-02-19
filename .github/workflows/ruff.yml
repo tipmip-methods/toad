@@ -27,13 +27,15 @@ jobs:
 
       # 3. Commits & pushes changes automatically (if any fixes were made)
       - name: Commit & push fixes (if any)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .
           git diff --quiet && git diff --staged --quiet || git commit -m "Apply Ruff auto-fixes"
-          git push
-        continue-on-error: true  # Prevents failure if no changes were made
+          git push origin HEAD:${GITHUB_REF#refs/heads/}
+        continue-on-error: true # Prevents failure if no changes were made
 
       # 4. Fails the workflow if any issues remain (ensuring all problems are fixed)
       - name: Run Ruff and fail if issues remain

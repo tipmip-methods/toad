@@ -1,6 +1,6 @@
 """asdetect method for shifts detection.
 
-Contains the asdetect algorithm with associated helper functions. 
+Contains the asdetect algorithm with associated helper functions.
 
 Crated: January 22, ? (Sina)
 Refactored: Nov, 2024 (Jakob)
@@ -28,14 +28,13 @@ class ASDETECT(ShiftsMethod):
 
     Args:
         lmin: (Optional) The minimum segment length for detection. Defaults to 5.
-        lmax: (Optional) The maximum segment length for detection. If not 
+        lmax: (Optional) The maximum segment length for detection. If not
             specified, it defaults to one-third of the size of the time dimension.
     """
 
-    def __init__(self, lmin = 5, lmax = None):
+    def __init__(self, lmin=5, lmax=None):
         self.lmin = lmin
         self.lmax = lmax
-
 
     def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
         """Compute the detection time series for each grid cell in the 3D data array.
@@ -45,7 +44,7 @@ class ASDETECT(ShiftsMethod):
             - time_dim: Name of the time dimension in `dataarray`.
 
         Returns:
-            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents 
+            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents
             the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
                 - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
                 - `-1` indicates that all tested segment lengths detected a significant negative gradient.
@@ -57,24 +56,19 @@ class ASDETECT(ShiftsMethod):
             construct_detection_ts,
             dataarray,
             kwargs=dict(
-                    times_1d=dataarray[time_dim].values,
-                    lmin=self.lmin, lmax=self.lmax
-                ),
+                times_1d=dataarray[time_dim].values, lmin=self.lmin, lmax=self.lmax
+            ),
             input_core_dims=[[time_dim]],
             output_core_dims=[[time_dim]],
-            vectorize=True
+            vectorize=True,
         ).transpose(*dataarray.dims)
 
         return shifts
 
 
 # 1D time series analysis of abrupt shifts =====================================
-def centered_segmentation(
-        l_tot: int, 
-        l_seg: int, 
-        verbose : bool = False
-    ) -> np.ndarray:
-    """ Provide set of indices to divide a range into segments of equal length.
+def centered_segmentation(l_tot: int, l_seg: int, verbose: bool = False) -> np.ndarray:
+    """Provide set of indices to divide a range into segments of equal length.
 
     The range of l_tot is divided into segments of equal length l_seg,
     with the remainder of the division being equally truncated at the
@@ -94,52 +88,59 @@ def centered_segmentation(
     """
 
     # number of segments
-    n_seg = int(l_tot/l_seg)
+    n_seg = int(l_tot / l_seg)
     # uncovered points
-    rest = l_tot-n_seg*l_seg
-    # first index of first segment 
-    idx0 = int(rest/2)
+    rest = l_tot - n_seg * l_seg
+    # first index of first segment
+    idx0 = int(rest / 2)
     # first index of each segment
-    seg_idces = idx0+l_seg*np.arange(n_seg+1)
+    seg_idces = idx0 + l_seg * np.arange(n_seg + 1)
 
     # For checking correct indexing: Print the segmentation indices in the form
     # | a-b | where a/b = first/last index of the segment. (x) denotes the
     # number of ommitted indices at the beginning and the end of the time
     # series, respectively
     if verbose:
-        # idx0 points are omitted in the beginning 
+        # idx0 points are omitted in the beginning
         if idx0 == 0:
             segments = " (0) |"
         elif idx0 == 1:
             segments = " (1) 0 |"
         else:
-            segments = " ({}) 0-{} |".format(idx0, idx0-1)
-        
+            segments = " ({}) 0-{} |".format(idx0, idx0 - 1)
+
         # nl segments of size l, starting at idx0
         for idx in seg_idces[:-1]:
-            segments += " {}-{} |".format(idx, idx+l_seg-1)
+            segments += " {}-{} |".format(idx, idx + l_seg - 1)
 
         # (rest-idx0) points are omitted in the end
-        if idx0 + n_seg*l_seg == n_seg:
+        if idx0 + n_seg * l_seg == n_seg:
             segments += " (0)"
-        elif idx0 +n_seg*l_seg == n_seg-1:
-            segments += " {} (1)".format(n_seg-1)
+        elif idx0 + n_seg * l_seg == n_seg - 1:
+            segments += " {} (1)".format(n_seg - 1)
         else:
-            segments += " {}-{} ({})".format(idx0+n_seg*l_seg,l_tot-1,rest-idx0)
+            segments += " {}-{} ({})".format(
+                idx0 + n_seg * l_seg, l_tot - 1, rest - idx0
+            )
 
-        print("\nl_tot={}, l_seg={}: n_seg={}, rest={}, idx0={}\n".format(
-            l_tot, l_seg, n_seg, rest, idx0
-            )+"   "+segments)
+        print(
+            "\nl_tot={}, l_seg={}: n_seg={}, rest={}, idx0={}\n".format(
+                l_tot, l_seg, n_seg, rest, idx0
+            )
+            + "   "
+            + segments
+        )
 
     return seg_idces
 
+
 def construct_detection_ts(
-        values_1d : np.ndarray, 
-        times_1d: np.ndarray,
-        lmin : int = 5, 
-        lmax : Optional[int] = None
-    ) -> np.ndarray:
-    """ Construct a detection time series (asdetect algorithm).
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    lmin: int = 5,
+    lmax: Optional[int] = None,
+) -> np.ndarray:
+    """Construct a detection time series (asdetect algorithm).
 
     Following [Boulton+Lenton2019]_, the time series (ts) is divided into
     segments of length l, for each of which the gradient is computed. Segments
@@ -166,42 +167,43 @@ def construct_detection_ts(
     detection_ts = np.zeros_like(values_1d)
 
     if np.isnan(values_1d).any():
-        #print("you tried evaluating a ts with nan entries")
+        # print("you tried evaluating a ts with nan entries")
         return detection_ts
 
     # default to have at least three gradients (needed for grad distribution)
     if lmax is None:
-        lmax = int(n_tot/3)
+        lmax = int(n_tot / 3)
 
     # segmentation values [lmin, lmin+1, ..., lmax-1, lmax]
-    segment_lengths = np.arange(lmin, lmax+1, 1)
+    segment_lengths = np.arange(lmin, lmax + 1, 1)
 
     # construct a detection time series for each segmentation choice l
-    for l in segment_lengths:
-
+    for length in segment_lengths:
         # center the segments around the middle of the ts and drop the outer
         # points to get the segmented time series and the first index of each
         # segment, respectively
-        seg_idces = centered_segmentation(n_tot, l)
+        seg_idces = centered_segmentation(n_tot, l_seg=int(length))
         arr_segs = np.split(values_1d, seg_idces)[1:-1]
         t_segs = np.split(times_1d, seg_idces)[1:-1]
 
         # calculate gradient for each segment and median absolute deviation
         # of the resulting distribution
-        gradients = [np.polyfit(tseg,aseg,1)[0] for (tseg,aseg) in zip(t_segs, arr_segs)]
+        gradients = [
+            np.polyfit(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
+        ]
         grad_MAD = stats.median_abs_deviation(gradients)
         grad_MEAN = np.median(gradients)
 
-        # for each segment, check whether its gradient is larger than the 
+        # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
         # i1/i2 are the first/last index of a segment
         for i, gradient in enumerate(gradients):
-            i1,i2 = seg_idces[i], seg_idces[i+1]-1
-            if gradient - grad_MEAN > 3*grad_MAD:
+            i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+            if gradient - grad_MEAN > 3 * grad_MAD:
                 detection_ts[i1:i2] += 1
-            elif gradient - grad_MEAN < -3*grad_MAD:
+            elif gradient - grad_MEAN < -3 * grad_MAD:
                 detection_ts[i1:i2] += -1
-    
+
     # normalize the detection time series to one
     detection_ts /= len(segment_lengths)
 
@@ -223,8 +225,8 @@ def construct_detection_ts(
 # ):
 
 #     # The following re-evaluation assumes that as_<var> is a detection time
-#     # series, which is the case if this variable was generated with 
-#     # method =='asdetect' and dts_eval == 'all'. 
+#     # series, which is the case if this variable was generated with
+#     # method =='asdetect' and dts_eval == 'all'.
 #     assert data_with_dts.get(f'as_{var}') is not None, \
 #             'No detection time series to re-evaluate: ' + \
 #             f'No abrupt shift data for variable {var}!'
@@ -235,7 +237,7 @@ def construct_detection_ts(
 
 # # def detect(**methodkwargs, redo_asd = True):
 # #     pass
-#     # check xarray 
+#     # check xarray
 #     # map_dts_to_xarray
 #     # evaluate_dts
 #     # return xr dataset with vars
@@ -245,7 +247,6 @@ def construct_detection_ts(
 #     # and attribute
 #     # - types = dict{A:..., B:...}
 #     # - git commit?s
-
 
 
 # # evaluation of the detection time series =====================================
@@ -274,7 +275,7 @@ def construct_detection_ts(
 #             latitude=dts.latitude)
 #         )
 
-#     # shift at first time stamp is due to a nan dts at that location. 
+#     # shift at first time stamp is due to a nan dts at that location.
 #     # set those to nan. also drop the now useless time label
 #     dmax = dmax.where(dmax.maxtime>dts.time[0]).drop_vars("time")
 
@@ -293,4 +294,4 @@ def construct_detection_ts(
 #     )
 
 #     res1d = construct_detection_ts(arr1d, times)
-#     resxd = map_dts_to_xarray(darr3d, time_dim='t')    
+#     resxd = map_dts_to_xarray(darr3d, time_dim='t')

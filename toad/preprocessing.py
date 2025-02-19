@@ -1,5 +1,3 @@
-
-
 class Preprocess:
     """
     Preprocessing methods for TOAD objects.

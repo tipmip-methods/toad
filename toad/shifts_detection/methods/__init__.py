@@ -1,4 +1,4 @@
-""" 
+"""
 Shifts detection methods available in TOAD.
 
 Currently implemented methods:

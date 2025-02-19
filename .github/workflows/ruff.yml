@@ -1,0 +1,40 @@
+name: Ruff Linter
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      # 1. Formats code → ruff format .
+      - name: Auto-fix formatting issues
+        run: ruff format .
+
+      # 2. Fixes safe lint issues → ruff check --fix
+      - name: Auto-fix lint issues
+        run: ruff check --fix
+
+      # 3. Commits & pushes changes automatically (if any fixes were made)
+      - name: Commit & push fixes (if any)
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .
+          git diff --quiet && git diff --staged --quiet || git commit -m "Apply Ruff auto-fixes"
+          git push
+        continue-on-error: true  # Prevents failure if no changes were made
+
+      # 4. Fails the workflow if any issues remain (ensuring all problems are fixed)
+      - name: Run Ruff and fail if issues remain
+        run: ruff check

@@ -2,6 +2,7 @@ from toad.postprocessing.cluster_stats.cluster_time_stats import ClusterTimeStat
 from toad.postprocessing.cluster_stats.cluster_space_stats import ClusterSpaceStats
 from toad.postprocessing.cluster_stats.cluster_general_stats import ClusterGeneralStats
 
+
 class ClusterStats:
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -32,6 +33,7 @@ class ClusterStats:
     def general(self):
         """Access general statistics for clusters."""
         return ClusterGeneralStats(self.td, self.var)
+<<<<<<< HEAD
 =======
 =======
     """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
@@ -68,6 +70,8 @@ class ClusterStats:
         return ClusterGeneralStats(self.td, self.var)
 >>>>>>> ba8e9d6 (Clean up docstrings)
     
+=======
+>>>>>>> 6ffac35 (Formatted codebase with Ruff)
 
 
 """

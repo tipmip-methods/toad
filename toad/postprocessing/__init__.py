@@ -3,6 +3,7 @@ from toad.postprocessing.cluster_stats import ClusterStats
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 __all__ = ["Aggregation", "ClusterStats"]
 =======
 __all__ = ["Stats", "Aggregation", "ClusterStats"]
@@ -10,3 +11,6 @@ __all__ = ["Stats", "Aggregation", "ClusterStats"]
 =======
 __all__ = ["Aggregation", "ClusterStats"]
 >>>>>>> ba8e9d6 (Clean up docstrings)
+=======
+__all__ = ["Aggregation", "ClusterStats"]
+>>>>>>> 6ffac35 (Formatted codebase with Ruff)

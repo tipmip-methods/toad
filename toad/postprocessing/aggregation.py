@@ -1,13 +1,19 @@
 # TODO: write aggregation functions here: Combine clusters across different variables, datasets, etc
 
+
 class Aggregation:
     """
     Aggregation methods for TOAD objects.
+<<<<<<< HEAD
     
 <<<<<<< HEAD
 <<<<<<< HEAD
+=======
+
+>>>>>>> 6ffac35 (Formatted codebase with Ruff)
     >> Note: TO BE IMPLEMENTED
     """
+
     # TODO not sure how much of this should work through the toad class directly as we will want to combine many different datasets
 =======
     Note: Docstrings here are short as this class is under heavy development

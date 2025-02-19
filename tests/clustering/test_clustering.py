@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from toad import TOAD
-from sklearn.cluster import HDBSCAN # type: ignore
+from sklearn.cluster import HDBSCAN  # type: ignore
 from toad.regridding import HealPixRegridder
 
 
@@ -23,7 +23,7 @@ def test_params():
         "min_cluster_size": 25,
         "shifts_threshold": 0.5,
         "expected_results": {-1: 330245, 1: 2845, 0: 914, 2: 286, 3: 78},
-        "expected_nside": 16
+        "expected_nside": 16,
     }
 
 
@@ -45,7 +45,7 @@ def test_healpix_hdbscan(test_params, toad_instance):
         test_params (dict): Parameters for the test.
         toad_instance (TOAD): Instance of TOAD containing the data.
 
-    Note: 
+    Note:
         This warning caused by the HDBSCAN library may appear: "RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility".
         This is due to a known issue with the HDBSCAN library and numpy. https://github.com/scikit-learn-contrib/hdbscan/issues/457#issuecomment-1004296870
     """
@@ -53,14 +53,12 @@ def test_healpix_hdbscan(test_params, toad_instance):
     # Setup
     td = toad_instance
     td.data = td.data.coarsen(
-        lat=test_params["lat"], 
-        lon=test_params["lon"], 
-        boundary='trim'
+        lat=test_params["lat"], lon=test_params["lon"], boundary="trim"
     ).mean()
 
     # Test clustering
     regridder = HealPixRegridder()
-    
+
     td.compute_clusters(
         "tas",
         shifts_filter_func=lambda x: np.abs(x) > test_params["shifts_threshold"],
@@ -70,10 +68,12 @@ def test_healpix_hdbscan(test_params, toad_instance):
     )
 
     # Verify results
-    actual_counts = td.get_cluster_counts('tas')
-    
-    assert actual_counts == test_params["expected_results"], \
+    actual_counts = td.get_cluster_counts("tas")
+
+    assert actual_counts == test_params["expected_results"], (
         f"Expected {test_params['expected_results']}, got {actual_counts}"
-    
-    assert regridder.nside == test_params["expected_nside"], \
+    )
+
+    assert regridder.nside == test_params["expected_nside"], (
         f"Expected nside {test_params['expected_nside']}, got {regridder.nside}"
+    )

@@ -2,12 +2,17 @@ name: Ruff Linter
 
 on: [push, pull_request]
 
+permissions:
+  contents: write # ✅ Grants write access so the workflow can push changes
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # ✅ Ensures push access
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -35,7 +40,6 @@ jobs:
           git add .
           git diff --quiet && git diff --staged --quiet || git commit -m "Apply Ruff auto-fixes"
           git push origin HEAD:${GITHUB_REF#refs/heads/}
-        continue-on-error: true # Prevents failure if no changes were made
 
       # 4. Fails the workflow if any issues remain (ensuring all problems are fixed)
       - name: Run Ruff and fail if issues remain

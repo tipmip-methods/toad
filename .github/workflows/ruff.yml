@@ -1,6 +1,6 @@
 name: Ruff Linter
 
-on: [push, pull_request]
+on: pull_request
 
 permissions:
   contents: write # ✅ Grants write access so the workflow can push changes

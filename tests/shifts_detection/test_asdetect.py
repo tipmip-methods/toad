@@ -3,10 +3,11 @@ import numpy as np
 from toad import TOAD
 from toad.shifts_detection.methods import ASDETECT
 
+
 @pytest.fixture
 def test_params():
     """Fixture providing parameters for the ASDETECT test.
-    
+
     Returns:
         dict: A dictionary containing:
             - lat (int): Latitude coarsening factor.
@@ -19,7 +20,7 @@ def test_params():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.0038361712, 
+        "expected_mean": 0.0038361712,
         "expected_std": 0.19410655,
     }
 
@@ -31,7 +32,7 @@ def toad_instance():
 
 def test_asdetect(test_params, toad_instance):
     """Test the ASDETECT shift detection method.
-    
+
     This test verifies the computation of shifts using the ASDETECT method
     after coarsening the data based on specified latitude, longitude, and
     time parameters. It checks that the computed mean and standard deviation
@@ -44,17 +45,17 @@ def test_asdetect(test_params, toad_instance):
     # Setup
     td = toad_instance
     td.data = td.data.coarsen(
-        lat=test_params["lat"], 
-        lon=test_params["lon"], 
+        lat=test_params["lat"],
+        lon=test_params["lon"],
         time=test_params["time"],
-        boundary='trim'
+        boundary="trim",
     ).mean()
 
     td.compute_shifts("tas", ASDETECT(), overwrite=True)
-    
+
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values
-    
+
     np.testing.assert_allclose(mean, test_params["expected_mean"], rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-5, atol=1e-8)

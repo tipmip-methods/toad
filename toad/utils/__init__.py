@@ -13,7 +13,7 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[st
         tdim: Name of temporal dimension. All other dims are considered spatial.
 
     Returns:
-        List of spatial dimension names as strings. If standard spatial dims 
+        List of spatial dimension names as strings. If standard spatial dims
         (x/y, y/x) or (lon/lat, lat/lon) are found, returns only those.
 
     Raises:
@@ -23,51 +23,55 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[st
         raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions!")
 
     # Check for standard spatial dim pairs
-    for pair in [('x', 'y'), ('lon', 'lat')]:
+    for pair in [("x", "y"), ("lon", "lat")]:
         if all(dim in xr_da.dims for dim in pair):
-            return sorted(list(pair), key=lambda x: list(xr_da.dims).index(x)) # keep original order from xr_da
+            return sorted(
+                list(pair), key=lambda x: list(xr_da.dims).index(x)
+            )  # keep original order from xr_da
 
     # Fallback: use all non-temporal dims
     sdims = list(xr_da.dims)
     sdims.remove(tdim)
-    return [str(dim) for dim in sdims if 'bnds' not in str(dim)]
+    return [str(dim) for dim in sdims if "bnds" not in str(dim)]
 
 
 def reorder_space_dims(space_dims: list[str]) -> list[str]:
     """Reorder space dimensions to ensure lat comes before lon if both present.
-    
+
     Args:
         space_dims: List of spatial dimension names
-        
+
     Returns:
         Reordered list with lat before lon if both present, otherwise original list
     """
-    if all(dim in space_dims for dim in ['lat', 'lon']):
-        return [dim for dim in ['lat', 'lon'] if dim in space_dims] + [
-            dim for dim in space_dims if dim not in ['lat', 'lon']
+    if all(dim in space_dims for dim in ["lat", "lon"]):
+        return [dim for dim in ["lat", "lon"] if dim in space_dims] + [
+            dim for dim in space_dims if dim not in ["lat", "lon"]
         ]
     return space_dims
 
 
-
 def deprecated(message=None):
-    """ Mark functions as deprecated with @deprecated decorator"""
+    """Mark functions as deprecated with @deprecated decorator"""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            warn_message = message if message else f"{func.__name__} is deprecated and will be removed in a future version."
-            warnings.warn(
-                warn_message,
-                category=DeprecationWarning,
-                stacklevel=2
+            warn_message = (
+                message
+                if message
+                else f"{func.__name__} is deprecated and will be removed in a future version."
             )
+            warnings.warn(warn_message, category=DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 def all_functions(obj) -> list[str]:
-    return [x for x in dir(obj) if callable(getattr(obj, x)) and not x.startswith('__')]
+    return [x for x in dir(obj) if callable(getattr(obj, x)) and not x.startswith("__")]
 
 
 def is_equal_to(x, value):
@@ -83,10 +87,10 @@ def contains_value(x, value):
         return x == value
     return value in x
 
-        
+
 # Include this once we have a published release to fetch test data
 # def download_test_data():
-#     """Download test data sets 
+#     """Download test data sets
 
 #     """
 #     url = "https://github.com/tipmip-methods/toad/releases/download/[TAG_NAME]/test_data.zip"
@@ -120,4 +124,3 @@ def contains_value(x, value):
 #         print(f"Test data extracted to: {extract_path}")
 #     else:
 #         print(f"test_data directory already exists at {extract_path}")
-

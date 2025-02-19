@@ -1,4 +1,4 @@
-""" 
+"""
 Regridding methods available in TOAD.
 
 Currently implemented methods:

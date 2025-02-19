@@ -10,5 +10,3 @@ from toad.visualisation import TOADPlotter
 __all__ = ["TOAD", "compute_shifts", "compute_clusters", "TOADPlotter"]
 
 # ================================================
-
-

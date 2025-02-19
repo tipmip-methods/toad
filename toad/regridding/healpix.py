@@ -1,13 +1,9 @@
-import xarray as xr
 import numpy as np
 import healpy as hp
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import Any, Union, Optional
+from typing import Optional
 
-import numpy as np
-import pandas as pd
-import healpy as hp
 from matplotlib.colors import ListedColormap
 import cartopy.crs as ccrs
 
@@ -157,8 +153,10 @@ class HealPixRegridder(BaseRegridder):
         if self.df_healpix is None:
             raise ValueError("No data available. Run regrid() first")
 
+        df_plot = self.df_healpix[self.df_healpix["cluster"] >= 0]
+
         if cmap is None:
-            N_clusters = len(self.df_healpix['cluster'].unique())
+            N_clusters = len(df_plot['cluster'].unique())
             cmap = (
                 'tab10' if N_clusters <= 10
                 else 'tab20' if N_clusters <= 20
@@ -168,7 +166,7 @@ class HealPixRegridder(BaseRegridder):
         if color is not None:
             cmap = ListedColormap([color])
         
-        sc = ax.scatter(self.df_healpix['lon'], self.df_healpix['lat'], c=self.df_healpix['cluster'], s=s, cmap=cmap, transform=ccrs.PlateCarree())
+        sc = ax.scatter(df_plot['lon'], df_plot['lat'], c=df_plot['cluster'], s=s, cmap=cmap, transform=ccrs.PlateCarree())
         if add_colorbar:
             plt.colorbar(sc, ax=ax, orientation='horizontal', pad=0.05)
         if extent:

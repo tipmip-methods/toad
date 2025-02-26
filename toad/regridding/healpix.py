@@ -24,7 +24,7 @@ class HealPixRegridder(BaseRegridder):
             nside: HEALPix parameter nside, which must be a power of 2. The total number of pixels in the regridded grid (npix) is calculated using the formula: npix = 12 * nside ** 2. If nside is not specified, it will be automatically determined based on the data's resolution.
         """
 
-        self.df_healpix = None
+        self.df_healpix: pd.DataFrame = pd.DataFrame()
 
         # Make sure nside is a power of 2
         if nside is not None and not np.log2(nside).is_integer():
@@ -33,7 +33,6 @@ class HealPixRegridder(BaseRegridder):
 
     def latlon_to_healpix(self, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         """Convert arrays of latitude and longitude to HEALPix pixel indices."""
-        # Use healpy's built-in lonlat conversion instead of manual conversion
         return hp.ang2pix(self.nside, lons, lats, lonlat=True)
 
     def healpix_to_latlon(self, pix: int) -> tuple:

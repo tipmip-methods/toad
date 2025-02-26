@@ -20,6 +20,7 @@ from toad import (
 )
 from toad.utils import get_space_dims, is_equal_to, contains_value
 from toad.regridding.base import BaseRegridder
+from toad.regridding import HealPixRegridder
 
 
 class TOAD:
@@ -71,11 +72,11 @@ class TOAD:
     # # ======================================================================
     # #               Module functions
     # # ======================================================================
-    def preprocess(self):
+    def preprocess(self) -> preprocessing.Preprocess:
         """Access preprocessing methods."""
         return preprocessing.Preprocess(self)
 
-    def cluster_stats(self, var):
+    def cluster_stats(self, var: str) -> postprocessing.ClusterStats:
         """Access cluster statistical methods.
 
 
@@ -88,11 +89,11 @@ class TOAD:
         """
         return postprocessing.ClusterStats(self, var)
 
-    def aggregation(self):
+    def aggregation(self) -> postprocessing.Aggregation:
         """Access aggregation methods."""
         return postprocessing.Aggregation(self)
 
-    def plotter(self):
+    def plotter(self) -> visualisation.TOADPlotter:
         """Access plotting methods."""
         return visualisation.TOADPlotter(self)
 
@@ -197,7 +198,7 @@ class TOAD:
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
-        regridder: Optional[BaseRegridder] = None,
+        regridder: Optional[BaseRegridder] = HealPixRegridder(),
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -219,7 +220,7 @@ class TOAD:
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
             regridder:
-                The regridding method to use from `toad.clustering.regridding`. When provided, filtered data points are regridded and transformed from lat/lon to x/y/z coordinates for clustering using Euclidean distance. Defaults to None.
+                The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:

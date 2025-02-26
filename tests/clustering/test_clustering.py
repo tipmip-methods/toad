@@ -2,7 +2,6 @@ import pytest
 import numpy as np
 from toad import TOAD
 from sklearn.cluster import HDBSCAN  # type: ignore
-from toad.regridding import HealPixRegridder
 
 
 @pytest.fixture
@@ -23,7 +22,6 @@ def test_params():
         "min_cluster_size": 25,
         "shifts_threshold": 0.5,
         "expected_results": {-1: 330245, 1: 2845, 0: 914, 2: 286, 3: 78},
-        "expected_nside": 16,
     }
 
 
@@ -56,15 +54,11 @@ def test_healpix_hdbscan(test_params, toad_instance):
         lat=test_params["lat"], lon=test_params["lon"], boundary="trim"
     ).mean()
 
-    # Test clustering
-    regridder = HealPixRegridder()
-
     td.compute_clusters(
         "tas",
         shifts_filter_func=lambda x: np.abs(x) > test_params["shifts_threshold"],
         method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
         overwrite=True,
-        regridder=regridder,
     )
 
     # Verify results
@@ -72,8 +66,4 @@ def test_healpix_hdbscan(test_params, toad_instance):
 
     assert actual_counts == test_params["expected_results"], (
         f"Expected {test_params['expected_results']}, got {actual_counts}"
-    )
-
-    assert regridder.nside == test_params["expected_nside"], (
-        f"Expected nside {test_params['expected_nside']}, got {regridder.nside}"
     )

@@ -187,12 +187,13 @@ class TOADPlotter:
         clusters = self.td.get_clusters(var)
 
         if ax is None:
-            fig, ax = plt.subplots()
+            fig, ax = self.map_plots()
 
         if cluster_ids is None:
             cluster_ids = np.unique(clusters)
             cluster_ids = cluster_ids[cluster_ids != -1]
 
+        # TODO; this doesn't handle points that are in multiple clusters
         clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(
             ax=ax, cmap=cmap, add_colorbar=False, **kwargs
         )

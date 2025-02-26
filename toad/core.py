@@ -821,7 +821,7 @@ class TOAD:
         mask = self.get_cluster_mask(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
-    def get_spatial_cluster_mask(
+    def get_spatial_cluster_mask(  # TODO rename to get_cluster_mask_spatial
         self, var: str, cluster_id: Union[int, List[int]]
     ) -> xr.DataArray:
         """Returns a 2D boolean mask indicating which grid cells belonged to the specified cluster at any point in time.
@@ -944,7 +944,9 @@ class TOAD:
         density = density.rename(f"{density.name}_spatial_density")
         return density
 
-    def get_temporal_cluster_mask(self, var: str, cluster_id: int) -> xr.DataArray:
+    def get_temporal_cluster_mask(
+        self, var: str, cluster_id: int
+    ) -> xr.DataArray:  # TODO rename to get_cluster_mask_temporal
         """Calculate a temporal footprint indicating cluster presence at each timestep.
 
         For each timestep, returns a boolean mask indicating whether any grid cell belonged

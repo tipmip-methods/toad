@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
     MaxAbsScaler,
 )
 from toad.regridding.base import BaseRegridder
-
+from toad.regridding import HealPixRegridder
 
 logger = logging.getLogger("TOAD")
 
@@ -32,7 +32,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    regridder: Optional[BaseRegridder] = None,
+    regridder: Optional[BaseRegridder] = HealPixRegridder(),
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
@@ -54,7 +54,7 @@ def compute_clusters(
         scaler:
             The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
         regridder:
-            The regridding method to use from `toad.clustering.regridding`. When provided, filtered data points are regridded and transformed from lat/lon to x/y/z coordinates for clustering using Euclidean distance. Defaults to None.
+            The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
         output_label_suffix:
             A suffix to add to the output label. Defaults to "".
         overwrite:
@@ -145,6 +145,7 @@ def compute_clusters(
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
     space_dims = reorder_space_dims(space_dims)
+    isLatLon = space_dims == ["lat", "lon"]
     dims = [time_dim] + space_dims
 
     # Get coordinates and weights
@@ -155,9 +156,18 @@ def compute_clusters(
         filtered_df[shifts_label].to_numpy()
     )  # take absolute value of shifts as weights
 
+    # HealPixRegridder is only supported for lat/lon coordinates
+    if isinstance(regridder, HealPixRegridder) and not isLatLon:
+        logger.info(
+            "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
+        )
+        regridder = None
+
     # Regrid and scale
     if regridder:
         coords, weights = regridder.regrid(coords, weights)
+
+    if isLatLon:
         coords = geodetic_to_cartesian(
             time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
         )

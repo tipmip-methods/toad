@@ -45,6 +45,7 @@ dependencies = [
         "pandas",
         "pytest",
         "pytest-cov",
+        "fast-hdbscan",
 ]
 
 [tool.setuptools]

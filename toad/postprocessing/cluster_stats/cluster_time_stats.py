@@ -81,6 +81,10 @@ class ClusterTimeStats:
         """Get start and end time of the 50% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.25, 0.75)
 
+    def iqr_68(self, cluster_id) -> tuple[float, float]:
+        """Get start and end time of the 68% interquantile range of the cluster temporal density"""
+        return self.iqr(cluster_id, 0.16, 0.84)
+
     def iqr_90(self, cluster_id) -> tuple[float, float]:
         """Get start and end time of the 90% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.05, 0.95)

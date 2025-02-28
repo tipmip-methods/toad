@@ -93,9 +93,11 @@ class TOAD:
         """Access aggregation methods."""
         return postprocessing.Aggregation(self)
 
-    def plotter(self) -> visualisation.TOADPlotter:
+    def plotter(
+        self, config: Optional[visualisation.PlotConfig] = None
+    ) -> visualisation.TOADPlotter:
         """Access plotting methods."""
-        return visualisation.TOADPlotter(self)
+        return visualisation.TOADPlotter(self, config=config)
 
     # # ======================================================================
     # #               SET functions

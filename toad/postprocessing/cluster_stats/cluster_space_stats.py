@@ -20,7 +20,7 @@ class ClusterSpaceStats:
 
     # Define space-related statistics methods
 
-    def mean_xy(self, cluster_id):
+    def mean(self, cluster_id):
         """Returns the mean of the first and second spatial dimension of all cells in the cluster across space and time"""
         return (
             float(
@@ -35,7 +35,7 @@ class ClusterSpaceStats:
             ),
         )
 
-    def median_xy(self, cluster_id):
+    def median(self, cluster_id):
         """Returns the median of the first and second spatial dimension of all cells in the cluster across space and time"""
         return (
             float(
@@ -50,7 +50,7 @@ class ClusterSpaceStats:
             ),
         )
 
-    def std_xy(self, cluster_id):
+    def std(self, cluster_id):
         """Returns the standard deviation of the first and second spatial dimension of all cells in the cluster across space and time"""
         return (
             float(
@@ -65,7 +65,7 @@ class ClusterSpaceStats:
             ),
         )
 
-    def footprint_mean_xy(self, cluster_id):
+    def footprint_mean(self, cluster_id):
         """Returns the mean of the first and second spatial dimension of the footprint of the cluster, i.e. the collection of spatial cells that were ever touched by the cluster."""
         return (
             float(
@@ -80,7 +80,7 @@ class ClusterSpaceStats:
             ),
         )
 
-    def footprint_median_xy(self, cluster_id):
+    def footprint_median(self, cluster_id):
         """Returns the median of the first and second spatial dimension of the footprint of the cluster, i.e. the collection of spatial cells that were ever touched by the cluster."""
         return (
             float(
@@ -95,7 +95,7 @@ class ClusterSpaceStats:
             ),
         )
 
-    def footprint_std_xy(self, cluster_id):
+    def footprint_std(self, cluster_id):
         """Returns the standard deviation of the first and second spatial dimension of the footprint of the cluster, i.e. the collection of spatial cells that were ever touched by the cluster."""
         return (
             float(

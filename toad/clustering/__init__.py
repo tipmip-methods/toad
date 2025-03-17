@@ -21,46 +21,6 @@ logger = logging.getLogger("TOAD")
 
 
 def compute_clusters(
-<<<<<<< HEAD
-        data: xr.Dataset,
-        var : str,
-        method : ClusterMixin,
-        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
-        var_filter_func: Callable = lambda _: True,     # empty filtering function as default
-        shifts_label: Optional[str] = None,
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-        time_dim: str = "time",
-<<<<<<< HEAD
-        space_dims: list[str] = ["lon", "lat"],
-<<<<<<< HEAD
->>>>>>> 9a2a22a (Dim fixes for clustering)
-        scaler: Optional[str] = 'StandardScaler',
-=======
-        scaler: str = 'StandardScaler',
->>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
-=======
-        scaler: Optional[str] = 'StandardScaler',
->>>>>>> d35b270 (Merge TOADtorial repo with toad repo)
-=======
-        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
->>>>>>> 7aa71ab (Minor clustering refactoring)
-=======
-        space_dims: Optional[list[str]] = None,
-        scaler: Optional[Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]] = StandardScaler(),
-        regridder: Optional[BaseRegridder] = None,
->>>>>>> ffe41d0 (Added optional regridding for clustering)
-        output_label_suffix: str = "",
-        overwrite: bool = False,
-        merge_input: bool = True,
-<<<<<<< HEAD
-<<<<<<< HEAD
-        sort_by_size: bool = True,
-    ) -> Union[xr.Dataset, xr.DataArray]:
-    """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
-=======
     data: xr.Dataset,
     var: str,
     method: ClusterMixin,
@@ -79,7 +39,6 @@ def compute_clusters(
     sort_by_size: bool = True,
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
->>>>>>> 6ffac35 (Formatted codebase with Ruff)
 
     >> Args:
         var:
@@ -115,58 +74,12 @@ def compute_clusters(
         ValueError:
             If data is invalid or required parameters are missing
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-        """
-=======
-=======
-        sort_by_size: bool = True,
->>>>>>> 1787555 (Rename cluster ids by size after computation)
-    ) -> Union[xr.Dataset, xr.DataArray]:
-    """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm. 
-
-        Args:
-            var: Name of the variable in the dataset to cluster.
-            method: The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-            shifts_filter_func: A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. 
-            var_filter_func: A callable used to filter the primary variable before clustering. Defaults to None.
-            shifts_label: Name of the variable containing precomputed shifts. Defaults to {var}_dts.
-            scaler: The scaling method to apply to the data before clustering. Choose between 'StandardScaler', 'MinMaxScaler' and None. Defaults to 'StandardScaler'.
-            output_label_suffix: A suffix to add to the output label. Defaults to "".
-            overwrite: Whether to overwrite existing variable. Defaults to False.
-            merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
-            sort_by_size: Whether to reorder clusters by size. Defaults to True.
-
-        Returns:
-            xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
-            xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
-
-        Raises:
-            ValueError: If data is invalid or required parameters are missing
-=======
-        >> Notes: 
-            For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
->>>>>>> ffe41d0 (Added optional regridding for clustering)
-
-    """
-<<<<<<< HEAD
->>>>>>> c6fc662 (Docstring and type fixes)
-    # TODO: (1) Fix: should also return auxillary coordinates. For now only returns coords in dims. 
-
-=======
-    
-<<<<<<< HEAD
->>>>>>> 7aa71ab (Minor clustering refactoring)
-=======
-    '''
-=======
     >> Notes:
         For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
 
     """
 
     """
->>>>>>> 6ffac35 (Formatted codebase with Ruff)
     Overview of the clustering process:
     1. Input Validation
         - Verify shifts variable exists in dataset
@@ -193,7 +106,6 @@ def compute_clusters(
         - Return Dataset or DataArray based on merge_input
     """
 
->>>>>>> ffe41d0 (Added optional regridding for clustering)
     # Check shifts var
     all_vars = list(data.data_vars.keys())
     shifts_label = (
@@ -288,33 +200,8 @@ def compute_clusters(
         )
 
     # Perform clustering
-<<<<<<< HEAD
-    logger.info(f'Applying clustering method {method}')
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-    cluster_labels = method.fit_predict(scaled_coords, importance_weights)
-    cluster_labels = np.array(cluster_labels) # make sure it's a numpy array
-<<<<<<< HEAD
-=======
-    clusters = method.fit_predict(scaled_coords, importance_weights)
->>>>>>> c6fc662 (Docstring and type fixes)
-=======
-    cluster_labels = method.fit_predict(scaled_coords, importance_weights)
->>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
-=======
->>>>>>> bc5ef07 (Fix: cluster_labels should be np.array)
-=======
-=======
     logger.info(f"Applying clustering method {method}")
->>>>>>> 6ffac35 (Formatted codebase with Ruff)
     cluster_labels = np.array(method.fit_predict(coords, weights))
-<<<<<<< HEAD
-    
-    # 3. Postprocessing =====================================================
->>>>>>> 7aa71ab (Minor clustering refactoring)
-=======
->>>>>>> ffe41d0 (Added optional regridding for clustering)
 
     # Sort cluster labels by size
     cluster_labels = (
@@ -328,37 +215,6 @@ def compute_clusters(
         )  # regridder holds the original coordinates
 
     # Convert back to xarray DataArray
-<<<<<<< HEAD
-    df_dims = data[dims].to_dataframe().reset_index()       # create a pandas df with original dims
-    df_dims[output_label] = -1                              # Initialize cluster column with -1
-<<<<<<< HEAD
-    df_dims.loc[filtered_data.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 1787555 (Rename cluster ids by size after computation)
-
-    if sort_by_size:
-        # Rename clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)
-        valid_labels = cluster_labels[cluster_labels != -1]
-        unique_labels, counts = np.unique(valid_labels, return_counts=True)
-        label_mapping = dict(zip(unique_labels[np.argsort(counts)[::-1]], range(len(unique_labels))))
-        cluster_labels = np.array([label_mapping.get(label, -1) for label in cluster_labels])
-        df_dims.loc[filtered_data.index, output_label] = cluster_labels
-    
-    # Convert to xarray
-<<<<<<< HEAD
-=======
->>>>>>> 341e8af ([Minor breaking changes] Enhancements to Cluster and Shifts Variable Handling)
-=======
->>>>>>> 1787555 (Rename cluster ids by size after computation)
-=======
-    df_dims.loc[filtered_df.index, output_label] = cluster_labels # Assign cluster labels to the dataframe
->>>>>>> 7aa71ab (Minor clustering refactoring)
-    clusters = df_dims.set_index(dims).to_xarray()          # Convert dataframe to xarray (DataSet)
-    clusters = clusters[output_label]    
-    
-=======
     df_dims = (
         data[dims].to_dataframe().reset_index()
     )  # create a pandas df with original dims
@@ -371,7 +227,6 @@ def compute_clusters(
     ).to_xarray()  # Convert dataframe to xarray (DataSet)
     clusters = clusters[output_label]
 
->>>>>>> 6ffac35 (Formatted codebase with Ruff)
     # Transpose if dimensions don't match
     if clusters.sizes.keys() != data[dims].sizes.keys():
         print("transposing")

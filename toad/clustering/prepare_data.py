@@ -1,40 +1,5 @@
 import numpy as np
 import pandas as pd
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-from typing import Union
-=======
->>>>>>> c6fc662 (Docstring and type fixes)
-=======
-from typing import Union
->>>>>>> 404d1af (Type fix)
-
-
-def prepare_dataframe(
-        data: xr.Dataset,
-        var: str, 
-        var_dts: str,
-        time_dim: str,
-        space_dims: list[str],
-        var_func: Optional[Callable[[float], bool]] = None,
-        dts_func: Optional[Callable[[float], bool]] = None,
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-        scaler: Union[str, None] = 'StandardScaler'
-=======
-        scaler: str = 'StandardScaler'
->>>>>>> c6fc662 (Docstring and type fixes)
-=======
-        scaler: Union[str, None] = 'StandardScaler'
->>>>>>> 404d1af (Type fix)
-=======
-        scaler: Union[str, None] = 'StandardScaler',
->>>>>>> 9a2a22a (Dim fixes for clustering)
-    ) -> tuple[pd.DataFrame, list, np.ndarray, np.ndarray]:
-    """Prepare data for clustering by filtering, extracting coordinates, and scaling.
-=======
 import xarray as xr
 from typing import Optional, Union, Callable
 from sklearn.preprocessing import (
@@ -59,7 +24,6 @@ def prepare_dataframe(
     ] = StandardScaler(),
 ) -> tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray]:
     """Helper function for getting clustering input data."""
->>>>>>> 7aa71ab (Minor clustering refactoring)
 
     shifts_label = shifts_label if shifts_label else f"{var}_dts"
 
@@ -68,61 +32,11 @@ def prepare_dataframe(
         "dts": data[shifts_label].to_dataframe().reset_index(),
     }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    >> Args:
-        data:
-            The input xarray Dataset containing the variable to be clustered and its detection time series.
-        var:
-            The name of the variable in the Dataset to be clustered.
-        var_dts:
-            The name of the detection time series variable in the Dataset.
-        var_func:
-            A function to filter the `var` values. Defaults to keeping all values.
-        dts_func:
-            A function to filter the `dts` values. Defaults to keeping all values.
-        scaler:
-            The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
-
-    >> Returns:
-        tuple:
-            A tuple containing:
-=======
-    Args:
-        data: The input xarray Dataset containing the variable to be clustered and its detection time series.
-        var: The name of the variable in the Dataset to be clustered.
-        var_dts: The name of the detection time series variable in the Dataset.
-        var_func: A function to filter the `var` values. Defaults to keeping all values.
-        dts_func: A function to filter the `dts` values. Defaults to keeping all values.
-        scaler: The scaler to use for normalizing coordinates ('StandardScaler', 'MinMaxScaler', or None). Defaults to 'StandardScaler'.
-
-    Returns:
-        tuple: A tuple containing:
->>>>>>> c6fc662 (Docstring and type fixes)
-            - A Pandas DataFrame of the filtered data, including the original coordinates and the `dts` variable
-            - A list of dimension names from the original xarray Dataset
-            - A 1D NumPy array of the absolute values of the `dts` variable, used as sample weights
-            - A 2D NumPy array of the scaled coordinates for clustering
-
-    >> Raises:
-        ValueError:
-            If no data remains after filtering.
-    """
-=======
     # Create combined mask
-<<<<<<< HEAD
-    mask = (
-        np.vectorize(var_filter_func)(df_data['var'][var]) & 
-        np.vectorize(shifts_filter_func)(df_data['dts'][shifts_label])
-    )
->>>>>>> 7aa71ab (Minor clustering refactoring)
-    
-=======
     mask = np.vectorize(var_filter_func)(df_data["var"][var]) & np.vectorize(
         shifts_filter_func
     )(df_data["dts"][shifts_label])
 
->>>>>>> 6ffac35 (Formatted codebase with Ruff)
     # Apply mask
     filtered_df = df_data["dts"][mask]
     if filtered_df.empty:

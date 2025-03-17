@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 from toad import TOAD
 from toad.shifts_detection.methods import ASDETECT
+from toad.shifts_detection.methods.asdetect import centered_segmentation
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def test_params():
 
 @pytest.fixture
 def toad_instance():
-    return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
+    return TOAD("../tutorials/test_data/global_mean_summer_tas.nc")
 
 
 def test_asdetect(test_params, toad_instance):
@@ -51,11 +52,36 @@ def test_asdetect(test_params, toad_instance):
         boundary="trim",
     ).mean()
 
+    # Function to test
     td.compute_shifts("tas", ASDETECT(), overwrite=True)
 
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values
 
+    # Verifcation
     np.testing.assert_allclose(mean, test_params["expected_mean"], rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-5, atol=1e-8)
+
+
+def test_centered_segmentation():
+    """
+    Test simple case examples without truncation.
+
+    **Example**
+
+    >>> tsanalysis.asdetect.centered_segmentation(l_tot=10, l_seg=2)
+    array([ 0, 2, 4, 6, 8, 10])
+    # -> segmented list: [[0,1],[2,3],[4,5],[6,7],[8,9]]
+    """
+
+    # Setup
+    l_tot = 10
+    l_seg = 2
+
+    # Function to test
+    out = centered_segmentation(l_tot,l_seg)
+
+    # Verifcation
+    assert isinstance(out,(np.ndarray))                 # output data type
+    assert np.array_equal(out,np.array([0,2,4,6,8,10])) # output value

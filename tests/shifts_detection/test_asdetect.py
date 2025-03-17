@@ -52,17 +52,14 @@ def test_asdetect(test_params, toad_instance):
         boundary="trim",
     ).mean()
 
-    # Function to test
     td.compute_shifts("tas", ASDETECT(), overwrite=True)
 
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values
 
-    # Verifcation
     np.testing.assert_allclose(mean, test_params["expected_mean"], rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-5, atol=1e-8)
-
 
 def test_centered_segmentation():
     """

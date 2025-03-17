@@ -148,7 +148,6 @@ def construct_detection_ts(
     over many segmentation choices (i.e. values of l) results in a detection
     time series that indicates the points of largest relative gradients.
 
-<<<<<<< HEAD
     >> Args:
         values_1d:
             Time series, shape (n,)
@@ -160,15 +159,6 @@ def construct_detection_ts(
             Largest segment length, default = n/3
 
     >> Returns:
-=======
-    Args:
-        values_1d: Time series, shape (n,)
-        times_1d: Times, shape (n,), same length as values_1d
-        lmin: Smallest segment length, default = 5
-        lmax: Largest segment length, default = n/3
-
-    Returns:
->>>>>>> c6fc662 (Docstring and type fixes)
         - Abraupt shift score time series, shape (n,)
     """
 

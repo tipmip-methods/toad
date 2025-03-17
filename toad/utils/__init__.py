@@ -113,7 +113,7 @@ def contains_value(x, value):
 #                     downloaded_size += len(chunk)
 #                     # Print progress
 #                     done = int(50 * downloaded_size / total_size)
-#                     print(f"\r[{'=' * dons}{' ' * (50 - done)}] {downloaded_size / total_size:.2%}", end='')
+#                     print(f"\r[{'=' * done}{' ' * (50 - done)}] {downloaded_size / total_size:.2%}", end='')
 
 #         print("\nExtracting test data...")
 #         with zipfile.ZipFile(download_path, "r") as zip_ref:

@@ -28,7 +28,7 @@ def test_params():
 
 @pytest.fixture
 def toad_instance():
-    return TOAD("../tutorials/test_data/global_mean_summer_tas.nc")
+    return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
 
 
 def test_asdetect(test_params, toad_instance):
@@ -61,7 +61,7 @@ def test_asdetect(test_params, toad_instance):
 
     # Verifcation
     np.testing.assert_allclose(mean, test_params["expected_mean"], rtol=1e-5, atol=1e-8)
-    np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-3, atol=1e-3)
+    np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-5, atol=1e-8)
 
 
 def test_centered_segmentation():

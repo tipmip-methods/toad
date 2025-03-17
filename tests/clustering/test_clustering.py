@@ -29,7 +29,7 @@ def test_params():
 
 @pytest.fixture
 def toad_instance():
-    return TOAD("../tutorials/test_data/global_mean_summer_tas.nc")
+    return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
 
 
 def test_healpix_hdbscan(test_params, toad_instance):

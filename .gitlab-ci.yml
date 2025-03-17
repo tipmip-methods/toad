@@ -1,3 +1,11 @@
+on:
+    push:
+        branches:
+            - 3-automated-unit-testing
+    pull_request:
+        branches:
+            - 3-automated-unit-testing
+
 default:
     image: python:3.8
     before_script:
@@ -9,4 +17,4 @@ stages:
     - test
 test:
     script:
-        - pytest ./test/
+        - pytest ./tests

@@ -71,7 +71,7 @@ def deprecated(message=None):
 
 
 def all_functions(obj) -> list[str]:
-    return [x for x in dir(obj) if callable(getattr(obj, x)) and not x.startswith("__")]
+    return [x for x in dir(obj) if not x.startswith("__") and callable(getattr(obj, x))]
 
 
 def is_equal_to(x, value):

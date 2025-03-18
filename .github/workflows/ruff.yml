@@ -3,8 +3,8 @@ name: Ruff Linter
 
 # Trigger the workflow on pull requests
 on:
-  push:
-    branches: ["**"]
+  pull_request:
+    branches: ["main"]
 
 # Set permissions for the workflow
 permissions:

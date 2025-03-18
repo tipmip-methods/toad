@@ -58,12 +58,12 @@ jobs:
           # Check if there are any changes to commit
           git diff --quiet && git diff --staged --quiet || git commit -m "Apply Ruff auto-fixes"
 
-          # Fetch latest changes and rebase
-          git fetch origin ${GITHUB_REF_NAME}
-          git rebase origin/${GITHUB_REF_NAME}
+          # Fetch latest changes and rebase (otherwise branch is out of sync with the PR)
+          git fetch origin ${GITHUB_HEAD_REF}
+          git rebase origin/${GITHUB_HEAD_REF}
 
-          # Push the changes
-          git push origin HEAD:${GITHUB_REF_NAME}
+          # Push the changes to the pull request branch
+          git push origin HEAD:${GITHUB_HEAD_REF}
 
       # Step to run Ruff and fail the job if any issues remain
       - name: Run Ruff and fail if issues remain

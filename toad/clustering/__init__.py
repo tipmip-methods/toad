@@ -260,13 +260,21 @@ def compute_clusters(
 
 def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
     """Sort clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)"""
+    # Get unique labels and counts, excluding -1
     unique_labels, counts = np.unique(
         cluster_labels[cluster_labels != -1], return_counts=True
-    )  # ignore -1
-    label_mapping = dict(
-        zip(unique_labels[np.argsort(counts)[::-1]], range(len(unique_labels)))
     )
-    return np.array([label_mapping.get(label, -1) for label in cluster_labels])
+
+    # Sort by counts in descending order
+    sorted_indices = np.argsort(counts)[::-1]
+    sorted_unique_labels = unique_labels[sorted_indices]
+
+    # Create mapping from old labels to new labels (0 to n-1)
+    label_mapping = {old: new for new, old in enumerate(sorted_unique_labels)}
+    label_mapping[-1] = -1  # Keep -1 for noise points
+
+    # Apply mapping to all labels
+    return np.array([label_mapping[label] for label in cluster_labels])
 
 
 def geodetic_to_cartesian(time, lat, lon, height=0) -> np.ndarray:

@@ -203,16 +203,17 @@ def compute_clusters(
     logger.info(f"Applying clustering method {method}")
     cluster_labels = np.array(method.fit_predict(coords, weights))
 
-    # Sort cluster labels by size
-    cluster_labels = (
-        sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
-    )
-
     # Regrid back
     if regridder:
         cluster_labels = regridder.regrid_clusters_back(
             cluster_labels
         )  # regridder holds the original coordinates
+
+    # Sort cluster labels by size (After regridding because regridding
+    # may change the number of members in each cluster)
+    cluster_labels = (
+        sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
+    )
 
     # Convert back to xarray DataArray
     df_dims = (

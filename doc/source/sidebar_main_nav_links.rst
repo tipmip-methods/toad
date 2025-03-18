@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 .. toad documentation master file, created by
    sphinx-quickstart on Tue Dec  3 12:45:08 2024.
    You can adapt this file completely to your liking, but it should at least
@@ -40,8 +39,6 @@ and the `TOAD Repository <https://gitlab.pik-potsdam.de/sinal/toad>`_.
 * Ricarda Winkelmann: Ice Sheets, conceptualisation
 
 
-=======
->>>>>>> b758836 (reintroduce index page)
 .. toctree::
 	:maxdepth: 2
 	:includehidden:

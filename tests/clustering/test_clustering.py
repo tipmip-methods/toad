@@ -23,7 +23,7 @@ def test_params():
         "lon": 6,
         "min_cluster_size": 25,
         "shifts_threshold": 0.5,
-        "expected_results": {-1: 330239, 1: 2845, 0: 914, 2: 292, 3: 78},
+        "expected_results": {-1: 330239, 0: 2845, 1: 914, 2: 292, 3: 78},
     }
 
 

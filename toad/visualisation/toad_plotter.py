@@ -30,9 +30,6 @@ class TOADPlotter:
         resolution="110m",
         linewidth=(0.5, 0.25),
         grid_labels=True,
-
-
-
         grid_style="--",
         grid_width=0.5,
         grid_color="gray",

@@ -21,7 +21,7 @@ def test_params():
         "lon": 10,
         "time": 3,
         "expected_mean": 0.0038361712,
-        "expected_std": 0.19410655,
+        "expected_std": 5.19410655,
     }
 
 

@@ -5,9 +5,9 @@ name: Python package
 
 on:
   push:
-    branches: ["fix/ci-pytest"]
+    branches: ["**"]
   pull_request:
-    branches: ["fix/ci-pytest"]
+    branches: ["main"]
 
 jobs:
   build:

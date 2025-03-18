@@ -4,8 +4,6 @@
 name: Python package
 
 on:
-  push:
-    branches: ["**"] # if we run out of Github Actions minutes, remove this line
   pull_request:
     branches: ["main"]
 

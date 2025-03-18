@@ -61,6 +61,7 @@ def test_asdetect(test_params, toad_instance):
     np.testing.assert_allclose(mean, test_params["expected_mean"], rtol=1e-5, atol=1e-8)
     np.testing.assert_allclose(std, test_params["expected_std"], rtol=1e-5, atol=1e-8)
 
+
 def test_centered_segmentation():
     """
     Test simple case examples without truncation.
@@ -77,8 +78,8 @@ def test_centered_segmentation():
     l_seg = 2
 
     # Function to test
-    out = centered_segmentation(l_tot,l_seg)
+    out = centered_segmentation(l_tot, l_seg)
 
     # Verifcation
-    assert isinstance(out,(np.ndarray))                 # output data type
-    assert np.array_equal(out,np.array([0,2,4,6,8,10])) # output value
+    assert isinstance(out, (np.ndarray))  # output data type
+    assert np.array_equal(out, np.array([0, 2, 4, 6, 8, 10]))  # output value

@@ -36,16 +36,13 @@ dependencies = [
         "numpy", # set to =2.0.0 when we add numba
         "matplotlib",
         "scipy",
-        "scikit-learn",
         "xarray",
-        "netcdf4", # pipreqs didn't find this, but needed for xarray
+        "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
         "cartopy",
-        "requests",
         "healpy",
         "pandas",
-        "pytest",
-        "pytest-cov",
         "fast-hdbscan",
+        "sklearn",
 ]
 
 [tool.setuptools]
@@ -53,6 +50,22 @@ packages = {find = {}}
 
 [tool.setuptools.dynamic]
 version = {attr = "toad._version.__version__"}
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["netcdf4"]            # ignore unused dependencies
+
+# suppress warning about assuming corresponding module name
+[tool.deptry.package_module_name_map]
+numpy = "numpy"
+matplotlib = "matplotlib"
+scipy = "scipy"
+xarray = "xarray"
+netcdf4 = "netcdf4"
+cartopy = "cartopy"
+healpy = "healpy"
+pandas = "pandas"
+fast-hdbscan = "fast_hdbscan"
+sklearn = "sklearn"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

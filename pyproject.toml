@@ -36,13 +36,13 @@ dependencies = [
         "numpy", # set to =2.0.0 when we add numba
         "matplotlib",
         "scipy",
+        "scikit-learn",
         "xarray",
         "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
         "cartopy",
         "healpy",
         "pandas",
         "fast-hdbscan",
-        "sklearn",
 ]
 
 [tool.setuptools]
@@ -65,7 +65,7 @@ cartopy = "cartopy"
 healpy = "healpy"
 pandas = "pandas"
 fast-hdbscan = "fast_hdbscan"
-sklearn = "sklearn"
+scikit-learn = "sklearn"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

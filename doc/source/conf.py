@@ -98,7 +98,7 @@ def linkcode_resolve(domain, info):
         except AttributeError:
             print(f"\nWARNING: Could not find attribute. Object: {obj}")
             return None
-        
+
     # **Skip properties to avoid the error**
     if isinstance(obj, property):
         return None

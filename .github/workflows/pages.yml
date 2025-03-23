@@ -36,11 +36,14 @@ jobs:
         run: |
           pip install -e .
 
+      - name: Install ghp-import
+        run: pip install ghp-import
+
       - name: Build HTML
         run: |
           cd doc/
           make toad
-          
+
       - name: Run ghp-import
         run: |
           ghp-import -n -p -f docs/

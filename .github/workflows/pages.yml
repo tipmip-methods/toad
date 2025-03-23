@@ -17,10 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-           python-version: "3.11.8"
+      
+      # Step to checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step to use the system's pre-installed Python for faster execution
+      - name: Use system Python (faster)
+        run: |
+          echo "Using pre-installed Python: $(python --version)"
+          
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

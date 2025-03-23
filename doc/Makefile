@@ -25,7 +25,7 @@ toad:
 	cp -r $(TUTORIAL_SRC) $(TUTORIAL_DEST)
 	@echo ">> Files copied."
 	@echo ">> Building documentation..."
-	make html > build.log 2>&1
+	make html
 	@echo ">> Documentation built."
 	@echo ">> Removing tutorial files..."
 	rm -r $(TUTORIAL_DEST)

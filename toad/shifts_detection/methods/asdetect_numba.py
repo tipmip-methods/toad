@@ -14,6 +14,7 @@ from typing import Optional
 
 from toad.shifts_detection.methods.base import ShiftsMethod
 from toad.shifts_detection.methods.polyfit_numba import polyfit    # numpy.polyfit is not supported by numba
+=======
 
 
 class ASDETECT(ShiftsMethod):

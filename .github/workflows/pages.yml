@@ -6,9 +6,11 @@ name: Build HTML Pages
 on:
   pull_request:
     branches: ["main"]
-
-# Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+  workflow_dispatch:    # Allows you to run this workflow manually from the Actions tab
+    
+# Set permissions for the workflow - necc. to write html-docs to gh-pages branch
+permissions:
+  contents: write
 
 jobs:
   build:

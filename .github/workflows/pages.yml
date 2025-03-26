@@ -48,4 +48,5 @@ jobs:
 
       - name: Run ghp-import
         run: |
-          ghp-import -n -p -f doc/
+            ghp-import -n -p -f -r origin -b gh-pages -d docs doc/build/html/
+        

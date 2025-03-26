@@ -13,7 +13,7 @@ from scipy import stats
 from typing import Optional
 
 from toad.shifts_detection.methods.base import ShiftsMethod
-from toad.shifts_detection.methods.polyfit_numba import polyfit    # numpy.polyfit is not supported by numba
+#from toad.shifts_detection.methods.polyfit_numba import polyfit    # numpy.polyfit is not supported by numba
 
 
 class ASDETECT(ShiftsMethod):
@@ -136,8 +136,13 @@ def centered_segmentation(l_tot: int, l_seg: int, verbose: bool = False) -> np.n
 
     return seg_idces
 
+def compute_gradients(t_segs, arr_segs):
+    """
+    NOTE: Function pulled out of construct_detection_ts to allow for numba njit
+    """
+    return [np.polyfit(tseg, aseg, 1)[0] for tseg, aseg in zip(t_segs, arr_segs)]
 
-@jit(forceobj=True, looplift=False)
+@njit
 def construct_detection_ts(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
@@ -192,24 +197,19 @@ def construct_detection_ts(
 
         # calculate gradient for each segment and median absolute deviation
         # of the resulting distribution
-        gradients = [
-            polyfit(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
-        ]
+        gradients = compute_gradients(t_segs, arr_segs)
         grad_MAD = stats.median_abs_deviation(gradients)
         grad_MEAN = np.median(gradients)
 
         # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
         # i1/i2 are the first/last index of a segment
-        # - Create a mask for segments that exceed the threshold
-        mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD
-        sign_mask = np.sign(gradients - grad_MEAN)
-
-        # Efficiently update detection time series
-        for i, m in enumerate(mask):
-            if m:
-                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
-                detection_ts[i1:i2] += sign_mask[i]
+        for i, gradient in enumerate(gradients):
+            i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+            if gradient - grad_MEAN > 3 * grad_MAD:
+                detection_ts[i1:i2] += 1
+            elif gradient - grad_MEAN < -3 * grad_MAD:
+                detection_ts[i1:i2] += -1
 
     # normalize the detection time series to one
     detection_ts /= len(segment_lengths)

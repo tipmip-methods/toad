@@ -30,6 +30,10 @@ toad:
 	@echo ">> Removing tutorial files..."
 	rm -r $(TUTORIAL_DEST)
 	@echo ">> Tutorial files removed."
+	@echo ">> Copy content of doc/build/html to a folder called 'docs/docs' in the root directory."
+	mkdir -p ./../docs/docs
+	cp -r $(BUILDDIR)/html/* ./../docs/docs
+	@echo ">> Content copied."
 	@echo ">> Script done. Good Bye!"
 
 # Catch-all target: route all unknown targets to Sphinx using the new

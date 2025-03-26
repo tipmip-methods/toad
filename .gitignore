@@ -8,6 +8,7 @@ data/
 doc/source/generated/*
 doc/build.log
 doc/source/tutorials
+docs
 *venv*
 
 # Coverage reports from pytest-cov 

@@ -33,7 +33,7 @@ classifiers = [
 ]
 
 dependencies = [
-        "numpy", # set to =2.0.0 when we add numba
+        "numpy<=2.1.0",
         "matplotlib",
         "scipy",
         "scikit-learn",

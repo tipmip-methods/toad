@@ -13,7 +13,7 @@ from scipy import stats
 from typing import Optional
 
 from toad.shifts_detection.methods.base import ShiftsMethod
-from toad.shifts_detection.methods.polyfit_numba import polyfit    # numpy.polyfit is not supported by numba
+#from toad.shifts_detection.methods.polyfit_numba import polyfit    # numpy.polyfit is not supported by numba
 
 
 class ASDETECT(ShiftsMethod):
@@ -136,8 +136,13 @@ def centered_segmentation(l_tot: int, l_seg: int, verbose: bool = False) -> np.n
 
     return seg_idces
 
+def compute_gradients(t_segs, arr_segs):
+    """
+    NOTE: Function pulled out of construct_detection_ts to allow for numba njit
+    """
+    return [np.polyfit(tseg, aseg, 1)[0] for tseg, aseg in zip(t_segs, arr_segs)]
 
-@jit(forceobj=True, looplift=False)
+@njit
 def construct_detection_ts(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
@@ -192,9 +197,7 @@ def construct_detection_ts(
 
         # calculate gradient for each segment and median absolute deviation
         # of the resulting distribution
-        gradients = [
-            polyfit(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
-        ]
+        gradients = compute_gradients(t_segs, arr_segs)
         grad_MAD = stats.median_abs_deviation(gradients)
         grad_MEAN = np.median(gradients)
 

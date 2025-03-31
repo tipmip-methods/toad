@@ -60,6 +60,7 @@ class TOAD:
             logging.info("Renamed latitude to lat")
 
         # TODO: check that self.space_dims returns two values only, if not, raise eror and tell user to specify space_dims manually (new param in TOAD init)
+        # TODO: warn user if their variables contain _dts or _cluster, as variables with such names have special meaning in TOAD and may be overwritten
 
         # Save time dim for later
         self.time_dim = time_dim
@@ -273,6 +274,26 @@ class TOAD:
     @property
     def space_dims(self):
         return get_space_dims(self.data, self.time_dim)
+
+    @property
+    def base_vars(self) -> np.ndarray:
+        return np.array(
+            [
+                x
+                for x in list(self.data.data_vars.keys())
+                if "_dts" not in x and "_cluster" not in x
+            ]
+        )
+
+    @property
+    def shift_vars(self) -> np.ndarray:
+        return np.array([x for x in list(self.data.data_vars.keys()) if "_dts" in x])
+
+    @property
+    def cluster_vars(self) -> np.ndarray:
+        return np.array(
+            [x for x in list(self.data.data_vars.keys()) if "_cluster" in x]
+        )
 
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
@@ -800,8 +821,11 @@ class TOADAccessor:
             >>> data.toad.to_timeseries().plot.line(x="time", add_legend=False, color='k', alpha=0.1);
         """
         td = TOAD(self._obj)
+        # Get all dims except time dim
+        non_time_dims = [d for d in self._obj.dims if d != td.time_dim]
+
         return (
-            self._obj.stack(cell_xy=td.space_dims)
+            self._obj.stack(cell_xy=non_time_dims)
             .transpose("cell_xy", td.time_dim)
             .dropna(dim="cell_xy", how="all")
         )

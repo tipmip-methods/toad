@@ -110,6 +110,10 @@ class ClusterSpaceStats:
             ),
         )
 
+    def footprint_cumulative_area(self, cluster_id) -> int:
+        """Returns the total number of spatial cells that were ever touched by the cluster."""
+        return int(self.td.get_spatial_cluster_mask(self.var, cluster_id).sum().sum())
+
     def all_stats(self, cluster_id) -> dict:
         """Return all cluster stats"""
         dict = {}

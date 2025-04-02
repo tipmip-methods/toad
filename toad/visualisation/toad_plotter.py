@@ -381,7 +381,7 @@ class TOADPlotter:
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
         cmap: Union[str, ListedColormap] = "tab20",
-        add_contour=False,
+        add_contour=True,
         only_contour=False,
         add_labels: bool = True,
         unclustered_color: Optional[str] = None,
@@ -938,8 +938,9 @@ class TOADPlotter:
         cluster_var: str,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
         plot_var: Optional[str] = None,
-        figsize: tuple = (12, 8),
-        width_ratios: List[float] = [1, 1.2],
+        projection: Optional[str] = None,
+        figsize: tuple = (12, 6),
+        width_ratios: List[float] = [1, 1],
         height_ratios: Optional[List[float]] = None,
         map_kwargs: dict = {},
         timeseries_kwargs: dict = {},
@@ -962,8 +963,7 @@ class TOADPlotter:
         cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
 
         if len(cluster_ids) == 0:
-            print("No clusters found for variable", cluster_var)
-            return None
+            raise ValueError("No clusters found for variable", cluster_var)
 
         # if n_timeseries_col not in [1, 2]:
         #     raise ValueError("n_timeseries_col must be 1 or 2")
@@ -985,7 +985,9 @@ class TOADPlotter:
             )
 
             # Create map in top gridspec
-            _, map_ax = self.map(nrows=1, ncols=1, subplot_spec=main_gs[0])
+            _, map_ax = self.map(
+                nrows=1, ncols=1, subplot_spec=main_gs[0], projection=projection
+            )
 
             # Create timeseries grid in bottom gridspec
             gs = main_gs[1].subgridspec(
@@ -1003,7 +1005,9 @@ class TOADPlotter:
             )
 
             # Create map in left column
-            _, map_ax = self.map(nrows=1, ncols=1, subplot_spec=main_gs[0, 0])
+            _, map_ax = self.map(
+                nrows=1, ncols=1, subplot_spec=main_gs[0, 0], projection=projection
+            )
 
             # Create timeseries grid in right column
             gs = main_gs[0, 1].subgridspec(
@@ -1085,10 +1089,14 @@ class TOADPlotter:
     def shifts_distribution(self, figsize=(15, 10)):
         """Plot histograms showing the distribution of shifts for each shift variable."""
         fig, axs = plt.subplots(nrows=self.td.shift_vars.size, figsize=figsize)
-        self._remove_ticks(axs[:-1])
-        self._remove_ticks(axs[-1], keep_x=True)
-        self._remove_spines(axs[:-1])
-        self._remove_spines(axs[-1], spines=["left", "right", "top"])
+        if not isinstance(axs, np.ndarray):
+            axs = np.array([axs])
+
+        if len(axs) > 1:
+            self._remove_ticks(axs[:-1])
+            self._remove_ticks(axs[-1], keep_x=True)
+            self._remove_spines(axs[:-1])
+            self._remove_spines(axs[-1], spines=["left", "right", "top"])
         for i in range(self.td.shift_vars.size):
             axs[i].hist(
                 self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),

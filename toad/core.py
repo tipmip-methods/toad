@@ -60,6 +60,7 @@ class TOAD:
             logging.info("Renamed latitude to lat")
 
         # TODO: check that self.space_dims returns two values only, if not, raise eror and tell user to specify space_dims manually (new param in TOAD init)
+        # TODO: Check that the time_dim exists, otherwise raise error and tell user to specify time_dim manually (param in TOAD init)
         # TODO: warn user if their variables contain _dts or _cluster, as variables with such names have special meaning in TOAD and may be overwritten
 
         # Save time dim for later
@@ -147,7 +148,6 @@ class TOAD:
         self,
         var: str,
         method: shifts_detection.ShiftsMethod,
-        time_dim: str = "time",
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -179,7 +179,7 @@ class TOAD:
         results = shifts_detection.compute_shifts(
             data=self.data,
             var=var,
-            time_dim=time_dim,
+            time_dim=self.time_dim,
             method=method,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,

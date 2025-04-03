@@ -20,7 +20,6 @@ def _coeff_mat(x, deg):
         for n in range(2, deg + 1):
             mat_[:, n] = x**n
     return mat_
-
 @njit
 def _fit_x(a, b):
     a = a.astype(np.float64)    # Ensure float64 consistency

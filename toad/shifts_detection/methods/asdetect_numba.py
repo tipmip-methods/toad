@@ -201,12 +201,15 @@ def construct_detection_ts(
         # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
         # i1/i2 are the first/last index of a segment
-        for i, gradient in enumerate(gradients):
-            i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
-            if gradient - grad_MEAN > 3 * grad_MAD:
-                detection_ts[i1:i2] += 1
-            elif gradient - grad_MEAN < -3 * grad_MAD:
-                detection_ts[i1:i2] += -1
+        # - Create a mask for segments that exceed the threshold
+        mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD
+        sign_mask = np.sign(gradients - grad_MEAN)
+
+        # Efficiently update detection time series
+        for i, m in enumerate(mask):
+            if m:
+                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+                detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one
     detection_ts /= len(segment_lengths)

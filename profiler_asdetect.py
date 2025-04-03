@@ -15,24 +15,25 @@ View profile using snakeviz:
 """
 
 import toad
-from toad.shifts_detection.methods import ASDETECT
+from toad.shifts_detection.methods.asdetect_numba import ASDETECT as ASDETECT_Numba
+#from toad.shifts_detection.methods import ASDETECT
 
 fp = "./tutorials/test_data/garbe_2020_antarctica.nc"
 td = toad.TOAD(fp)
 
 # Setup
-lat_coarsen = 5
-lon_coarsen = 5
-time_coarsen = 3
-td.data = td.data.coarsen(
-    x=lat_coarsen,
-    y=lon_coarsen,
-    time=time_coarsen,
-    boundary="trim",
-).mean()
+#lat_coarsen = 5
+#lon_coarsen = 5
+#time_coarsen = 3
+#td.data = td.data.coarsen(
+#    x=lat_coarsen,
+#    y=lon_coarsen,
+#    time=time_coarsen,
+#    boundary="trim",
+#).mean()
 
-td.compute_shifts("thk", ASDETECT(), overwrite=True)
+td.compute_shifts("thk", ASDETECT_Numba(), overwrite=True)
 
-shifts = td.get_shifts("thk")
-mean = shifts.mean().values
-std = shifts.std().values
+#shifts = td.get_shifts("thk")
+#mean = shifts.mean().values
+#std = shifts.std().values

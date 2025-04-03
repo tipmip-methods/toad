@@ -21,13 +21,15 @@ def _coeff_mat(x, deg):
             mat_[:, n] = x**n
     return mat_
     
-@jit(forceobj=True, looplift=True)
+@njit
 def _fit_x(a, b):
+    a = a.astype(np.float64)    # Ensure float64 consistency
+    b = b.astype(np.float64)    # needed for numba's (faster) nopython-mode
     # linalg solves ax = b
-    det_ = np.linalg.lstsq(a, b, rcond=None)[0]     # rcond=None to avoid warning (use new default), =1 uses old deault
+    det_ = np.linalg.lstsq(a, b)[0]
     return det_
  
-@jit(forceobj=True, looplift=True)
+@njit
 def polyfit(x, y, deg):
     a = _coeff_mat(x, deg)
     p = _fit_x(a, y)

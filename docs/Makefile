@@ -24,9 +24,6 @@ toad:
 	@echo ">> Copying tutorial files from $(TUTORIAL_SRC) to $(TUTORIAL_DEST)"
 	cp -r $(TUTORIAL_SRC) $(TUTORIAL_DEST)
 	@echo ">> Files copied."
-	@echo ">> Deleting build directory..."
-	rm -r $(BUILDDIR)
-	@echo ">> Build directory deleted."
 	@echo ">> Building documentation..."
 	make html
 	@echo ">> Documentation built."

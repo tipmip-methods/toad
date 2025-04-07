@@ -35,7 +35,7 @@ toad:
 	cp -r $(BUILDDIR)/html/* ./build/docs
 	@echo ">> ... content copied."
 	@echo ">> Delete all other content of ./build..."
-	find ./build -type f,d -not -wholename './build/docs*' -not -name '.' -delete
+	find ./build -type f,d -not -wholename './build/docs*' -not -wholename './build' -not -name '.' -delete
 	@echo ">> ... content deleted."
 	@echo ">> Script done. Good Bye!"
 

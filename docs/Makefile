@@ -26,14 +26,17 @@ toad:
 	@echo ">> Files copied."
 	@echo ">> Building documentation..."
 	make html
-	@echo ">> Documentation built."
+	@echo ">> ... documentation built."
 	@echo ">> Removing tutorial files..."
 	rm -r $(TUTORIAL_DEST)
-	@echo ">> Tutorial files removed."
-	@echo ">> Copy content of doc/build/html to a folder called 'docs/docs' in the root directory."
-	mkdir -p ./../docs/docs
-	cp -r $(BUILDDIR)/html/* ./../docs/docs
-	@echo ">> Content copied."
+	@echo ">> ... tutorial files removed."
+	@echo ">> Copy content of docs/build/html to a folder called 'docs/build/docs' in the root directory..."
+	mkdir -p ./build/docs
+	cp -r $(BUILDDIR)/html/* ./build/docs
+	@echo ">> ... content copied."
+	@echo ">> Delete all other content of ./build..."
+	find ./build -type f,d -not -wholename './build/docs*' -not -name '.' -delete
+	@echo ">> ... content deleted."
 	@echo ">> Script done. Good Bye!"
 
 # Catch-all target: route all unknown targets to Sphinx using the new

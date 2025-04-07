@@ -16,7 +16,7 @@ permissions:
 jobs:
   if_merged:
     if: github.event.pull_request.merged == true
-    
+
     runs-on: ubuntu-latest
 
     steps:
@@ -46,9 +46,9 @@ jobs:
 
       - name: Build HTML
         run: |
-          cd doc/
+          cd docs/
           make toad
 
       - name: Run ghp-import
         run: |
-          ghp-import -p -f docs/
+          ghp-import -p -f docs/build/

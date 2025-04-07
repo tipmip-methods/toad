@@ -5,10 +5,9 @@ __pycache__/
 **/dask-worker-space/
 **/.ipynb_checkpoints/
 data/
-docs/source/generated/*
-docs/build.log
-docs/source/tutorials
-nohup.out
+doc/source/generated/*
+doc/build.log
+doc/source/tutorials
 *venv*
 
 # Coverage reports from pytest-cov 

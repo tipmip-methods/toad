@@ -29,7 +29,6 @@ extensions = [
     #'sphinx.ext.viewcode',
     "myst_nb",  # allows to include Jupyter Notebooks and Markdowns
 ]
-
 autodoc_default_options = {
     "members": True,
     "undoc-members": True,
@@ -77,10 +76,8 @@ def linkcode_resolve(domain, info):
     The implementation is based on xarray doc/source/conf.py.
     """
     if domain != "py":
-        print(f"\nWARNING: Domain is not 'py'. Object: {domain}")
         return None
     if not info["module"]:
-        print(f"\nWARNING: Module is not specified. Object: {info}")
         return None
 
     modname = info["module"]
@@ -88,7 +85,6 @@ def linkcode_resolve(domain, info):
 
     submod = sys.modules.get(modname)
     if submod is None:
-        print(f"\nWARNING: Could not find module. Object: {submod}")
         return None
 
     obj = submod
@@ -96,18 +92,12 @@ def linkcode_resolve(domain, info):
         try:
             obj = getattr(obj, part)
         except AttributeError:
-            print(f"\nWARNING: Could not find attribute. Object: {obj}")
             return None
-
-    # **Skip properties to avoid the error**
-    if isinstance(obj, property):
-        return None
 
     try:
         # Get the source file and line numbers
         sourcefile = inspect.getsourcefile(obj)
         if sourcefile is None:
-            print(f"\nWARNING: No source file found. Object: {sourcefile}")
             return None
 
         source, lineno = inspect.getsourcelines(obj)

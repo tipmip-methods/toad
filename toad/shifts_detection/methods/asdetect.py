@@ -49,8 +49,6 @@ class ASDETECT(ShiftsMethod):
                 - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
                 - `-1` indicates that all tested segment lengths detected a significant negative gradient.
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
-
-
         """
         shifts = xr.apply_ufunc(
             construct_detection_ts,
@@ -159,7 +157,7 @@ def construct_detection_ts(
             Largest segment length, default = n/3
 
     >> Returns:
-        - Abraupt shift score time series, shape (n,)
+        - Abrupt shift score time series, shape (n,)
     """
 
     n_tot = len(values_1d)

@@ -7,7 +7,7 @@ Refactored: Nov, 2024 (Jakob)
 """
 
 import numpy as np
-from numba import jit, njit
+from numba import jit, njit, guvectorize, float64
 import xarray as xr
 from scipy import stats
 from typing import Optional
@@ -65,6 +65,9 @@ def _coeff_mat(x, deg):
     return mat_
 
 #################################################### Method 1 ##############################################################
+"""
+Simply use numba.jit in objectmode.
+"""
 
 class ASDETECT_1(ShiftsMethod):
     """
@@ -418,3 +421,173 @@ def polyfit_2(x, y, deg):
     p = _fit_x_2(a, y)
     # Reverse order so p[0] is coefficient of highest order
     return p[::-1]
+
+#################################################### Method 3 ##############################################################
+"""
+Use fast vectorization with numba (https://tutorial.xarray.dev/advanced/apply_ufunc/numba-vectorization.html) by using the
+numba.guvvectorize decorator.
+"""
+
+class ASDETECT_3(ShiftsMethod):
+    """
+    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+
+    Steps:
+    1. Divide the time series into overlapping segments of size `l`.
+    2. Perform linear regression within each segment to calculate gradients.
+    3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
+    4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
+    5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
+    6. Normalize the detection array by dividing by the number of window sizes used.
+
+    Args:
+        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
+        lmax: (Optional) The maximum segment length for detection. If not
+            specified, it defaults to one-third of the size of the time dimension.
+    """
+
+    def __init__(self, lmin=5, lmax=None):
+        self.lmin = lmin
+        self.lmax = lmax
+
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
+        times_1d = dataarray[time_dim]
+
+        lmax = self.lmax or int(dataarray.sizes[time_dim] / 3)
+        lmin = self.lmin
+
+        shifts = xr.apply_ufunc(
+            construct_detection_ts_3,
+            dataarray,
+            times_1d,
+            lmin,
+            lmax,
+            input_core_dims=[[time_dim], [time_dim], [], []],
+            output_core_dims=[[time_dim]],
+            vectorize=False,
+            #dask="parallelized",
+            output_dtypes=[float],  # Add this to avoid dtype issues
+        ).transpose(*dataarray.dims)
+
+        return shifts
+
+
+# 1D time series analysis of abrupt shifts =====================================
+def centered_segmentation_3(l_tot: int, l_seg: int, verbose: bool = False) -> np.ndarray:
+    """Provide set of indices to divide a range into segments of equal length.
+
+    The range of l_tot is divided into segments of equal length l_seg,
+    with the remainder of the division being equally truncated at the
+    beginning and end, with the end+1 for uneven division.
+
+    Args:
+        l_tot: Total length of the range to be segmented
+        l_seg: Length of one segment
+        verbose: If true, print segmentation indices
+
+    Returns:
+        - List of indices of the segmentation; entry i are the first index of the ith segment
+
+    Examples:
+        >>> centered_segmentation(l_tot=103, l_seg=10)
+        array([  1,  11,  21,  31,  41,  51,  61,  71,  81,  91, 101])
+    """
+
+    # number of segments
+    n_seg = int(l_tot / l_seg)
+    # uncovered points
+    rest = l_tot - n_seg * l_seg
+    # first index of first segment
+    idx0 = int(rest / 2)
+    # first index of each segment
+    seg_idces = idx0 + l_seg * np.arange(n_seg + 1)
+
+    # For checking correct indexing: Print the segmentation indices in the form
+    # | a-b | where a/b = first/last index of the segment. (x) denotes the
+    # number of ommitted indices at the beginning and the end of the time
+    # series, respectively
+    if verbose:
+        # idx0 points are omitted in the beginning
+        if idx0 == 0:
+            segments = " (0) |"
+        elif idx0 == 1:
+            segments = " (1) 0 |"
+        else:
+            segments = " ({}) 0-{} |".format(idx0, idx0 - 1)
+
+        # nl segments of size l, starting at idx0
+        for idx in seg_idces[:-1]:
+            segments += " {}-{} |".format(idx, idx + l_seg - 1)
+
+        # (rest-idx0) points are omitted in the end
+        if idx0 + n_seg * l_seg == n_seg:
+            segments += " (0)"
+        elif idx0 + n_seg * l_seg == n_seg - 1:
+            segments += " {} (1)".format(n_seg - 1)
+        else:
+            segments += " {}-{} ({})".format(
+                idx0 + n_seg * l_seg, l_tot - 1, rest - idx0
+            )
+
+        print(
+            "\nl_tot={}, l_seg={}: n_seg={}, rest={}, idx0={}\n".format(
+                l_tot, l_seg, n_seg, rest, idx0
+            )
+            + "   "
+            + segments
+        )
+
+    return seg_idces
+
+@guvectorize(
+    [(float64[:], float64[:], float64, float64, float64[:])], 
+    '(n),(n),(),()->(n)', 
+    forceobj=True
+)
+def construct_detection_ts_3(
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    lmin: float,
+    lmax: float,
+    detection_ts: np.ndarray
+) -> None:
+    n_tot = len(values_1d)
+
+    # Initialize output
+    for i in range(n_tot):
+        detection_ts[i] = 0.0
+
+    if np.isnan(values_1d).any():
+        return
+
+    lmin = int(lmin)
+    lmax = int(lmax)
+    
+    if lmax == 0:
+        lmax = int(n_tot / 3)
+
+    segment_lengths = np.arange(lmin, lmax + 1, 1)
+
+    for length in segment_lengths:
+        seg_idces = centered_segmentation_3(n_tot, l_seg=int(length))
+        arr_segs = np.split(values_1d, seg_idces)[1:-1]
+        t_segs = np.split(times_1d, seg_idces)[1:-1]
+
+        gradients = [
+            np.polyfit(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
+        ]
+        grad_MAD = stats.median_abs_deviation(gradients)
+        grad_MEAN = np.median(gradients)
+
+        for i, gradient in enumerate(gradients):
+            i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+            if gradient - grad_MEAN > 3 * grad_MAD:
+                for j in range(i1, i2):
+                    detection_ts[j] += 1
+            elif gradient - grad_MEAN < -3 * grad_MAD:
+                for j in range(i1, i2):
+                    detection_ts[j] += -1
+
+    norm_factor = len(segment_lengths)
+    for i in range(n_tot):
+        detection_ts[i] /= norm_factor

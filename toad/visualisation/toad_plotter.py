@@ -16,6 +16,8 @@ _projection_map = {
     "mollweide": ccrs.Mollweide(),
 }
 
+default_cmap = "tab20b"
+
 
 @dataclass
 class PlotConfig:
@@ -205,7 +207,6 @@ class TOADPlotter:
         self,
         rows: int,
         h_ratios: Optional[List[int]] = None,
-        no_ticks: bool = False,
         alternate_label_side: bool = True,
         ax_padding_y: float = 0.2,
         axs: Optional[
@@ -329,6 +330,14 @@ class TOADPlotter:
         scale: float = 1,
         relative_coords: bool = False,
     ):
+        # Handle coordinate transforms for different projections
+        if not relative_coords and not isinstance(
+            ax.projection, (ccrs.SouthPolarStereo, ccrs.NorthPolarStereo)
+        ):
+            transform = ccrs.PlateCarree()
+        else:
+            transform = None
+
         black_or_white = get_high_constrast_text_color(acol)
         t = ax.annotate(
             text=str(cluster_id),
@@ -341,6 +350,7 @@ class TOADPlotter:
             ha="center",
             va="center",
             fontsize=6 + 4 * scale,
+            transform=transform,
         )
         t.set_bbox(
             dict(
@@ -358,7 +368,7 @@ class TOADPlotter:
         projection: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
-        cmap: Union[str, ListedColormap] = "tab20",
+        cmap: Union[str, ListedColormap] = default_cmap,
         add_labels: bool = True,
         **kwargs: Any,
     ) -> Tuple[matplotlib.figure.Figure, Axes]:
@@ -380,9 +390,9 @@ class TOADPlotter:
         projection: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
-        cmap: Union[str, ListedColormap] = "tab20",
-        add_contour=True,
-        only_contour=False,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        add_contour: bool = True,
+        only_contour: bool = False,
         add_labels: bool = True,
         unclustered_color: Optional[str] = None,
         remaining_clusters_color: Optional[str] = None,
@@ -391,23 +401,32 @@ class TOADPlotter:
         """Plot one or multiple clusters on a map.
 
         Args:
-            var: Variable name for which clusters have been computed
-            cluster_ids: Single cluster ID or list of cluster IDs to plot. Defaults to all clusters
-            ax: Matplotlib axes to plot on. Creates new figure if None
+            var: Variable name for which clusters have been computed.
+            cluster_ids: Single cluster ID or list of cluster IDs to plot.
+                         Defaults to all clusters (except -1) if None.
+            projection: Projection to use for the map. Uses default if None.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
             color: Color for cluster visualization. Can be:
-                - A single color (str, hex, RGB tuple) to use for all clusters
-                - A list of colors to use for each cluster
-            cmap: Colormap for multiple clusters. Used only if color is None
-            add_contour: If True, add contour lines around clusters
-            only_contour: If True, only plot contour lines (no fill)
-            add_labels: If True, add cluster ID labels
-            **kwargs: Additional arguments passed to xarray.plot
+                - A single color (str, hex, RGB tuple) to use for all clusters.
+                - A list of colors to use for each cluster. Overrides cmap.
+            cmap: Colormap for multiple clusters. Used only if color is None.
+            add_contour: If True, add contour lines around clusters.
+            only_contour: If True, only plot contour lines (no fill).
+            add_labels: If True, add cluster ID labels using a geometrically
+                        central point (`central_point_for_labeling`).
+            unclustered_color: Optional color to fill unclustered grid cells.
+            remaining_clusters_color: Optional color to fill grid cells belonging
+                                     to clusters not specified in `cluster_ids`.
+            **kwargs: Additional arguments passed to xarray.plot methods
+                      (e.g., `plot`, `plot.contour`).
 
         Returns:
-            Tuple of (figure, axes)
+            Tuple of (figure, axes). Figure is None if ax was provided.
 
         Raises:
-            ValueError: If no clusters found for given variable
+            ValueError: If no clusters found for given variable.
+            TypeError: If `cluster_ids` is not an int, list, ndarray, range, or None,
+                       or if `cmap` is not a string or ListedColormap.
         """
         clusters = self.td.get_clusters(var)
         if clusters is None:
@@ -528,9 +547,18 @@ class TOADPlotter:
 
             if add_labels:
                 # returns space_dims[0, 1], so y, x or lon, lat
-                y, x = self.td.cluster_stats(var).space.median(id)
-                # TODO: Use a peak density pos instead of the median (case you have a circular cluster...)
-                self._cluster_annotate(ax, x, y, id, cluster_cmap.colors[0])
+                # Uses the point furthest from the cluster edge for robust labeling
+                y, x = self.td.cluster_stats(var).space.central_point_for_labeling(id)
+                if np.isnan(x) or np.isnan(y):
+                    # Get median coordinates as fallback
+                    y, x = self.td.cluster_stats(var).space.median_point(id)
+
+                if not (np.isnan(x) or np.isnan(y)):
+                    self._cluster_annotate(ax, x, y, id, cluster_cmap.colors[0])
+                else:
+                    print(
+                        f"Warning: Could not find valid label position for cluster {id}"
+                    )
 
             if single_plot:
                 ax.set_title(f"{var}_cluster {id}")
@@ -562,8 +590,6 @@ class TOADPlotter:
 
         return fig, ax
 
-    # def _filter_existing_cluster_ids()
-
     def cluster_maps(
         self,
         var: str,
@@ -574,19 +600,24 @@ class TOADPlotter:
         width: float = 12,
         row_height: float = 2.5,
         **kwargs: Any,
-    ):
-        """Plot individual clusters on separate maps.
+    ) -> None:
+        """Plot individual clusters on separate maps in a grid layout.
 
         Args:
-            var: Variable name for which clusters have been computed
-            max_clusters: Maximum number of clusters to plot
-            ncols: Number of columns in subplot grid
-            color: Color for cluster visualization
-            south_pole: If True, use South Pole projection
-            **kwargs: Additional arguments passed to plot_cluster_on_map
+            var: Variable name for which clusters have been computed.
+            cluster_ids: List, range, or array of cluster IDs to plot.
+            ncols: Number of columns in the subplot grid.
+            color: Single color to use for all cluster visualizations. Passed to `cluster_map`.
+            projection: Map projection to use for each subplot. Uses default if None.
+            width: Total width of the figure in inches.
+            row_height: Height of each row in the subplot grid in inches.
+            **kwargs: Additional arguments passed down to `self.cluster_map` for each plot.
+
+        Returns:
+            None: This function creates a plot but does not return any values.
 
         Raises:
-            ValueError: If no clusters found for given variable
+            ValueError: If no clusters found for the given variable `var`.
         """
         cluster_counts = self.td.get_cluster_counts(var)
         if cluster_counts is None:
@@ -622,32 +653,43 @@ class TOADPlotter:
         plot_var: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
-        cmap: Union[str, ListedColormap] = "coolwarm",
+        cmap: Union[str, ListedColormap] = default_cmap,
         alpha: float = 0.1,
         add_legend: bool = True,
         max_trajectories: int = 1_000,
         plot_stats: bool = False,
-        plot_stats_legend: bool = True,
         full_timeseries: bool = True,
         cluster_highlight_color: Optional[str] = None,
         cluster_highlight_alpha: float = 0.5,
         cluster_highlight_linewidth: float = 0.5,
         **plot_kwargs: Any,
     ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
-        """Plot the time series of a cluster.
+        """Plot the time series of one or multiple clusters.
 
         Args:
-            var: Variable name for which clusters have been computed
-            cluster_id: ID of cluster to plot
-            ax: Matplotlib axes to plot on. Creates new figure if None
-            max_trajectories: Maximum number of trajectories to plot
-            **plot_kwargs: Additional arguments passed to plot
+            var: Variable name for which clusters have been computed.
+            cluster_ids: ID or list of IDs of clusters to plot.
+            plot_var: Variable name to plot (if different from var). Defaults to var.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            color: Single color to use for all plotted clusters. Overrides cmap.
+            cmap: Colormap to use if plotting multiple clusters and color is None.
+            alpha: Alpha transparency for individual time series lines.
+            add_legend: If True, add a legend indicating cluster IDs.
+            max_trajectories: Maximum number of individual trajectories to plot per cluster.
+            plot_stats: If True, add vertical spans indicating cluster duration and IQR.
+            full_timeseries: If True, plot the full timeseries for each cell. If False,
+                only plot the segment belonging to the cluster.
+            cluster_highlight_color: Color to highlight the actual cluster segment
+                when full_timeseries is True.
+            cluster_highlight_alpha: Alpha for the cluster highlight segment.
+            cluster_highlight_linewidth: Line width for the cluster highlight segment.
+            **plot_kwargs: Additional arguments passed to xarray.plot for each trajectory.
 
         Returns:
-            Self for method chaining
+            Tuple of (figure, axes). Figure is None if ax was provided.
 
         Raises:
-            ValueError: If no clusters found for given variable
+            ValueError: If no timeseries found for a given cluster ID.
         """
 
         # Filter cluster_ids to only include existing clusters
@@ -685,9 +727,11 @@ class TOADPlotter:
             np.random.shuffle(order)
             order = order[:max_trajectories]
 
-            for i, idx in enumerate(order):
-                add_label = f"id={id}" if (add_legend and i == 0) else "__nolegend__"
-                cells[idx].plot(
+            for plot_idx, cell_idx in enumerate(order):
+                add_label = (
+                    f"id={id}" if (add_legend and plot_idx == 0) else "__nolegend__"
+                )
+                cells[cell_idx].plot(
                     ax=ax, color=id_color, alpha=alpha, label=add_label, **plot_kwargs
                 )
 
@@ -695,33 +739,17 @@ class TOADPlotter:
                 stats = self.td.cluster_stats(var).time.all_stats(id)
                 ax.axvspan(stats["start"], stats["end"], color="#eee", label="Duration")
                 ax.axvspan(
-                    stats["iqr_90"][0],
-                    stats["iqr_90"][1],
-                    color="#ddd",
-                    label=r"90% IQR" if plot_stats_legend else "__nolegend__",
-                )
-                ax.axvspan(
-                    stats["iqr_50"][0],
-                    stats["iqr_50"][1],
+                    stats["iqr_68"][0],
+                    stats["iqr_68"][1],
                     color="#ccc",
-                    label=r"50% IQR" if plot_stats_legend else "__nolegend__",
+                    label=r"68% IQR",
                 )
-                ax.axvline(
-                    x=stats["membership_peak"],
-                    color="red",
-                    linestyle="--",
-                    label="Peak Time" if plot_stats_legend else "__nolegend__",
-                    lw=1,
-                )
-            if plot_stats_legend or add_legend:
+            if add_legend:
                 legend = ax.legend(
                     frameon=False,
                 )
                 for handle in legend.get_lines():
                     handle.set_alpha(1.0)
-                # # Make sure text is visible regardless of color
-                # for text in legend.get_texts():
-                #     text.set_color("black")
 
             if cluster_highlight_color:
                 cells = self.td.get_cluster_timeseries(
@@ -750,37 +778,57 @@ class TOADPlotter:
 
     def cluster_aggregate(
         self,
-        cluster_var: str,  # Variable used for clustering
+        cluster_var: str,
         cluster_ids: Union[List[int], np.ndarray, range],
-        plot_var: Optional[str] = None,  # Variable to plot (defaults to cluster_var)
+        plot_var: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
-        cmap: Union[str, ListedColormap] = "coolwarm",
-        alpha: float = 0.1,
-        plot_stats: bool = True,
-        plot_stats_legend: bool = True,
-        full_timeseries: bool = True,
-        cluster_highlight_color: Optional[str] = None,
-        cluster_highlight_alpha: float = 0.5,
-        cluster_highlight_linewidth: float = 0.5,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        mean_linewidth: float = 3,
+        median_linewidth: float = 3,
+        shift_indicator_linewidth: float = 5,
+        normalize: Optional[Literal["first", "max", "last"]] = None,
         add_legend: bool = True,
-        **plot_kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
-        """Plot the time series of a cluster.
+        plot_range: bool = True,
+        plot_68iqr: bool = True,
+        plot_95iqr: bool = False,
+        plot_mean: bool = True,
+        plot_median: bool = False,
+        plot_custom_iqr: Optional[tuple[float, float]] = None,
+        alpha: float = 0.4,
+        plot_shift_indicator: bool = True,
+    ) -> tuple[matplotlib.figure.Figure | None, Axes]:
+        """Plot aggregated time series statistics for one or multiple clusters.
 
-        Hatching represents 68% IQR
-        Dark color shade represents the duration of the cluster
-        Curve represents the mean of the cluster
+        Plots mean and/or median lines along with shaded interquartile ranges (default: full range and 68% IQR).
+        The shift indicator shows the temporal extent of each cluster by plotting horizontal lines at different shades:
+        - The light shaded line spans the full duration of the cluster (from first to last occurrence)
+        - The darker shaded line shows the 68% interquartile range (IQR) duration, which represents the core period when the cluster is most active
 
         Args:
-            cluster_var: Variable name for which clusters have been computed
-            plot_var: Variable name to plot (if different from cluster_var)
-            cluster_ids: List of cluster IDs to plot
-            ax: Matplotlib axes to plot on. Creates new figure if None
-            **plot_kwargs: Additional arguments passed to plot
+            cluster_var: Variable name for which clusters have been computed.
+            cluster_ids: List of cluster IDs to plot.
+            plot_var: Variable name to plot (if different from cluster_var). Defaults to cluster_var.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            color: Single color to use for all plotted clusters. Overrides cmap.
+            cmap: Colormap to use if plotting multiple clusters and color is None.
+            mean_linewidth: Linewidth for the mean curve.
+            median_linewidth: Linewidth for the median curve.
+            shift_indicator_linewidth: Linewidth for the duration indicator lines.
+            normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
+            add_legend: If True, add a legend indicating cluster IDs.
+            plot_range: If True, plot the full range (min to max) as a shaded area.
+            plot_68iqr: If True, plot the 68% IQR (16th to 84th percentile) as a shaded area.
+            plot_95iqr: If True, plot the 95% IQR (2.5th to 97.5th percentile) as a shaded area.
+            plot_mean: If True, plot the mean timeseries curve.
+            plot_median: If True, plot the median timeseries curve.
+            plot_custom_iqr: Tuple of (start_percentile, end_percentile) for a custom IQR shaded area.
+            alpha: Alpha transparency for the shaded IQR areas.
+            plot_shift_indicator: If True, plot horizontal lines indicating the cluster's
+                temporal start/end and 68% IQR duration.
 
         Returns:
-            Tuple of (figure, axes)
+            Tuple of (figure, axes). Figure is None if ax was provided.
         """
         fig = None
         if ax is None:
@@ -794,7 +842,6 @@ class TOADPlotter:
         cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
 
         for i, id in enumerate(cluster_ids):
-            # Get color
             if color:
                 id_color = color
             if not color:
@@ -802,90 +849,87 @@ class TOADPlotter:
                     id_color = ToadColors.primary
                 else:
                     id_color = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)[i]
-            # Get the timeseries for plot_var using the cluster mask from cluster_var
-            mean = self.td.get_cluster_timeseries(
-                plot_var, id, aggregation="mean", cluster_var=cluster_var
-            )
-            perc_start = self.td.get_cluster_timeseries(
-                plot_var,
-                id,
-                aggregation="percentile",
-                percentile=0.01,
-                cluster_var=cluster_var,
-            )
-            perc_end = self.td.get_cluster_timeseries(
-                plot_var,
-                id,
-                aggregation="percentile",
-                percentile=0.99,
-                cluster_var=cluster_var,
-            )
 
-            black_or_white = get_high_constrast_text_color(id_color)
-            mean.plot(ax=ax, color=black_or_white if plot_stats else id_color, lw=1)
-            ax.fill_between(
-                self.td.data.time,
-                perc_start,
-                perc_end,
-                color=id_color,
-                alpha=0.5 if plot_stats else 1.0,
-            )
+            def plot_iqr(percentile_start, percentile_end):
+                ax.fill_between(
+                    self.td.data.time,
+                    self.td.get_cluster_timeseries(
+                        plot_var,
+                        id,
+                        aggregation="percentile",
+                        percentile=percentile_start,
+                        cluster_var=cluster_var,
+                        normalize=normalize,
+                    ),
+                    self.td.get_cluster_timeseries(
+                        plot_var,
+                        id,
+                        aggregation="percentile",
+                        percentile=percentile_end,
+                        cluster_var=cluster_var,
+                        normalize=normalize,
+                    ),
+                    color=id_color,
+                    alpha=alpha,
+                )
 
-            if plot_stats:
-                # Note: We use cluster_var for stats since they're based on the clustering
+            if plot_range:
+                plot_iqr(0.00001, 0.999999)
+
+            if plot_68iqr:
+                plot_iqr(0.16, 0.84)
+
+            if plot_95iqr:
+                plot_iqr(0.025, 0.975)
+
+            if plot_custom_iqr:
+                plot_iqr(plot_custom_iqr[0], plot_custom_iqr[1])
+
+            if plot_mean:
+                self.td.get_cluster_timeseries(
+                    plot_var,
+                    id,
+                    aggregation="mean",
+                    cluster_var=cluster_var,
+                    normalize=normalize,
+                ).plot(
+                    ax=ax,
+                    color=id_color,
+                    lw=mean_linewidth,
+                    label=f"id={id}",
+                )
+
+            if plot_median:
+                self.td.get_cluster_timeseries(
+                    plot_var,
+                    id,
+                    aggregation="median",
+                    cluster_var=cluster_var,
+                    normalize=normalize,
+                ).plot(ax=ax, color=id_color, lw=median_linewidth, label=f"id={id}")
+
+            if plot_shift_indicator:
                 stats = self.td.cluster_stats(cluster_var).time.all_stats(id)
-
-                # Plot duration of cluster
-                label = f"id={id}" if len(cluster_ids) == 1 else f"id={id}"
-                label = label if add_legend else "__nolegend__"
-                ax.fill_between(
-                    self.td.data.time,
-                    perc_start,
-                    perc_end,
-                    where=(self.td.data.time >= stats["start"])
-                    & (self.td.data.time <= stats["end"]),
-                    facecolor=id_color,
-                    alpha=1,
-                    label=label,
+                y_offset = ax.get_ylim()[1] * (
+                    (i + 1) * -0.05
+                )  # offset if we plot multiple clusters
+                ax.plot(
+                    [stats["start"], stats["end"]],
+                    [y_offset, y_offset],
+                    color=id_color,
+                    linewidth=shift_indicator_linewidth,
+                    alpha=alpha,
                 )
-
-                # Plot 68% IQR of clusterw
-                ax.fill_between(
-                    self.td.data.time,
-                    perc_start,
-                    perc_end,
-                    where=(self.td.data.time >= stats["iqr_68"][0])
-                    & (self.td.data.time <= stats["iqr_68"][1]),
-                    hatch="//",
-                    facecolor="none",
-                    edgecolor=black_or_white,
-                    alpha=0.5 if black_or_white == "#ffffff" else 0.25,
-                    # label="68% IQR",
+                ax.plot(
+                    [stats["iqr_68"][0], stats["iqr_68"][1]],
+                    [y_offset, y_offset],
+                    color=id_color,
+                    linewidth=shift_indicator_linewidth,
+                    alpha=alpha,
                 )
-
-                # ax.axvline(
-                #     x=stats["membership_peak"],
-                #     color=black_or_white,
-                #     linestyle="--",
-                #     # label="Peak Time",
-                #     lw=1,
-                # )
-
-                # ax.axvline(
-                #     x=stats["steepest_gradient"],
-                #     color="red",
-                #     linestyle="-.",
-                #     label="Steepest Gradient",
-                #     lw=1,
-                # )
 
             if add_legend:
-                legend = ax.legend(frameon=False)
-                # Make all lines in legend black
-                for handle in legend.get_lines():
-                    handle.set_color("black")
-                # for handle in legend.get_patches():
-                #     handle.set_edgecolor("black")  # set hatches to visible color
+                ax.legend(frameon=False)
 
         ax.set_title(f"{plot_var} for clusters from {cluster_var} {cluster_ids}")
         return fig, ax
@@ -899,13 +943,24 @@ class TOADPlotter:
         snapshots: int = 5,
         projection: Optional[str] = None,
     ) -> Tuple[matplotlib.figure.Figure, np.ndarray]:
-        """Plot the time series of a cluster on a map.
+        """Plot spatial snapshots of a cluster's evolution over time.
+
+        Takes multiple snapshots of the variable `plot_var` (masked by the
+        cluster defined in `cluster_var`) at different time steps
+        within the cluster's duration and plots them on separate maps.
 
         Args:
-            var: Variable name for which clusters have been computed
-            cluster_id: ID of cluster to plot
-            ncols: Number of columns in subplot grid
-            snapshots: Number of snapshots to plot
+            cluster_var: Variable name used for clustering.
+            cluster_id: ID of the specific cluster to visualize.
+            plot_var: Variable name whose data to plot within the cluster mask.
+                      Defaults to `cluster_var` if None.
+            ncols: Number of columns in the subplot grid for the snapshots.
+            snapshots: Number of time snapshots to plot across the cluster's duration.
+            projection: Map projection to use for the snapshot maps. Uses default if None.
+
+        Returns:
+            Tuple[matplotlib.figure.Figure, np.ndarray]: The figure and the array of axes
+            containing the snapshot plots.
         """
 
         # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
@@ -945,13 +1000,46 @@ class TOADPlotter:
         map_kwargs: dict = {},
         timeseries_kwargs: dict = {},
         timeseries_ylabel: bool = False,
-        cmap: str = "tab20",
+        cmap: str = default_cmap,
         wspace: float = 0.1,
         hspace: float = 0.1,
         vertical: bool = False,
         n_timeseries_col: int = 1,
     ) -> Tuple[matplotlib.figure.Figure, dict]:
-        """Create a combined plot with one map and multiple time series."""
+        """Create a combined plot with a cluster map and aggregated time series.
+
+        Combination of a `cluster_map` and `cluster_aggregate`.
+
+        Args:
+            cluster_var: Variable name used for clustering.
+            cluster_ids: ID or list of IDs of clusters to plot. Defaults to all
+                         clusters found for `cluster_var`.
+            plot_var: Variable name whose data to plot in the timeseries.
+                      Defaults to `cluster_var` if None.
+            projection: Map projection for the cluster map. Uses default if None.
+            figsize: Overall figure size (width, height) in inches.
+            width_ratios: List of relative widths for map vs. timeseries section
+                          (used in horizontal layout).
+            height_ratios: List of relative heights for map vs. timeseries section
+                           (used in vertical layout).
+            map_kwargs: Dictionary of keyword arguments passed to `cluster_map`.
+            timeseries_kwargs: Dictionary of keyword arguments passed to
+                               `cluster_aggregate` for each timeseries plot.
+            timeseries_ylabel: If True, show y-axis label on the timeseries plots.
+            cmap: Colormap used to color clusters consistently across map and
+                  timeseries plots.
+            wspace: Width space between timeseries subplots (if n_timeseries_col > 1).
+            hspace: Height space between map/timeseries (vertical) or timeseries rows.
+            vertical: If True, arrange map above timeseries plots. Otherwise, map
+                      is placed to the left.
+            n_timeseries_col: Number of columns for the timeseries subplot grid.
+
+        Returns:
+            Tuple containing:
+                - fig: The matplotlib Figure object.
+                - axes_dict: A dictionary containing the map axes and a list of
+                  timeseries axes, e.g., {'map': map_ax, 'timeseries': [ts_ax1, ts_ax2,...]}.
+        """
 
         if not cluster_ids:
             cluster_ids = self.td.get_cluster_ids(cluster_var)
@@ -964,9 +1052,6 @@ class TOADPlotter:
 
         if len(cluster_ids) == 0:
             raise ValueError("No clusters found for variable", cluster_var)
-
-        # if n_timeseries_col not in [1, 2]:
-        #     raise ValueError("n_timeseries_col must be 1 or 2")
 
         # Calculate layout dimensions
         n_ts = len(cluster_ids)
@@ -1046,20 +1131,6 @@ class TOADPlotter:
             )
             ax.axhline(0, ls="--", lw=0.25, color="k")
             ax.set_title("")
-            # self._cluster_annotate(
-            # ax, 1.0, 1.0, cluster_ids[i], colors[i], relative_coords=True
-            # )
-            # ax.text(
-            #     0.5,
-            #     1.0,
-            #     f"Duration: {self.td.cluster_stats(cluster_var).time.duration_timesteps(cluster_ids[i])} timesteps, "
-            #     f"Footprint: {self.td.cluster_stats(cluster_var).space.footprint_cumulative_area(cluster_ids[i])} cells, "
-            #     f"Total members: {self.td.get_cluster_counts(cluster_var)[cluster_ids[i]]}",
-            #     ha="center",
-            #     va="bottom",
-            #     fontsize=8,
-            #     transform=ax.transAxes,
-            # )
 
             if not timeseries_ylabel:
                 ax.set_ylabel("")
@@ -1086,8 +1157,12 @@ class TOADPlotter:
             ax.set_visible(False)
         return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    def shifts_distribution(self, figsize=(15, 10)):
+    def shifts_distribution(self, figsize: tuple | None = None):
         """Plot histograms showing the distribution of shifts for each shift variable."""
+
+        if figsize is None:
+            figsize = (15, 2 * self.td.shift_vars.size)
+
         fig, axs = plt.subplots(nrows=self.td.shift_vars.size, figsize=figsize)
         if not isinstance(axs, np.ndarray):
             axs = np.array([axs])
@@ -1102,10 +1177,9 @@ class TOADPlotter:
                 self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
                 range=(-1, 1),
                 bins=20,
-                density=True,
             )
             axs[i].set_ylabel(
-                self.td.shift_vars[i], rotation=0, ha="right", va="center"
+                f"#{self.td.shift_vars[i]}", rotation=0, ha="right", va="center"
             )
         return fig, axs
 
@@ -1113,16 +1187,26 @@ class TOADPlotter:
 # end of TOADPlotter
 
 
-def get_max_index(pos, n_rows=None):
-    """Helper function to get the maximum index from a position spec."""
-    if isinstance(pos, slice):
-        if pos.stop is not None:
-            return pos.stop
-        return (n_rows - 1) if n_rows is not None else 0
-    return pos
+# This function appears unused in this file. Consider removing if not used elsewhere.
+# def get_max_index(pos, n_rows=None):
+#     """Helper function to get the maximum index from a position spec."""
+#     if isinstance(pos, slice):
+#         if pos.stop is not None:
+#             return pos.stop
+#         return (n_rows - 1) if n_rows is not None else 0
+#     return pos
 
 
 def get_high_constrast_text_color(color: Union[tuple, str]) -> str:
+    """Determines whether black or white text provides better contrast against a given background color.
+
+    Args:
+        color: The background color (matplotlib-compatible string or RGB tuple).
+
+    Returns:
+        '#ffffff' (white) or '#000000' (black) for the text color.
+        Defaults to black if the color conversion fails.
+    """
     try:
         brightness = (
             sum(
@@ -1137,7 +1221,21 @@ def get_high_constrast_text_color(color: Union[tuple, str]) -> str:
         return "#000000"
 
 
-def get_cmap_seq(start=0, end=-1, stops=10, cmap="coolwarm", reverse=False):
+def get_cmap_seq(
+    cmap: str, start: int = 0, end: int = -1, stops: int = 10, reverse: bool = False
+) -> List[str]:
+    """Extracts a sequence of distinct colors from a matplotlib colormap.
+
+    Args:
+        cmap: Name of the matplotlib colormap.
+        start: Starting index within the colormap.
+        end: Ending index within the colormap. Defaults to the end of the cmap.
+        stops: The number of distinct colors to extract.
+        reverse: If True, reverse the order of the extracted colors.
+
+    Returns:
+        A list of color hex codes.
+    """
     cmap = plt.get_cmap(cmap)
     end = (
         end if end != -1 else cmap.N

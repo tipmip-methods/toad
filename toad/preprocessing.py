@@ -1,5 +1,4 @@
 import xarray as xr
-from typing import Optional
 
 
 class Preprocess:

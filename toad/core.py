@@ -775,7 +775,7 @@ class TOAD:
         if normalize:
             if normalize == "first":
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
-                # todo: this crashes
+                # TODO: this crashes
                 scalar = (
                     filtered.isel({self.time_dim: 0})
                     if len(filtered[self.time_dim]) > 0
@@ -784,6 +784,7 @@ class TOAD:
             elif normalize == "max":
                 scalar = float(data.max())
             elif normalize == "last":
+                # TODO: this crashes
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
                 scalar = (
                     filtered.isel({self.time_dim: -1})

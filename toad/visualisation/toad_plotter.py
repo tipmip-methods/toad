@@ -797,7 +797,7 @@ class TOADPlotter:
         plot_custom_iqr: Optional[tuple[float, float]] = None,
         alpha: float = 0.4,
         plot_shift_indicator: bool = True,
-    ) -> tuple[matplotlib.figure.Figure | None, Axes]:
+    ) -> tuple[Optional[matplotlib.figure.Figure], Axes]:
         """Plot aggregated time series statistics for one or multiple clusters.
 
         Plots mean and/or median lines along with shaded interquartile ranges (default: full range and 68% IQR).
@@ -1157,7 +1157,7 @@ class TOADPlotter:
             ax.set_visible(False)
         return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    def shifts_distribution(self, figsize: tuple | None = None):
+    def shifts_distribution(self, figsize: Optional[tuple] = None):
         """Plot histograms showing the distribution of shifts for each shift variable."""
 
         if figsize is None:

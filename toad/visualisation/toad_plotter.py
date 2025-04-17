@@ -852,7 +852,7 @@ class TOADPlotter:
 
             def plot_iqr(percentile_start, percentile_end):
                 ax.fill_between(
-                    self.td.data.time,
+                    self.td.data[self.td.time_dim],
                     self.td.get_cluster_timeseries(
                         plot_var,
                         id,
@@ -972,7 +972,7 @@ class TOADPlotter:
         )
         times = np.linspace(start, end, snapshots)
         da = self.td.apply_cluster_mask(cluster_var, plot_var, cluster_id).sel(
-            time=times, method="nearest"
+            **{self.td.time_dim: times}, method="nearest"
         )
         nplots = len(da)
         nrows = int(np.ceil(nplots / ncols))

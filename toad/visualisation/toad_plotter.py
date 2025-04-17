@@ -1,353 +1,1248 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, to_hex, to_rgba, to_rgb
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.figure
+from matplotlib.axes import Axes
+from typing import Union, Tuple, Optional, List, Any, overload, Literal
+from dataclasses import dataclass
+
+_projection_map = {
+    "plate_carree": ccrs.PlateCarree(),
+    "north_pole": ccrs.NorthPolarStereo(),
+    "south_pole": ccrs.SouthPolarStereo(),
+    "global": ccrs.Robinson(),
+    "mollweide": ccrs.Mollweide(),
+}
+
+default_cmap = "tab20b"
+
+
+@dataclass
+class PlotConfig:
+    resolution: str = "110m"
+    coastline_linewidth: float = 0.5
+    border_linewidth: float = 0.25
+    grid_labels: bool = True
+    grid_style: str = "--"
+    grid_width: float = 0.5
+    grid_color: str = "gray"
+    grid_alpha: float = 0.5
+    borders: bool = True
+    projection: str = "plate_carree"
+    map_frame: bool = True
+
+
+@dataclass
+class ToadColors:
+    green = "#6F9F50"
+    green_light = "#BCCDB3"
+    green_dark = "#43712C"
+    yellow = "#F1E0B0"
+    primary = green_dark
+    secondary = green_light
+    tertiary = yellow
 
 
 class TOADPlotter:
-    """
-    Plotting methods for TOAD objects.
+    def __init__(self, td, config: Optional[PlotConfig] = None):
+        from toad import TOAD
 
-    Note: Docstrings here are short as this class is under heavy development
-    """
+        self.td: TOAD = td
+        self.default_config = config if config is not None else PlotConfig()
 
-    def __init__(self, td):
-        """Init TOADPlotter with a TOAD object"""
-        self.td = td
-
-    # TODO make function for contour plot: td.get_spatial_cluster_mask("thk", id).plot.contour(levels=1)
-    # TODO make function for plotting snap shots of cluster
-    # start, end = td.cluster_stats("thk").time.start(id), td.cluster_stats("thk").time.end(id)
-    # td.apply_cluster_mask("thk", "thk", cluster_id).sel(time=slice(start, end, 5)).plot(col='time', col_wrap=5, cmap='jet')
-
-    def map_plots(
+    # Overloads are used for type hinting
+    @overload
+    def map(
         self,
-        nrows=1,
-        ncols=1,
-        projection=ccrs.PlateCarree(),
-        resolution="110m",
-        linewidth=(0.5, 0.25),
-        grid_labels=True,
-        grid_style="--",
-        grid_width=0.5,
-        grid_color="gray",
-        grid_alpha=0.5,
-        figsize=None,
-        borders=True,
-        **kwargs,
-    ) -> tuple[matplotlib.figure.Figure, np.ndarray]:
-        """
-        Plot maps with coastlines, gridlines, and optional borders.
-        """
+        nrows: Literal[1] = 1,
+        ncols: Literal[1] = 1,
+        projection: Optional[str] = None,
+        config: Optional[PlotConfig] = None,
+        figsize: Optional[Tuple[float, float]] = None,
+        height_ratios: Optional[List[float]] = None,
+    ) -> Tuple[matplotlib.figure.Figure, Axes]: ...
 
-        fig = plt.figure(figsize=figsize)
-        if nrows == 1 and ncols == 1:
-            ax = fig.add_subplot(1, 1, 1, projection=projection)
+    @overload
+    def map(
+        self,
+        nrows: int,
+        ncols: int = 1,
+        projection: Optional[str] = None,
+        config: Optional[PlotConfig] = None,
+        figsize: Optional[Tuple[float, float]] = None,
+        height_ratios: Optional[List[float]] = None,
+    ) -> Tuple[matplotlib.figure.Figure, np.ndarray]: ...
+
+    def map(
+        self,
+        nrows: int = 1,
+        ncols: int = 1,
+        projection: Optional[str] = None,
+        config: Optional[PlotConfig] = None,
+        figsize: Optional[Tuple[float, float]] = None,
+        height_ratios: Optional[List[float]] = None,
+        width_ratios: Optional[List[float]] = None,
+        subplot_spec: Optional[Any] = None,
+    ) -> Tuple[matplotlib.figure.Figure, Union[Axes, np.ndarray]]:
+        """Create map plots with standard features.
+
+        Args:
+            nrows: Number of rows in subplot grid
+            ncols: Number of columns in subplot grid
+            projection: Map projection to use
+            config: Plot configuration
+            figsize: Figure size (width, height) in inches
+            height_ratios: List of height ratios for subplots
+            width_ratios: List of width ratios for subplots
+            subplot_spec: A gridspec subplot spec to place the map in
+        """
+        config = config if config else self.default_config
+        projection = projection if projection else config.projection
+
+        if projection not in _projection_map:
+            raise ValueError(f"Invalid projection '{projection}'")
+
+        if subplot_spec is not None:
+            # Create map in existing figure using subplot_spec
+            fig = plt.gcf()
+            ax = fig.add_subplot(subplot_spec, projection=_projection_map[projection])
             axs = ax
         else:
-            axs = np.empty((nrows, ncols), dtype=object)
-            for i in range(nrows):
-                for j in range(ncols):
-                    axs[i, j] = fig.add_subplot(
-                        nrows, ncols, i * ncols + j + 1, projection=projection
-                    )
+            # Create new figure with subplots
+            gridspec_kw = {}
+            if height_ratios:
+                gridspec_kw["height_ratios"] = height_ratios
+            if width_ratios:
+                gridspec_kw["width_ratios"] = width_ratios
 
-        # Add features to all axes
-        if isinstance(axs, np.ndarray):
-            for ax in axs.flat:
-                ax.coastlines(resolution=resolution, linewidth=linewidth[0])
-                if borders:
-                    ax.add_feature(
-                        cfeature.BORDERS, linestyle="-", linewidth=linewidth[1]
-                    )
-                if grid_labels:
-                    ax.gridlines(
-                        draw_labels=grid_labels,
-                        linewidth=grid_width,
-                        color=grid_color,
-                        alpha=grid_alpha,
-                        linestyle=grid_style,
-                    )
-        else:
-            axs.coastlines(resolution=resolution, linewidth=linewidth[0])  # type: ignore
-            if borders:
-                axs.add_feature(cfeature.BORDERS, linestyle="-", linewidth=linewidth[1])  # type: ignore
-            if grid_labels:
-                axs.gridlines(
-                    draw_labels=grid_labels,
-                    linewidth=grid_width,
-                    color=grid_color,
-                    alpha=grid_alpha,
-                    linestyle=grid_style,
-                )  # type: ignore
-
-        # TODO fix type error
-        return fig, axs
-
-    def south_pole_plots(
-        self,
-        nrows=1,
-        ncols=1,
-        resolution="110m",
-        linewidth=(0.5, 0.25),
-        grid_labels=True,
-        grid_style="--",
-        grid_width=0.5,
-        grid_color="gray",
-        grid_alpha=0.5,
-        figsize=None,
-        borders=True,
-        **kwargs,
-    ):
-        """
-        Plot maps with coastlines, gridlines, and optional borders at the South Pole.
-        """
-        fig, axs = self.map_plots(
-            nrows,
-            ncols,
-            projection=ccrs.SouthPolarStereo(),
-            resolution=resolution,
-            linewidth=linewidth,
-            grid_labels=grid_labels,
-            grid_style=grid_style,
-            grid_width=grid_width,
-            grid_color=grid_color,
-            grid_alpha=grid_alpha,
-            figsize=figsize,
-            borders=borders,
-            **kwargs,
-        )
-        if isinstance(axs, np.ndarray):
-            axs_flat = axs.flat
-        else:
-            axs_flat = [axs]
-
-        for ax in axs_flat:
-            ax.coastlines(resolution="110m", linewidth=linewidth[0])  # type: ignore
-            ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())  # type: ignore
-        return fig, axs
-
-    def north_pole_plots(
-        self,
-        nrows=1,
-        ncols=1,
-        resolution="110m",
-        linewidth=(0.5, 0.25),
-        grid_labels=True,
-        grid_style="--",
-        grid_width=0.5,
-        grid_color="gray",
-        grid_alpha=0.5,
-        figsize=None,
-        borders=True,
-        **kwargs,
-    ):
-        """
-        Plot maps with coastlines, gridlines, and optional borders at the North Pole.
-        """
-        fig, axs = self.map_plots(
-            nrows,
-            ncols,
-            projection=ccrs.NorthPolarStereo(),
-            resolution=resolution,
-            linewidth=linewidth,
-            grid_labels=grid_labels,
-            grid_style=grid_style,
-            grid_width=grid_width,
-            grid_color=grid_color,
-            grid_alpha=grid_alpha,
-            figsize=figsize,
-            borders=borders,
-            **kwargs,
-        )
-        if isinstance(axs, np.ndarray):
-            axs_flat = axs.flat
-        else:
-            axs_flat = [axs]
-
-        for ax in axs_flat:
-            ax.coastlines(resolution="110m", linewidth=linewidth[0])  # type: ignore
-            # ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree()) # type: ignore
-        return fig, axs
-
-    def plot_clusters_on_map(
-        self, var, cluster_ids=None, ax=None, cmap="tab20", **kwargs
-    ):
-        """
-        Plot the clusters on a map.
-
-        >> Args:
-            var:
-                name of the variable for which clusters have been computed or the name of the custom cluster variable.
-            cluster_ids:
-                which clusters to plot, defaults to all clusters
-        """
-        clusters = self.td.get_clusters(var)
-
-        if ax is None:
-            fig, ax = self.map_plots()
-
-        if cluster_ids is None:
-            cluster_ids = np.unique(clusters)
-            cluster_ids = cluster_ids[cluster_ids != -1]
-
-        # TODO; this doesn't handle points that are in multiple clusters
-        clusters.where(clusters.isin(cluster_ids)).max(dim=self.td.time_dim).plot(
-            ax=ax, cmap=cmap, add_colorbar=False, **kwargs
-        )
-
-        ax.set_title(f"{clusters.name}")
-        return self
-
-    def plot_cluster_on_map(self, var, cluster_id, color="k", ax=None, **kwargs):
-        """
-        Plot a individual clusters on a map.
-        """
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        clusters = self.td.get_clusters(var)
-        data_mask = self.td.data[var].max(dim=self.td.time_dim) > 0
-        if cluster_id == -1:
-            # Completely un-clustered cells are those that never have a cluster_id higher than -1
-            clusters.where(data_mask).where(
-                clusters.max(dim=self.td.time_dim) == cluster_id
-            ).max(dim=self.td.time_dim).plot(
-                ax=ax, cmap=ListedColormap([color]), add_colorbar=False
+            fig, axs = plt.subplots(
+                nrows,
+                ncols,
+                figsize=figsize,
+                subplot_kw={"projection": _projection_map[projection]},
+                gridspec_kw=gridspec_kw if gridspec_kw else None,
             )
-        else:
-            clusters.where(data_mask).where(clusters == cluster_id).max(
-                dim=self.td.time_dim
-            ).plot(ax=ax, cmap=ListedColormap([color]), add_colorbar=False, **kwargs)
-        ax.set_title(f"{var}_cluster {cluster_id}")
-        return self
 
-    def plot_clusters_on_maps(
-        self, var, max_clusters=5, ncols=5, color="k", south_pole=False, **kwargs
-    ):
+        # Ensure axs is always an array for consistent iteration
+        axs_array = np.array(axs, ndmin=2)
+
+        # Add map features and set extent for all axes
+        for ax in axs_array.flat:
+            self._add_map_features(ax, config)
+            ax.set_frame_on(config.map_frame)
+
+            if projection == "south_pole":
+                ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
+            elif projection == "north_pole":
+                ax.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
+
+        # Return single axis or array
+        if axs_array.size == 1:
+            return fig, axs_array[0, 0]
+        else:
+            return fig, np.squeeze(axs)
+
+    def _replace_ax_projection(
+        self,
+        fig: matplotlib.figure.Figure,
+        axs: Union[np.ndarray, Axes],
+        row: int,
+        col: int,
+        projection: str,
+    ) -> Union[np.ndarray, Axes]:
         """
-        Plot individual clusters on each their own map.
+        Replace the subplot at the given row and column of axs with a map projection
+        """
+        if isinstance(axs, Axes):
+            # For single Axes, create 1x1 array
+            axs = np.array([[axs]])
+        else:
+            axs = np.array(axs, ndmin=2)
+
+        axs[row, col].remove()
+        axs[row, col] = fig.add_subplot(
+            axs.shape[0],
+            axs.shape[1],
+            row * axs.shape[1] + col + 1,
+            projection=_projection_map[projection],
+        )
+
+        # Return single Axes if input was single Axes
+        if isinstance(axs, Axes):
+            return axs[0, 0]
+        return axs
+
+    def _remove_spines(
+        self,
+        axs: Union[Axes, List[Axes], np.ndarray],
+        spines: Union[List[str], str, np.ndarray] = ["top", "right", "bottom", "left"],
+    ):
+        if isinstance(axs, Axes):
+            axs = np.asarray([axs])
+
+        if isinstance(spines, str):
+            spines = np.asarray([spines])
+
+        for ax in axs:
+            for s in spines:
+                ax.spines[s].set_visible(False)
+
+    def _remove_ticks(
+        self, axs: Union[Axes, List[Axes], np.ndarray], keep_x=False, keep_y=False
+    ):
+        if isinstance(axs, Axes):
+            axs = np.asarray([axs])
+
+        for ax in axs:
+            if not keep_x:
+                ax.tick_params(axis="x", which="both", bottom=False, labelbottom=False)
+                [label.set_visible(False) for label in ax.get_xticklabels()]
+            if not keep_y:
+                ax.tick_params(axis="y", which="both", left=False, labelleft=False)
+                [label.set_visible(False) for label in ax.get_yticklabels()]
+
+    def frame_plot_with_rows(
+        self,
+        rows: int,
+        h_ratios: Optional[List[int]] = None,
+        alternate_label_side: bool = True,
+        ax_padding_y: float = 0.2,
+        axs: Optional[
+            Union[List[Axes], np.ndarray]
+        ] = None,  # New parameter for existing axes
+        **kwargs,
+    ) -> Tuple[Optional[matplotlib.figure.Figure], np.ndarray]:
+        fig = None
+        if axs is None:
+            fig, axs = plt.subplots(
+                nrows=rows,
+                ncols=1,
+                sharex=True,
+                gridspec_kw={"height_ratios": h_ratios},
+                **kwargs,
+            )
+
+        # set height ratios
+        plt.subplots_adjust(hspace=0)
+        for ax in axs:
+            ax.margins(y=ax_padding_y)
+
+        self._remove_spines(axs[0], "bottom")
+        self._remove_ticks(axs[0], keep_y=True)
+
+        for ax in axs[1:-1]:
+            self._remove_spines(ax, ["top", "bottom"])
+            self._remove_ticks(ax, keep_y=True)
+
+        if alternate_label_side:
+            for ax in axs[1::2]:
+                self._remove_ticks(ax)
+                ax.yaxis.tick_right()
+                ax.tick_params(axis="y", which="both", labelleft=False, labelright=True)
+                ax.yaxis.set_label_position("right")
+
+        self._remove_spines(axs[-1], "top")
+        if fig:
+            return fig, axs
+        else:
+            return axs
+
+    def alternating_axis_rows(
+        self,
+        rows: int,
+        h_ratios: Optional[List[int]] = None,
+        ax_padding_y: float = 0.2,
+        axs: Optional[
+            Union[List[Axes], np.ndarray]
+        ] = None,  # New parameter for existing axes
+        **kwargs,
+    ) -> Tuple[Optional[matplotlib.figure.Figure], np.ndarray]:
+        fig = None
+        if axs is None:
+            fig, axs = plt.subplots(
+                nrows=rows,
+                ncols=1,
+                sharex=True,
+                gridspec_kw={"height_ratios": h_ratios},
+                **kwargs,
+            )
+
+        # set height ratios
+        plt.subplots_adjust(hspace=0)
+        for ax in axs:
+            ax.margins(y=ax_padding_y)
+
+        # Even plots
+        for i in range(len(axs)):
+            ax = axs[i]
+
+            self._remove_spines(ax, "top")
+            if i % 2 == 0:
+                self._remove_spines(ax, "right")
+            else:
+                self._remove_spines(ax, "left")
+            if i < len(axs) - 1:
+                self._remove_spines(ax, "bottom")
+
+        # odd plots
+        for ax in axs[1::2]:
+            ax.yaxis.tick_right()
+            ax.tick_params(axis="y", which="both", labelleft=False, labelright=True)
+            ax.yaxis.set_label_position("right")
+
+        self._remove_ticks(axs[:-1], keep_y=True)
+        return fig, axs
+
+    def _add_map_features(self, ax: Axes, config: PlotConfig) -> None:
+        """Add standard map features to an axes.
+
+        Args:
+            ax: Matplotlib axes with cartopy projection
+            config: Plot configuration, uses default if None
+        """
+        ax.coastlines(
+            resolution=config.resolution, linewidth=config.coastline_linewidth
+        )
+
+        if config.borders:
+            ax.add_feature(
+                cfeature.BORDERS, linestyle="-", linewidth=config.border_linewidth
+            )
+
+        if config.grid_labels:
+            ax.gridlines(
+                draw_labels=config.grid_labels,
+                linewidth=config.grid_width,
+                color=config.grid_color,
+                alpha=config.grid_alpha,
+                linestyle=config.grid_style,
+            )
+
+    def _cluster_annotate(
+        self,
+        ax: Axes,
+        x: float,
+        y: float,
+        cluster_id: int,
+        acol: str,
+        scale: float = 1,
+        relative_coords: bool = False,
+    ):
+        # Handle coordinate transforms for different projections
+        if not relative_coords and not isinstance(
+            ax.projection, (ccrs.SouthPolarStereo, ccrs.NorthPolarStereo)
+        ):
+            transform = ccrs.PlateCarree()
+        else:
+            transform = None
+
+        black_or_white = get_high_constrast_text_color(acol)
+        t = ax.annotate(
+            text=str(cluster_id),
+            xy=(x, y),
+            xycoords="axes fraction" if relative_coords else "data",
+            annotation_clip=False,
+            color=black_or_white,
+            zorder=100,
+            fontweight="semibold",
+            ha="center",
+            va="center",
+            fontsize=6 + 4 * scale,
+            transform=transform,
+        )
+        t.set_bbox(
+            dict(
+                facecolor=acol,
+                alpha=1,
+                edgecolor=black_or_white,
+                boxstyle="round,pad=0.2,rounding_size=0.2",  # adjust rounding_size to control corner radius
+            )
+        )
+
+    def cluster_map_contour(
+        self,
+        var: str,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        projection: Optional[str] = None,
+        ax: Optional[Axes] = None,
+        color: Optional[str] = None,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        add_labels: bool = True,
+        **kwargs: Any,
+    ) -> Tuple[matplotlib.figure.Figure, Axes]:
+        return self.cluster_map(
+            var,
+            cluster_ids,
+            projection,
+            ax,
+            color,
+            cmap,
+            only_contour=True,
+            add_labels=add_labels,
+        )
+
+    def cluster_map(
+        self,
+        var: str,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        projection: Optional[str] = None,
+        ax: Optional[Axes] = None,
+        color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        add_contour: bool = True,
+        only_contour: bool = False,
+        add_labels: bool = True,
+        unclustered_color: Optional[str] = None,
+        remaining_clusters_color: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Tuple[matplotlib.figure.Figure, Axes]:
+        """Plot one or multiple clusters on a map.
+
+        Args:
+            var: Variable name for which clusters have been computed.
+            cluster_ids: Single cluster ID or list of cluster IDs to plot.
+                         Defaults to all clusters (except -1) if None.
+            projection: Projection to use for the map. Uses default if None.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            color: Color for cluster visualization. Can be:
+                - A single color (str, hex, RGB tuple) to use for all clusters.
+                - A list of colors to use for each cluster. Overrides cmap.
+            cmap: Colormap for multiple clusters. Used only if color is None.
+            add_contour: If True, add contour lines around clusters.
+            only_contour: If True, only plot contour lines (no fill).
+            add_labels: If True, add cluster ID labels using a geometrically
+                        central point (`central_point_for_labeling`).
+            unclustered_color: Optional color to fill unclustered grid cells.
+            remaining_clusters_color: Optional color to fill grid cells belonging
+                                     to clusters not specified in `cluster_ids`.
+            **kwargs: Additional arguments passed to xarray.plot methods
+                      (e.g., `plot`, `plot.contour`).
+
+        Returns:
+            Tuple of (figure, axes). Figure is None if ax was provided.
+
+        Raises:
+            ValueError: If no clusters found for given variable.
+            TypeError: If `cluster_ids` is not an int, list, ndarray, range, or None,
+                       or if `cmap` is not a string or ListedColormap.
+        """
+        clusters = self.td.get_clusters(var)
+        if clusters is None:
+            raise ValueError(f"No clusters found for variable {var}")
+
+        if ax is None:
+            fig, ax = self.map(projection=projection)
+        else:
+            fig = None
+
+        # Plot all clusters (except -1) if no cluster_ids passed
+        all_cluster_ids = clusters.cluster_ids
+        cluster_ids = (
+            cluster_ids
+            if cluster_ids is not None
+            else all_cluster_ids[all_cluster_ids != -1]
+        )
+
+        # Check that we have a valid cluster_ids value
+        if not isinstance(cluster_ids, (int, list, np.ndarray, range)):
+            raise TypeError("cluster_ids must be int, list, np.ndarray, range, or None")
+
+        # Convert single cluster_id to list for consistent handling
+        if isinstance(cluster_ids, int):
+            single_plot = True
+            cluster_ids = [cluster_ids]
+        else:
+            single_plot = False
+            cluster_ids = list(cluster_ids)  # Convert to list for consistent indexing
+
+        # Create color list for each cluster
+        if color is not None:
+            # If color is a list, use it directly (one color per cluster)
+            if (
+                isinstance(color, (list, tuple))
+                and len(color) > 1
+                and not all(isinstance(c, (int, float)) for c in color)
+            ):
+                color_list = color
+                if len(color_list) < len(cluster_ids):
+                    # Repeat colors if needed
+                    color_list = color_list * (len(cluster_ids) // len(color_list) + 1)
+                color_list = color_list[
+                    : len(cluster_ids)
+                ]  # Trim to match cluster_ids length
+            else:
+                # Single color for all clusters
+                color_list = [color] * len(cluster_ids)
+        else:
+            # Use colormap to generate colors
+            if isinstance(cmap, str):
+                base_cmap = plt.get_cmap(cmap)
+                color_list = [base_cmap(i) for i in np.linspace(0, 1, len(cluster_ids))]
+            elif isinstance(cmap, ListedColormap):
+                # Extract colors from the ListedColormap
+                cmap_colors = cmap.colors
+                # Repeat colors if needed
+                if len(cmap_colors) < len(cluster_ids):
+                    cmap_colors = cmap_colors * (
+                        len(cluster_ids) // len(cmap_colors) + 1
+                    )
+                color_list = cmap_colors[: len(cluster_ids)]
+            else:
+                raise TypeError("cmap must be a string or ListedColormap")
+
+        # Create a ListedColormap for each cluster
+        cmap_list = [ListedColormap([c]) for c in color_list]
+
+        for i, id in enumerate(cluster_ids):
+            # Skip if not in cluster ids
+            if id not in all_cluster_ids:
+                continue
+
+            # Get the colormap for this cluster
+            cluster_cmap = cmap_list[i]
+
+            # Get mask for clustered or unclustered cells
+            mask = (
+                self.td.get_permanent_unclustered_mask(var)
+                if id == -1
+                else self.td.get_spatial_cluster_mask(var, id)
+            )
+
+            plot_params = {
+                "ax": ax,
+                "cmap": cluster_cmap,
+                "add_colorbar": False,
+                "transform": ccrs.PlateCarree()
+                if "lat" in self.td.space_dims
+                else None,
+                **kwargs,
+            }
+
+            if not only_contour:
+                # Don't plot values outside mask: FALSE -> np.nan
+                mask.where(mask, np.nan).plot(
+                    **plot_params,
+                )
+
+            if only_contour or add_contour:
+                if add_contour:
+                    # Make contour color darker
+                    contour_color = cluster_cmap.colors[0]
+                    color_rgba = to_rgba(contour_color)
+                    darker_color = (
+                        color_rgba[0] * 0.8,
+                        color_rgba[1] * 0.8,
+                        color_rgba[2] * 0.8,
+                        color_rgba[3],
+                    )
+                    plot_params["cmap"] = ListedColormap([darker_color])
+
+                mask.plot.contour(
+                    levels=1,
+                    linewidths=2,
+                    **plot_params,
+                )
+
+            if add_labels:
+                # returns space_dims[0, 1], so y, x or lon, lat
+                # Uses the point furthest from the cluster edge for robust labeling
+                y, x = self.td.cluster_stats(var).space.central_point_for_labeling(id)
+                if np.isnan(x) or np.isnan(y):
+                    # Get median coordinates as fallback
+                    y, x = self.td.cluster_stats(var).space.median_point(id)
+
+                if not (np.isnan(x) or np.isnan(y)):
+                    self._cluster_annotate(ax, x, y, id, cluster_cmap.colors[0])
+                else:
+                    print(
+                        f"Warning: Could not find valid label position for cluster {id}"
+                    )
+
+            if single_plot:
+                ax.set_title(f"{var}_cluster {id}")
+
+        # Plot remaining clusters
+        if remaining_clusters_color:
+            remaining_cluster_ids = [  # get unplotted clusters ids (except -1)
+                int(id) for id in all_cluster_ids if id not in cluster_ids and id != -1
+            ]
+            mask = self.td.get_spatial_cluster_mask(var, remaining_cluster_ids)
+            mask = mask.where(mask > 0, np.nan)
+            mask.plot(
+                cmap=ListedColormap([remaining_clusters_color]),
+                add_colorbar=False,
+                ax=ax,
+            )
+
+        # Plot unclustered cells
+        if unclustered_color:
+            unclustered_mask = self.td.get_permanent_unclustered_mask(var).where(
+                ~self.td.data[var].isnull().all(dim=self.td.time_dim), 0
+            )  # unclustered cells with data
+            unclustered_mask = unclustered_mask.where(unclustered_mask > 0, np.nan)
+            unclustered_mask.plot(
+                cmap=ListedColormap([unclustered_color]),
+                add_colorbar=False,
+                ax=ax,
+            )
+
+        return fig, ax
+
+    def cluster_maps(
+        self,
+        var: str,
+        cluster_ids: Union[List[int], np.ndarray, range],
+        ncols: int = 5,
+        color: Optional[str] = None,
+        projection: Optional[str] = None,
+        width: float = 12,
+        row_height: float = 2.5,
+        **kwargs: Any,
+    ) -> None:
+        """Plot individual clusters on separate maps in a grid layout.
+
+        Args:
+            var: Variable name for which clusters have been computed.
+            cluster_ids: List, range, or array of cluster IDs to plot.
+            ncols: Number of columns in the subplot grid.
+            color: Single color to use for all cluster visualizations. Passed to `cluster_map`.
+            projection: Map projection to use for each subplot. Uses default if None.
+            width: Total width of the figure in inches.
+            row_height: Height of each row in the subplot grid in inches.
+            **kwargs: Additional arguments passed down to `self.cluster_map` for each plot.
+
+        Returns:
+            None: This function creates a plot but does not return any values.
+
+        Raises:
+            ValueError: If no clusters found for the given variable `var`.
         """
         cluster_counts = self.td.get_cluster_counts(var)
-        n_clusters = np.min([len(self.td.get_clusters(var).cluster_ids), max_clusters])
-        nrows = int(np.ceil(n_clusters / ncols))
-        # fig, axs = south_pole_plots(nrows, ncols, h=nrows*3)
-        # Intsead of south_pole_plots:
+        if cluster_counts is None:
+            raise ValueError(f"No clusters found for variable {var}")
 
-        projection = ccrs.SouthPolarStereo() if south_pole else ccrs.PlateCarree()
-        fig, axs = plt.subplots(
+        # Filter cluster_ids to only include existing clusters
+        cluster_ids = [id for id in cluster_ids if id in self.td.get_cluster_ids(var)]
+
+        nrows = int(np.ceil(len(cluster_ids) / ncols))
+
+        fig, axs = self.map(
             nrows,
             ncols,
-            figsize=(12, nrows * 2.5),
-            subplot_kw={"projection": projection},
+            projection=projection,
+            figsize=(width, nrows * row_height),
         )
-        for ax in axs.flat:
-            ax.coastlines(resolution="110m", linewidth=0.5)
-            if south_pole:
-                ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
 
-        for i, id in enumerate(self.td.get_cluster_ids(var)[:n_clusters]):
+        # Plot clusters
+        for i, cluster_id in enumerate(cluster_ids):
             ax = axs.flat[i]
-            self.plot_cluster_on_map(var, ax=ax, cluster_id=id, color=color, **kwargs)
-            ax.set_title(f"id {id} with {cluster_counts[id]} members", fontsize=10)
+            self.cluster_map(
+                var, ax=ax, cluster_ids=int(cluster_id), color=color, **kwargs
+            )
+            ax.set_title(
+                f"id {cluster_id} with {cluster_counts[cluster_id]} members",
+                fontsize=10,
+            )
 
-    def plot_cluster_time_series(
-        self, var, cluster_id, ax=None, max_trajectories=1_000, **plot_kwargs
-    ):
-        """
-        Plot the time series of a cluster.
-        """
-        cells = self.td.get_cluster_timeseries(var, cluster_id)
+    def cluster_timeseries(
+        self,
+        var: str,
+        cluster_ids: Union[int, List[int], np.ndarray, range],
+        plot_var: Optional[str] = None,
+        ax: Optional[Axes] = None,
+        color: Optional[str] = None,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        alpha: float = 0.1,
+        add_legend: bool = True,
+        max_trajectories: int = 1_000,
+        plot_stats: bool = False,
+        full_timeseries: bool = True,
+        cluster_highlight_color: Optional[str] = None,
+        cluster_highlight_alpha: float = 0.5,
+        cluster_highlight_linewidth: float = 0.5,
+        **plot_kwargs: Any,
+    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
+        """Plot the time series of one or multiple clusters.
 
+        Args:
+            var: Variable name for which clusters have been computed.
+            cluster_ids: ID or list of IDs of clusters to plot.
+            plot_var: Variable name to plot (if different from var). Defaults to var.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            color: Single color to use for all plotted clusters. Overrides cmap.
+            cmap: Colormap to use if plotting multiple clusters and color is None.
+            alpha: Alpha transparency for individual time series lines.
+            add_legend: If True, add a legend indicating cluster IDs.
+            max_trajectories: Maximum number of individual trajectories to plot per cluster.
+            plot_stats: If True, add vertical spans indicating cluster duration and IQR.
+            full_timeseries: If True, plot the full timeseries for each cell. If False,
+                only plot the segment belonging to the cluster.
+            cluster_highlight_color: Color to highlight the actual cluster segment
+                when full_timeseries is True.
+            cluster_highlight_alpha: Alpha for the cluster highlight segment.
+            cluster_highlight_linewidth: Line width for the cluster highlight segment.
+            **plot_kwargs: Additional arguments passed to xarray.plot for each trajectory.
+
+        Returns:
+            Tuple of (figure, axes). Figure is None if ax was provided.
+
+        Raises:
+            ValueError: If no timeseries found for a given cluster ID.
+        """
+
+        # Filter cluster_ids to only include existing clusters
+        cluster_ids = [id for id in cluster_ids if id in self.td.get_cluster_ids(var)]
+
+        plot_var = plot_var if plot_var is not None else var
+
+        create_new_ax = ax is None
+        fig = None
+        if create_new_ax:
+            fig, ax = plt.subplots()
+
+        for i, id in enumerate(cluster_ids):
+            # Get color
+            if color:
+                id_color = color
+            if not color:
+                if len(cluster_ids) == 1:
+                    id_color = ToadColors.primary
+                else:
+                    id_color = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)[i]
+
+            cells = self.td.get_cluster_timeseries(
+                plot_var, id, cluster_var=var, keep_full_timeseries=full_timeseries
+            )
+
+            if cells is None:
+                raise ValueError(f"No timeseries found for cluster {id}")
+
+            # Limit the number of trajectories to plot
+            max_trajectories = np.min([max_trajectories, len(cells)])
+
+            # Shuffle the cell to get a random sample
+            order = np.arange(len(cells))
+            np.random.shuffle(order)
+            order = order[:max_trajectories]
+
+            for plot_idx, cell_idx in enumerate(order):
+                add_label = (
+                    f"id={id}" if (add_legend and plot_idx == 0) else "__nolegend__"
+                )
+                cells[cell_idx].plot(
+                    ax=ax, color=id_color, alpha=alpha, label=add_label, **plot_kwargs
+                )
+
+            if plot_stats:
+                stats = self.td.cluster_stats(var).time.all_stats(id)
+                ax.axvspan(stats["start"], stats["end"], color="#eee", label="Duration")
+                ax.axvspan(
+                    stats["iqr_68"][0],
+                    stats["iqr_68"][1],
+                    color="#ccc",
+                    label=r"68% IQR",
+                )
+            if add_legend:
+                legend = ax.legend(
+                    frameon=False,
+                )
+                for handle in legend.get_lines():
+                    handle.set_alpha(1.0)
+
+            if cluster_highlight_color:
+                cells = self.td.get_cluster_timeseries(
+                    var, id, keep_full_timeseries=False
+                )
+                for ts in cells:
+                    ax.plot(
+                        ts.time.values,
+                        ts.values,
+                        color=cluster_highlight_color,
+                        alpha=cluster_highlight_alpha,
+                        lw=cluster_highlight_linewidth,
+                    )
+
+        if len(cluster_ids) == 1:
+            if max_trajectories < len(cells):
+                ax.set_title(
+                    f"Random sample of {max_trajectories} from total {len(cells)} cell for {var} in cluster {cluster_ids[0]}"
+                )
+            else:
+                ax.set_title(
+                    f"{len(cells)} timeseries for {var} in cluster {cluster_ids[0]}"
+                )
+
+        return fig, ax
+
+    def cluster_aggregate(
+        self,
+        cluster_var: str,
+        cluster_ids: Union[List[int], np.ndarray, range],
+        plot_var: Optional[str] = None,
+        ax: Optional[Axes] = None,
+        color: Optional[str] = None,
+        cmap: Union[str, ListedColormap] = default_cmap,
+        mean_linewidth: float = 3,
+        median_linewidth: float = 3,
+        shift_indicator_linewidth: float = 5,
+        normalize: Optional[Literal["first", "max", "last"]] = None,
+        add_legend: bool = True,
+        plot_range: bool = True,
+        plot_68iqr: bool = True,
+        plot_95iqr: bool = False,
+        plot_mean: bool = True,
+        plot_median: bool = False,
+        plot_custom_iqr: Optional[tuple[float, float]] = None,
+        alpha: float = 0.4,
+        plot_shift_indicator: bool = True,
+    ) -> tuple[Optional[matplotlib.figure.Figure], Axes]:
+        """Plot aggregated time series statistics for one or multiple clusters.
+
+        Plots mean and/or median lines along with shaded interquartile ranges (default: full range and 68% IQR).
+        The shift indicator shows the temporal extent of each cluster by plotting horizontal lines at different shades:
+        - The light shaded line spans the full duration of the cluster (from first to last occurrence)
+        - The darker shaded line shows the 68% interquartile range (IQR) duration, which represents the core period when the cluster is most active
+
+        Args:
+            cluster_var: Variable name for which clusters have been computed.
+            cluster_ids: List of cluster IDs to plot.
+            plot_var: Variable name to plot (if different from cluster_var). Defaults to cluster_var.
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            color: Single color to use for all plotted clusters. Overrides cmap.
+            cmap: Colormap to use if plotting multiple clusters and color is None.
+            mean_linewidth: Linewidth for the mean curve.
+            median_linewidth: Linewidth for the median curve.
+            shift_indicator_linewidth: Linewidth for the duration indicator lines.
+            normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
+            add_legend: If True, add a legend indicating cluster IDs.
+            plot_range: If True, plot the full range (min to max) as a shaded area.
+            plot_68iqr: If True, plot the 68% IQR (16th to 84th percentile) as a shaded area.
+            plot_95iqr: If True, plot the 95% IQR (2.5th to 97.5th percentile) as a shaded area.
+            plot_mean: If True, plot the mean timeseries curve.
+            plot_median: If True, plot the median timeseries curve.
+            plot_custom_iqr: Tuple of (start_percentile, end_percentile) for a custom IQR shaded area.
+            alpha: Alpha transparency for the shaded IQR areas.
+            plot_shift_indicator: If True, plot horizontal lines indicating the cluster's
+                temporal start/end and 68% IQR duration.
+
+        Returns:
+            Tuple of (figure, axes). Figure is None if ax was provided.
+        """
+        fig = None
         if ax is None:
             fig, ax = plt.subplots()
 
-        # Limit the number of trajectories to plot
-        max_trajectories = np.min([max_trajectories, len(cells)])
+        # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
+        plot_var = plot_var if plot_var is not None else cluster_var
 
-        # Shuffle the cell to get a random sample
-        order = np.arange(len(cells))
-        np.random.shuffle(order)
-        order = order[:max_trajectories]
+        # Filter cluster_ids to only include existing clusters
+        found_cluster_ids = self.td.get_cluster_ids(cluster_var)
+        cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
 
-        for i in order:
-            cells[i].plot(ax=ax, **plot_kwargs)
+        for i, id in enumerate(cluster_ids):
+            if color:
+                id_color = color
+            if not color:
+                if len(cluster_ids) == 1:
+                    id_color = ToadColors.primary
+                else:
+                    id_color = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)[i]
 
-        if max_trajectories < len(cells):
-            ax.set_title(
-                f"Random sample of {max_trajectories} from total {len(cells)} cell for {var} in cluster {cluster_id}"
+            def plot_iqr(percentile_start, percentile_end):
+                ax.fill_between(
+                    self.td.data.time,
+                    self.td.get_cluster_timeseries(
+                        plot_var,
+                        id,
+                        aggregation="percentile",
+                        percentile=percentile_start,
+                        cluster_var=cluster_var,
+                        normalize=normalize,
+                    ),
+                    self.td.get_cluster_timeseries(
+                        plot_var,
+                        id,
+                        aggregation="percentile",
+                        percentile=percentile_end,
+                        cluster_var=cluster_var,
+                        normalize=normalize,
+                    ),
+                    color=id_color,
+                    alpha=alpha,
+                )
+
+            if plot_range:
+                plot_iqr(0.00001, 0.999999)
+
+            if plot_68iqr:
+                plot_iqr(0.16, 0.84)
+
+            if plot_95iqr:
+                plot_iqr(0.025, 0.975)
+
+            if plot_custom_iqr:
+                plot_iqr(plot_custom_iqr[0], plot_custom_iqr[1])
+
+            if plot_mean:
+                self.td.get_cluster_timeseries(
+                    plot_var,
+                    id,
+                    aggregation="mean",
+                    cluster_var=cluster_var,
+                    normalize=normalize,
+                ).plot(
+                    ax=ax,
+                    color=id_color,
+                    lw=mean_linewidth,
+                    label=f"id={id}",
+                )
+
+            if plot_median:
+                self.td.get_cluster_timeseries(
+                    plot_var,
+                    id,
+                    aggregation="median",
+                    cluster_var=cluster_var,
+                    normalize=normalize,
+                ).plot(ax=ax, color=id_color, lw=median_linewidth, label=f"id={id}")
+
+            if plot_shift_indicator:
+                stats = self.td.cluster_stats(cluster_var).time.all_stats(id)
+                y_offset = ax.get_ylim()[1] * (
+                    (i + 1) * -0.05
+                )  # offset if we plot multiple clusters
+                ax.plot(
+                    [stats["start"], stats["end"]],
+                    [y_offset, y_offset],
+                    color=id_color,
+                    linewidth=shift_indicator_linewidth,
+                    alpha=alpha,
+                )
+                ax.plot(
+                    [stats["iqr_68"][0], stats["iqr_68"][1]],
+                    [y_offset, y_offset],
+                    color=id_color,
+                    linewidth=shift_indicator_linewidth,
+                    alpha=alpha,
+                )
+
+            if add_legend:
+                ax.legend(frameon=False)
+
+        ax.set_title(f"{plot_var} for clusters from {cluster_var} {cluster_ids}")
+        return fig, ax
+
+    def cluster_evolution(
+        self,
+        cluster_var: str,
+        cluster_id: int,
+        plot_var: Optional[str] = None,
+        ncols: int = 5,
+        snapshots: int = 5,
+        projection: Optional[str] = None,
+    ) -> Tuple[matplotlib.figure.Figure, np.ndarray]:
+        """Plot spatial snapshots of a cluster's evolution over time.
+
+        Takes multiple snapshots of the variable `plot_var` (masked by the
+        cluster defined in `cluster_var`) at different time steps
+        within the cluster's duration and plots them on separate maps.
+
+        Args:
+            cluster_var: Variable name used for clustering.
+            cluster_id: ID of the specific cluster to visualize.
+            plot_var: Variable name whose data to plot within the cluster mask.
+                      Defaults to `cluster_var` if None.
+            ncols: Number of columns in the subplot grid for the snapshots.
+            snapshots: Number of time snapshots to plot across the cluster's duration.
+            projection: Map projection to use for the snapshot maps. Uses default if None.
+
+        Returns:
+            Tuple[matplotlib.figure.Figure, np.ndarray]: The figure and the array of axes
+            containing the snapshot plots.
+        """
+
+        # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
+        plot_var = plot_var if plot_var is not None else cluster_var
+
+        start, end = (
+            self.td.cluster_stats(cluster_var).time.start(cluster_id),
+            self.td.cluster_stats(cluster_var).time.end(cluster_id),
+        )
+        times = np.linspace(start, end, snapshots)
+        da = self.td.apply_cluster_mask(cluster_var, plot_var, cluster_id).sel(
+            time=times, method="nearest"
+        )
+        nplots = len(da)
+        nrows = int(np.ceil(nplots / ncols))
+        fig, axs = self.map(nrows, ncols, projection=projection)
+
+        # hide superfluous axes
+        for ax in axs.flat[nplots:]:
+            ax.set_visible(False)
+
+        for i in range(nplots):
+            da[i].plot(add_colorbar=False, ax=axs.flat[i])
+            axs.flat[i].set_title(f"{self.td.time_dim} = {times[i]:.2f}", fontsize=10)
+        plt.tight_layout()
+        return fig, axs
+
+    def cluster_overview(
+        self,
+        cluster_var: str,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        plot_var: Optional[str] = None,
+        projection: Optional[str] = None,
+        figsize: tuple = (12, 6),
+        width_ratios: List[float] = [1, 1],
+        height_ratios: Optional[List[float]] = None,
+        map_kwargs: dict = {},
+        timeseries_kwargs: dict = {},
+        timeseries_ylabel: bool = False,
+        cmap: str = default_cmap,
+        wspace: float = 0.1,
+        hspace: float = 0.1,
+        vertical: bool = False,
+        n_timeseries_col: int = 1,
+    ) -> Tuple[matplotlib.figure.Figure, dict]:
+        """Create a combined plot with a cluster map and aggregated time series.
+
+        Combination of a `cluster_map` and `cluster_aggregate`.
+
+        Args:
+            cluster_var: Variable name used for clustering.
+            cluster_ids: ID or list of IDs of clusters to plot. Defaults to all
+                         clusters found for `cluster_var`.
+            plot_var: Variable name whose data to plot in the timeseries.
+                      Defaults to `cluster_var` if None.
+            projection: Map projection for the cluster map. Uses default if None.
+            figsize: Overall figure size (width, height) in inches.
+            width_ratios: List of relative widths for map vs. timeseries section
+                          (used in horizontal layout).
+            height_ratios: List of relative heights for map vs. timeseries section
+                           (used in vertical layout).
+            map_kwargs: Dictionary of keyword arguments passed to `cluster_map`.
+            timeseries_kwargs: Dictionary of keyword arguments passed to
+                               `cluster_aggregate` for each timeseries plot.
+            timeseries_ylabel: If True, show y-axis label on the timeseries plots.
+            cmap: Colormap used to color clusters consistently across map and
+                  timeseries plots.
+            wspace: Width space between timeseries subplots (if n_timeseries_col > 1).
+            hspace: Height space between map/timeseries (vertical) or timeseries rows.
+            vertical: If True, arrange map above timeseries plots. Otherwise, map
+                      is placed to the left.
+            n_timeseries_col: Number of columns for the timeseries subplot grid.
+
+        Returns:
+            Tuple containing:
+                - fig: The matplotlib Figure object.
+                - axes_dict: A dictionary containing the map axes and a list of
+                  timeseries axes, e.g., {'map': map_ax, 'timeseries': [ts_ax1, ts_ax2,...]}.
+        """
+
+        if not cluster_ids:
+            cluster_ids = self.td.get_cluster_ids(cluster_var)
+        elif isinstance(cluster_ids, int):
+            cluster_ids = [cluster_ids]  # Convert single int to list
+
+        # Filter cluster_ids to only include existing clusters
+        found_cluster_ids = self.td.get_cluster_ids(cluster_var)
+        cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
+
+        if len(cluster_ids) == 0:
+            raise ValueError("No clusters found for variable", cluster_var)
+
+        # Calculate layout dimensions
+        n_ts = len(cluster_ids)
+        n_ts_rows = int(np.ceil(n_ts / n_timeseries_col))
+
+        # Create figure with constrained_layout
+        fig = plt.figure(figsize=figsize, constrained_layout=True)
+
+        if vertical:
+            # Create main gridspec that spans the whole figure
+            main_gs = fig.add_gridspec(
+                nrows=2,
+                ncols=1,
+                height_ratios=height_ratios if height_ratios else [1, 1],
+                hspace=hspace,
+            )
+
+            # Create map in top gridspec
+            _, map_ax = self.map(
+                nrows=1, ncols=1, subplot_spec=main_gs[0], projection=projection
+            )
+
+            # Create timeseries grid in bottom gridspec
+            gs = main_gs[1].subgridspec(
+                nrows=n_ts_rows,
+                ncols=n_timeseries_col,
+                hspace=hspace,
+                wspace=wspace if n_timeseries_col > 1 else 0,
             )
         else:
-            ax.set_title(f"{len(cells)} timeseries for {var} in cluster {cluster_id}")
-        return self
+            # Create main gridspec that spans the whole figure
+            main_gs = fig.add_gridspec(
+                nrows=1,
+                ncols=2,
+                width_ratios=width_ratios,
+            )
 
-    # ============================================================
-    #               Cluster map + time series plot
-    # ============================================================
+            # Create map in left column
+            _, map_ax = self.map(
+                nrows=1, ncols=1, subplot_spec=main_gs[0, 0], projection=projection
+            )
 
-    # def cluster_view_timeseries_and_map(self, var, cluster_id, south_pole=False):
-    #     fig, axs = plots(2,1, squeeze=False, h_ratios=[4,1], h=PLT_HEIGHT_HALF*0.8, w=PLT_WIDTH_FULL)
-    #     if south_pole:
-    #         replace_ax_south_pole(fig, axs, 0, 0, linewidth=0.5)
-    #     else:
-    #         replace_ax_map(fig, axs, 0, 0, linewidth=0.5)
-    #     axs = axs.flat
-    #     self.plot_cluster_on_map(var, ax=axs[0], cluster_id=cluster_id, color="plum")
-    #     self.plot_cluster_time_series(var, ax=axs[1], cluster_id=cluster_id, color="plum", alpha=0.5, lw=0.5, max_trajectories=500)
-    #     cluster_persistence_fraction = self.td.cluster_persistence_fraction(var, cluster_id)
-    #     span = non_zero_span(cluster_persistence_fraction)
-    #     time = self.td.data.time
-    #     axs[1].axvspan(time[span[0]], time[span[1]], color='blue', alpha=0.1)
-    #     axs0_twin = axs[1].twinx()
-    #     axs0_twin.set_ylim(-0.05, 1.05)
-    #     axs0_twin.set_ylabel("Cluster persistence fraction", color=C1)
-    #     axs0_twin.plot(self.td.data.time, cluster_persistence_fraction)
+            # Create timeseries grid in right column
+            gs = main_gs[0, 1].subgridspec(
+                nrows=n_ts_rows,
+                ncols=n_timeseries_col,
+                hspace=hspace,
+                wspace=wspace if n_timeseries_col > 1 else 0,
+            )
 
-    #     for ax in [*axs, axs0_twin]:
-    #         ax.set_title(ax.get_title(), fontsize=PLT_FONT_SIZE_08)
-    #         ax.set_ylabel(ax.get_ylabel(), fontsize=PLT_FONT_SIZE_08)
-    #         ax.set_xlabel(ax.get_xlabel(), fontsize=PLT_FONT_SIZE_08)
+        # Plot map
+        colors = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)
+        self.cluster_map(
+            cluster_var,
+            cluster_ids=cluster_ids,
+            color=colors[0] if len(colors) == 1 else colors,
+            ax=map_ax,
+            **map_kwargs,
+        )
 
-    # def cluster_view_timeseries_and_map_interactive(self, var, south_pole=False):
-    #     from ipywidgets import interact
-    #     largest_cluster_idx = self.td.get_n_largest_cluster_ids(var, n=10)
-    #     @interact(i=(0, len(largest_cluster_idx) - 1))
-    #     def _(i=1): self.cluster_view_timeseries_and_map(var, largest_cluster_idx[i], south_pole=south_pole)
+        # Create and plot timeseries
+        ts_axes = []
+        for i in range(n_ts):
+            row = i // n_timeseries_col
+            col = i % n_timeseries_col
+            ax = fig.add_subplot(gs[row, col])
+            ts_axes.append(ax)
 
-    # # With dts plot
-    # def cluster_view_timeseries_and_map2(self, var, cluster_id, south_pole=False):
-    #     fig, axs = plots(3,1, squeeze=False, h_ratios=[4,1,1], h=PLT_HEIGHT_HALF*0.9, w=PLT_WIDTH_FULL)
-    #     if south_pole:
-    #         replace_ax_south_pole(fig, axs, 0, 0, linewidth=0.5)
-    #     else:
-    #         replace_ax_map(fig, axs, 0, 0, linewidth=0.5)
-    #     axs = axs.flat
-    #     self.plot_cluster_on_map(var, ax=axs[0], cluster_id=cluster_id, color="plum")
-    #     self.plot_cluster_time_series(var, ax=axs[1], cluster_id=cluster_id, color="plum", alpha=0.5, lw=0.5, max_trajectories=500)
-    #     self.plot_cluster_time_series(var, ax=axs[2], cluster_id=cluster_id, color="plum", alpha=0.5, lw=0.5, max_trajectories=500, plot_shifts=True)
+            # Plot timeseries
+            self.cluster_aggregate(
+                cluster_var=cluster_var,
+                plot_var=plot_var,
+                cluster_ids=[cluster_ids[i]],
+                color=colors[i],
+                ax=ax,
+                **timeseries_kwargs,
+            )
+            ax.axhline(0, ls="--", lw=0.25, color="k")
+            ax.set_title("")
 
-    #     axs[1].sharex(axs[2])
+            if not timeseries_ylabel:
+                ax.set_ylabel("")
 
-    #     cluster_persistence_fraction = self.td.cluster_persistence_fraction(var, cluster_id)
-    #     span = non_zero_span(cluster_persistence_fraction)
-    #     time = self.td.data.time
-    #     axs[1].axvspan(time[span[0]], time[span[1]], color='blue', alpha=0.1)
-    #     axs0_twin = axs[1].twinx()
-    #     axs0_twin.set_ylim(-0.05, 1.05)
-    #     axs0_twin.set_ylabel("Cluster persistence fraction", color=C1)
-    #     axs0_twin.plot(self.td.data.time, cluster_persistence_fraction)
+            # Handle axis cleanup
+            if (vertical and row < n_ts_rows - 1) or (not vertical and i < n_ts - 1):
+                ax.set_xlabel("")
+                self._remove_spines(ax, ["right", "top", "bottom"])
+            else:
+                self._remove_spines(ax, ["right", "top"])
 
-    #     for ax in [*axs, axs0_twin]:
-    #         ax.set_title(ax.get_title(), fontsize=PLT_FONT_SIZE_08)
-    #         ax.set_ylabel(ax.get_ylabel(), fontsize=PLT_FONT_SIZE_08)
-    #         ax.set_xlabel(ax.get_xlabel(), fontsize=PLT_FONT_SIZE_08)
+            if (
+                i < n_ts - 1
+                and (vertical and row < n_ts_rows - 1)
+                or (not vertical and i < n_ts - 1)
+            ):
+                self._remove_ticks(ax, keep_y=True)
 
-    #     axs[1].set_xlabel("")
+        # Hide any empty subplots
+        for i in range(n_ts, n_ts_rows * n_timeseries_col):
+            row = i // n_timeseries_col
+            col = i % n_timeseries_col
+            ax = fig.add_subplot(gs[row, col])
+            ax.set_visible(False)
+        return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    # def cluster_view_timeseries_and_map_interactive2(self, var, south_pole=False):
-    #     from ipywidgets import interact
-    #     largest_cluster_idx = self.td.get_n_largest_cluster_ids(var, n=10)
-    #     @interact(i=(0, len(largest_cluster_idx) - 1))
-    #     def _(i=1): self.cluster_view_timeseries_and_map2(var, largest_cluster_idx[i], south_pole=south_pole)
+    def shifts_distribution(self, figsize: Optional[tuple] = None):
+        """Plot histograms showing the distribution of shifts for each shift variable."""
+
+        if figsize is None:
+            figsize = (15, 2 * self.td.shift_vars.size)
+
+        fig, axs = plt.subplots(nrows=self.td.shift_vars.size, figsize=figsize)
+        if not isinstance(axs, np.ndarray):
+            axs = np.array([axs])
+
+        if len(axs) > 1:
+            self._remove_ticks(axs[:-1])
+            self._remove_ticks(axs[-1], keep_x=True)
+            self._remove_spines(axs[:-1])
+            self._remove_spines(axs[-1], spines=["left", "right", "top"])
+        for i in range(self.td.shift_vars.size):
+            axs[i].hist(
+                self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
+                range=(-1, 1),
+                bins=20,
+            )
+            axs[i].set_ylabel(
+                f"#{self.td.shift_vars[i]}", rotation=0, ha="right", va="center"
+            )
+        return fig, axs
+
+
+# end of TOADPlotter
+
+
+# This function appears unused in this file. Consider removing if not used elsewhere.
+# def get_max_index(pos, n_rows=None):
+#     """Helper function to get the maximum index from a position spec."""
+#     if isinstance(pos, slice):
+#         if pos.stop is not None:
+#             return pos.stop
+#         return (n_rows - 1) if n_rows is not None else 0
+#     return pos
+
+
+def get_high_constrast_text_color(color: Union[tuple, str]) -> str:
+    """Determines whether black or white text provides better contrast against a given background color.
+
+    Args:
+        color: The background color (matplotlib-compatible string or RGB tuple).
+
+    Returns:
+        '#ffffff' (white) or '#000000' (black) for the text color.
+        Defaults to black if the color conversion fails.
+    """
+    try:
+        brightness = (
+            sum(
+                to_rgb(color)[i] * factor
+                for i, factor in enumerate([0.299, 0.587, 0.114])
+            )
+            * 255
+        )
+        return "#ffffff" if brightness < 128 else "#000000"
+    except ValueError:
+        print(f"Error converting {color} to RGB")
+        return "#000000"
+
+
+def get_cmap_seq(
+    cmap: str, start: int = 0, end: int = -1, stops: int = 10, reverse: bool = False
+) -> List[str]:
+    """Extracts a sequence of distinct colors from a matplotlib colormap.
+
+    Args:
+        cmap: Name of the matplotlib colormap.
+        start: Starting index within the colormap.
+        end: Ending index within the colormap. Defaults to the end of the cmap.
+        stops: The number of distinct colors to extract.
+        reverse: If True, reverse the order of the extracted colors.
+
+    Returns:
+        A list of color hex codes.
+    """
+    cmap = plt.get_cmap(cmap)
+    end = (
+        end if end != -1 else cmap.N
+    )  # Use cmap.N to get the number of colors in the colormap
+    cycle_index = np.linspace(start, end - 1, stops, dtype=int)
+    colors = cmap(cycle_index)  # Generate colors using the indices
+    if reverse:
+        colors = colors[::-1]
+    colors = [to_hex(color) for color in colors]
+    return colors

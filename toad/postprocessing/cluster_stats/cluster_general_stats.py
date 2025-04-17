@@ -17,7 +17,7 @@ class ClusterGeneralStats:
         self.var = var
         # Initialize other necessary attributes
 
-    def compute_cluster_score(
+    def cluster_abruptness(
         self,
         cluster_id,
         return_score_fit=False,
@@ -26,11 +26,8 @@ class ClusterGeneralStats:
         normalize: Optional[Literal["first", "max", "last"]] = None,
     ) -> Union[float, tuple[float, np.ndarray]]:
         """
-        Calculates cluster score based on fit to Heaviside vs linear function.
-
-        Score ranges from 0-1, where 1 indicates perfect Heaviside step function and 0
-        indicates perfect linear function. Higher scores mean more abrupt shifts.
-        Score is calculated by fitting linear regression and evaluating residuals.
+        Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
+        A score of 1 indicates a perfect step function, while 0 indicates a linear trend.
 
         >> Args:
             cluster_id:
@@ -63,7 +60,6 @@ class ClusterGeneralStats:
 
         # Get the variable values
         xvals = self.td.data[self.td.time_dim].values  # time values
-        # yvals = self.get_cluster_cell_aggregate(cluster_id, how=how)[var].values
         yvals = self.td.get_cluster_timeseries(
             self.var,
             cluster_id=cluster_id,

@@ -422,13 +422,401 @@ def polyfit_2(x, y, deg):
     # Reverse order so p[0] is coefficient of highest order
     return p[::-1]
 
+
 #################################################### Method 3 ##############################################################
+"""
+Use a very simple, custom linear regression function.
+"""
+
+class ASDETECT_3(ShiftsMethod):
+    """
+    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+
+    Steps:
+    1. Divide the time series into overlapping segments of size `l`.
+    2. Perform linear regression within each segment to calculate gradients.
+    3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
+    4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
+    5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
+    6. Normalize the detection array by dividing by the number of window sizes used.
+
+    Args:
+        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
+        lmax: (Optional) The maximum segment length for detection. If not
+            specified, it defaults to one-third of the size of the time dimension.
+    """
+
+    def __init__(self, lmin=5, lmax=None):
+        self.lmin = lmin
+        self.lmax = lmax
+
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
+        """Compute the detection time series for each grid cell in the 3D data array.
+
+        Args:
+            - dataarray: A 3D xarray DataArray containing a variable over time and two spatial coordinates
+            - time_dim: Name of the time dimension in `dataarray`.
+
+        Returns:
+            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents
+            the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
+                - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
+                - `-1` indicates that all tested segment lengths detected a significant negative gradient.
+                - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
+
+
+        """
+        shifts = xr.apply_ufunc(
+            construct_detection_ts_3,
+            dataarray,
+            kwargs=dict(
+                times_1d=dataarray[time_dim].values, lmin=self.lmin, lmax=self.lmax
+            ),
+            input_core_dims=[[time_dim]],
+            output_core_dims=[[time_dim]],
+            vectorize=True,
+        ).transpose(*dataarray.dims)
+
+        return shifts
+
+
+# 1D time series analysis of abrupt shifts =====================================
+
+@jit(forceobj=True, looplift=False)
+def construct_detection_ts_3(
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    lmin: int = 5,
+    lmax: Optional[int] = None,
+) -> np.ndarray:
+    """Construct a detection time series (asdetect algorithm).
+
+    Following [Boulton+Lenton2019]_, the time series (ts) is divided into
+    segments of length l, for each of which the gradient is computed. Segments
+    with gradients > 3 MAD of the gradients distribution are marked. Averaging
+    over many segmentation choices (i.e. values of l) results in a detection
+    time series that indicates the points of largest relative gradients.
+
+    >> Args:
+        values_1d:
+            Time series, shape (n,)
+        times_1d:
+            Times, shape (n,), same length as values_1d
+        lmin:
+            Smallest segment length, default = 5
+        lmax:
+            Largest segment length, default = n/3
+
+    >> Returns:
+        - Abraupt shift score time series, shape (n,)
+    """
+
+    n_tot = len(values_1d)
+
+    detection_ts = np.zeros_like(values_1d)
+
+    if np.isnan(values_1d).any():
+        # print("you tried evaluating a ts with nan entries")
+        return detection_ts
+
+    # default to have at least three gradients (needed for grad distribution)
+    if lmax is None:
+        lmax = int(n_tot / 3)
+
+    # segmentation values [lmin, lmin+1, ..., lmax-1, lmax]
+    segment_lengths = np.arange(lmin, lmax + 1, 1)
+
+    # construct a detection time series for each segmentation choice l
+    for length in segment_lengths:
+        # center the segments around the middle of the ts and drop the outer
+        # points to get the segmented time series and the first index of each
+        # segment, respectively
+        seg_idces = centered_segmentation(n_tot, l_seg=int(length))
+        arr_segs = np.split(values_1d, seg_idces)[1:-1]
+        t_segs = np.split(times_1d, seg_idces)[1:-1]
+
+        # calculate gradient for each segment and median absolute deviation
+        # of the resulting distribution
+        gradients = [
+            custom_lstq_3(tseg, aseg) for (tseg, aseg) in zip(t_segs, arr_segs)
+        ]
+        grad_MAD = stats.median_abs_deviation(gradients)
+        grad_MEAN = np.median(gradients)
+
+        # for each segment, check whether its gradient is larger than the
+        # threshold. if yes, update the detection time series accordingly.
+        # i1/i2 are the first/last index of a segment
+        # - Create a mask for segments that exceed the threshold
+        mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD
+        sign_mask = np.sign(gradients - grad_MEAN)
+
+        # Efficiently update detection time series
+        for i, m in enumerate(mask):
+            if m:
+                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+                detection_ts[i1:i2] += sign_mask[i]
+
+    # normalize the detection time series to one
+    detection_ts /= len(segment_lengths)
+
+    return detection_ts
+
+@njit#(forceobj=True, looplift=False)
+def custom_lstq_3(x, y):
+    """
+    Source: ChatGPT
+    Perform simple linear regression to fit y = mx + b.
+    
+    Parameters:
+        x (array-like): Independent variable.
+        y (array-like): Dependent variable.
+    
+    Returns:
+        m (float): Slope of the regression line.
+    """    
+    n = len(x)
+    if n != len(y):
+        raise ValueError("x and y must have the same length.")
+    
+    x_mean = np.mean(x)
+    y_mean = np.mean(y)
+    
+    numerator = np.sum((x - x_mean) * (y - y_mean))
+    denominator = np.sum((x - x_mean) ** 2)
+    
+    m = numerator / denominator
+    
+    return m
+
+
+#################################################### Method 4 ##############################################################
+"""
+Take numpy.polyfit and strip it down to essentials for our case to make it work with njit.
+"""
+
+import numpy._core.numeric as NX
+from numpy._core import finfo
+from numpy.lib._twodim_base_impl import vander
+from numpy.linalg import lstsq
+
+
+class ASDETECT_4(ShiftsMethod):
+    """
+    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+
+    Steps:
+    1. Divide the time series into overlapping segments of size `l`.
+    2. Perform linear regression within each segment to calculate gradients.
+    3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
+    4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
+    5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
+    6. Normalize the detection array by dividing by the number of window sizes used.
+
+    Args:
+        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
+        lmax: (Optional) The maximum segment length for detection. If not
+            specified, it defaults to one-third of the size of the time dimension.
+    """
+
+    def __init__(self, lmin=5, lmax=None):
+        self.lmin = lmin
+        self.lmax = lmax
+
+    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
+        """Compute the detection time series for each grid cell in the 3D data array.
+
+        Args:
+            - dataarray: A 3D xarray DataArray containing a variable over time and two spatial coordinates
+            - time_dim: Name of the time dimension in `dataarray`.
+
+        Returns:
+            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents
+            the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
+                - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
+                - `-1` indicates that all tested segment lengths detected a significant negative gradient.
+                - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
+
+
+        """
+        shifts = xr.apply_ufunc(
+            construct_detection_ts_4,
+            dataarray,
+            kwargs=dict(
+                times_1d=dataarray[time_dim].values, lmin=self.lmin, lmax=self.lmax
+            ),
+            input_core_dims=[[time_dim]],
+            output_core_dims=[[time_dim]],
+            vectorize=True,
+        ).transpose(*dataarray.dims)
+
+        return shifts
+
+
+# 1D time series analysis of abrupt shifts =====================================
+
+@jit(forceobj=True, looplift=False)
+def construct_detection_ts_4(
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    lmin: int = 5,
+    lmax: Optional[int] = None,
+) -> np.ndarray:
+    """Construct a detection time series (asdetect algorithm).
+
+    Following [Boulton+Lenton2019]_, the time series (ts) is divided into
+    segments of length l, for each of which the gradient is computed. Segments
+    with gradients > 3 MAD of the gradients distribution are marked. Averaging
+    over many segmentation choices (i.e. values of l) results in a detection
+    time series that indicates the points of largest relative gradients.
+
+    >> Args:
+        values_1d:
+            Time series, shape (n,)
+        times_1d:
+            Times, shape (n,), same length as values_1d
+        lmin:
+            Smallest segment length, default = 5
+        lmax:
+            Largest segment length, default = n/3
+
+    >> Returns:
+        - Abraupt shift score time series, shape (n,)
+    """
+
+    n_tot = len(values_1d)
+
+    detection_ts = np.zeros_like(values_1d)
+
+    if np.isnan(values_1d).any():
+        # print("you tried evaluating a ts with nan entries")
+        return detection_ts
+
+    # default to have at least three gradients (needed for grad distribution)
+    if lmax is None:
+        lmax = int(n_tot / 3)
+
+    # segmentation values [lmin, lmin+1, ..., lmax-1, lmax]
+    segment_lengths = np.arange(lmin, lmax + 1, 1)
+
+    # construct a detection time series for each segmentation choice l
+    for length in segment_lengths:
+        # center the segments around the middle of the ts and drop the outer
+        # points to get the segmented time series and the first index of each
+        # segment, respectively
+        seg_idces = centered_segmentation(n_tot, l_seg=int(length))
+        arr_segs = np.split(values_1d, seg_idces)[1:-1]
+        t_segs = np.split(times_1d, seg_idces)[1:-1]
+
+        # calculate gradient for each segment and median absolute deviation
+        # of the resulting distribution
+        gradients = [
+            custom_polyfit_4(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
+        ]
+        grad_MAD = stats.median_abs_deviation(gradients)
+        grad_MEAN = np.median(gradients)
+
+        # for each segment, check whether its gradient is larger than the
+        # threshold. if yes, update the detection time series accordingly.
+        # i1/i2 are the first/last index of a segment
+        # - Create a mask for segments that exceed the threshold
+        mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD
+        sign_mask = np.sign(gradients - grad_MEAN)
+
+        # Efficiently update detection time series
+        for i, m in enumerate(mask):
+            if m:
+                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+                detection_ts[i1:i2] += sign_mask[i]
+
+    # normalize the detection time series to one
+    detection_ts /= len(segment_lengths)
+
+    return detection_ts
+
+@njit
+def custom_polyfit_4(x, y, deg, rcond=None):
+    """
+    Least squares polynomial fit.
+
+    """
+    order = int(deg) + 1
+    x = NX.asarray(x) + 0.0
+    y = NX.asarray(y) + 0.0
+
+    # check arguments.
+    #if deg < 0:
+    #    raise ValueError("expected deg >= 0")
+    #if x.ndim != 1:
+    #    raise TypeError("expected 1D vector for x")
+    #if x.size == 0:
+    #    raise TypeError("expected non-empty vector for x")
+    #if y.ndim < 1 or y.ndim > 2:
+    #    raise TypeError("expected 1D or 2D array for y")
+    #if x.shape[0] != y.shape[0]:
+    #    raise TypeError("expected x and y to have same length")
+
+    # set rcond
+    if rcond is None:
+        rcond = len(x)*finfo(x.dtype).eps
+
+    # set up least squares equation for powers of x
+    lhs = vander(x, order)
+    rhs = y
+
+    # apply weighting
+    #if w is not None:
+    #    w = NX.asarray(w) + 0.0
+    #    if w.ndim != 1:
+    #        raise TypeError("expected a 1-d array for weights")
+    #    if w.shape[0] != y.shape[0]:
+    #        raise TypeError("expected w and y to have the same length")
+    #    lhs *= w[:, NX.newaxis]
+    #    if rhs.ndim == 2:
+    #        rhs *= w[:, NX.newaxis]
+    #    else:
+    #        rhs *= w
+
+    # scale lhs to improve condition number and solve
+    scale = NX.sqrt((lhs*lhs).sum(axis=0))
+    lhs /= scale
+    c = lstsq(lhs, rhs, rcond)[0]
+    c = (c.T/scale).T  # broadcast scale coefficients
+
+    # warn on rank reduction, which indicates an ill conditioned matrix
+    #if rank != order and not full:
+    #    msg = "Polyfit may be poorly conditioned"
+    #    warnings.warn(msg, RankWarning, stacklevel=2)
+
+    #if full:
+    #    return c, resids, rank, s, rcond
+    #elif cov:
+    #    Vbase = inv(dot(lhs.T, lhs))
+    #    Vbase /= NX.outer(scale, scale)
+    #    if cov == "unscaled":
+    #        fac = 1
+    #    else:
+    #        if len(x) <= order:
+    #            raise ValueError("the number of data points must exceed order "
+    #                             "to scale the covariance matrix")
+            # note, this used to be: fac = resids / (len(x) - order - 2.0)
+            # it was decided that the "- 2" (originally justified by "Bayesian
+            # uncertainty analysis") is not what the user expects
+            # (see gh-11196 and gh-11197)
+    #        fac = resids / (len(x) - order)
+    #    if y.ndim == 1:
+    #        return c, Vbase * fac
+    #    else:
+    #        return c, Vbase[:,:, NX.newaxis] * fac
+    #else:
+    return c
+
+#################################################### Method 5 ##############################################################
 """
 Use fast vectorization with numba (https://tutorial.xarray.dev/advanced/apply_ufunc/numba-vectorization.html) by using the
 numba.guvvectorize decorator.
 """
 
-class ASDETECT_3(ShiftsMethod):
+class ASDETECT_5(ShiftsMethod):
     """
     Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
 
@@ -457,7 +845,7 @@ class ASDETECT_3(ShiftsMethod):
         lmin = self.lmin
 
         shifts = xr.apply_ufunc(
-            construct_detection_ts_3,
+            construct_detection_ts_5,
             dataarray,
             times_1d,
             lmin,
@@ -473,7 +861,7 @@ class ASDETECT_3(ShiftsMethod):
 
 
 # 1D time series analysis of abrupt shifts =====================================
-def centered_segmentation_3(l_tot: int, l_seg: int, verbose: bool = False) -> np.ndarray:
+def centered_segmentation_5(l_tot: int, l_seg: int, verbose: bool = False) -> np.ndarray:
     """Provide set of indices to divide a range into segments of equal length.
 
     The range of l_tot is divided into segments of equal length l_seg,
@@ -544,7 +932,7 @@ def centered_segmentation_3(l_tot: int, l_seg: int, verbose: bool = False) -> np
     '(n),(n),(),()->(n)', 
     forceobj=True
 )
-def construct_detection_ts_3(
+def construct_detection_ts_5(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
     lmin: float,
@@ -569,7 +957,7 @@ def construct_detection_ts_3(
     segment_lengths = np.arange(lmin, lmax + 1, 1)
 
     for length in segment_lengths:
-        seg_idces = centered_segmentation_3(n_tot, l_seg=int(length))
+        seg_idces = centered_segmentation_5(n_tot, l_seg=int(length))
         arr_segs = np.split(values_1d, seg_idces)[1:-1]
         t_segs = np.split(times_1d, seg_idces)[1:-1]
 

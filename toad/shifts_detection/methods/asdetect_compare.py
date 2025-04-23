@@ -425,8 +425,17 @@ def polyfit_2(x, y, deg):
 
 #################################################### Method 3 ##############################################################
 """
-Use a very simple, custom linear regression function.
+Take numpy.polyfit and strip it down to essentials for our case to make it work with njit.
+Make custom mad, median and split opeartions that are compatible with numba.
 """
+
+from numpy import asarray
+import numpy._core.numeric as NX
+from numpy._core import finfo
+from numpy.lib._twodim_base_impl import vander
+from numpy.linalg import lstsq
+
+
 
 class ASDETECT_3(ShiftsMethod):
     """
@@ -475,6 +484,7 @@ class ASDETECT_3(ShiftsMethod):
             input_core_dims=[[time_dim]],
             output_core_dims=[[time_dim]],
             vectorize=True,
+            #dask='parallelized',
         ).transpose(*dataarray.dims)
 
         return shifts
@@ -482,7 +492,7 @@ class ASDETECT_3(ShiftsMethod):
 
 # 1D time series analysis of abrupt shifts =====================================
 
-@jit(forceobj=True, looplift=False)
+@njit#(forceobj=True, looplift=False)
 def construct_detection_ts_3(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
@@ -523,25 +533,16 @@ def construct_detection_ts_3(
     if lmax is None:
         lmax = int(n_tot / 3)
 
-    # segmentation values [lmin, lmin+1, ..., lmax-1, lmax]
-    segment_lengths = np.arange(lmin, lmax + 1, 1)
+    for length in range(lmin, lmax + 1):
+        n_seg = int(n_tot / length)
+        rest = n_tot - n_seg * length
+        idx0 = int(rest / 2)
+        seg_idces = idx0 + length * np.arange(n_seg + 1)
 
-    # construct a detection time series for each segmentation choice l
-    for length in segment_lengths:
-        # center the segments around the middle of the ts and drop the outer
-        # points to get the segmented time series and the first index of each
-        # segment, respectively
-        seg_idces = centered_segmentation(n_tot, l_seg=int(length))
-        arr_segs = np.split(values_1d, seg_idces)[1:-1]
-        t_segs = np.split(times_1d, seg_idces)[1:-1]
+        gradients = custom_compute_gradients_3(values_1d, times_1d, seg_idces)
 
-        # calculate gradient for each segment and median absolute deviation
-        # of the resulting distribution
-        gradients = [
-            custom_lstq_3(tseg, aseg) for (tseg, aseg) in zip(t_segs, arr_segs)
-        ]
-        grad_MAD = stats.median_abs_deviation(gradients)
-        grad_MEAN = np.median(gradients)
+        grad_MAD = custom_mad_3(gradients)
+        grad_MEAN = custom_median_3(gradients)
 
         # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
@@ -557,36 +558,87 @@ def construct_detection_ts_3(
                 detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one
-    detection_ts /= len(segment_lengths)
+    detection_ts /= (lmax - lmin + 1)#/= len(segment_lengths)
 
     return detection_ts
 
-@njit#(forceobj=True, looplift=False)
-def custom_lstq_3(x, y):
+@njit
+def custom_polyfit_3(x, y, deg, rcond=None):
     """
-    Source: ChatGPT
-    Perform simple linear regression to fit y = mx + b.
-    
-    Parameters:
-        x (array-like): Independent variable.
-        y (array-like): Dependent variable.
-    
-    Returns:
-        m (float): Slope of the regression line.
-    """    
-    n = len(x)
-    if n != len(y):
-        raise ValueError("x and y must have the same length.")
-    
-    x_mean = np.mean(x)
-    y_mean = np.mean(y)
-    
-    numerator = np.sum((x - x_mean) * (y - y_mean))
-    denominator = np.sum((x - x_mean) ** 2)
-    
-    m = numerator / denominator
-    
-    return m
+    Least squares polynomial fit.
+
+    """
+    order = int(deg) + 1
+    x = NX.asarray(x) + 0.0
+    y = NX.asarray(y) + 0.0
+
+    # check arguments.
+    if deg < 0:
+        raise ValueError("expected deg >= 0")
+    if x.ndim != 1:
+        raise TypeError("expected 1D vector for x")
+    if x.size == 0:
+        raise TypeError("expected non-empty vector for x")
+    if y.ndim < 1 or y.ndim > 2:
+        raise TypeError("expected 1D or 2D array for y")
+    if x.shape[0] != y.shape[0]:
+        raise TypeError("expected x and y to have same length")
+
+    # set rcond
+    if rcond is None:
+        rcond = len(x)*finfo(x.dtype).eps
+
+    # set up least squares equation for powers of x
+    lhs = vander(x, order)
+    rhs = y
+
+    # scale lhs to improve condition number and solve
+    scale = NX.sqrt((lhs*lhs).sum(axis=0))
+    lhs /= scale
+    c = lstsq(lhs, rhs, rcond)[0]
+    c = (c.T/scale).T  # broadcast scale coefficients
+
+    return c
+
+
+@njit
+def custom_median_3(x):
+    """Numba-compatible median function."""
+    x_sorted = np.sort(x.copy())
+    n = len(x_sorted)
+    if n % 2 == 0:
+        return np.array(0.5 * (x_sorted[n//2 - 1] + x_sorted[n//2]))
+    else:
+        return np.array(x_sorted[n//2])
+
+@njit
+def custom_mad_3(x):
+    """Compute the Median Absolute Deviation using Numba."""
+    #x = np.array(x)  # Convert list to array inside numba context
+    med = custom_median_3(x)
+    abs_dev = np.abs(x - med)
+    return custom_median_3(abs_dev)
+
+@njit
+def custom_compute_gradients_3(values_1d, times_1d, seg_idces):
+    n_segs = len(seg_idces) - 1
+    gradients = np.empty(n_segs)
+
+    for i in range(n_segs):
+        i1 = seg_idces[i]
+        i2 = seg_idces[i + 1]
+        tseg = times_1d[i1:i2]
+        aseg = values_1d[i1:i2]
+
+        # Compute gradient (slope of linear fit)
+        #t_mean = np.mean(tseg)
+        #v_mean = np.mean(vseg)
+        #numerator = np.sum((tseg - t_mean) * (vseg - v_mean))
+        #denominator = np.sum((tseg - t_mean) ** 2)
+        gradients[i] = custom_polyfit_3(tseg, aseg, 1)[0]#numerator / denominator if denominator != 0 else 0.0
+
+    return gradients
+
 
 
 #################################################### Method 4 ##############################################################
@@ -744,16 +796,16 @@ def custom_polyfit_4(x, y, deg, rcond=None):
     y = NX.asarray(y) + 0.0
 
     # check arguments.
-    #if deg < 0:
-    #    raise ValueError("expected deg >= 0")
-    #if x.ndim != 1:
-    #    raise TypeError("expected 1D vector for x")
-    #if x.size == 0:
-    #    raise TypeError("expected non-empty vector for x")
-    #if y.ndim < 1 or y.ndim > 2:
-    #    raise TypeError("expected 1D or 2D array for y")
-    #if x.shape[0] != y.shape[0]:
-    #    raise TypeError("expected x and y to have same length")
+    if deg < 0:
+        raise ValueError("expected deg >= 0")
+    if x.ndim != 1:
+        raise TypeError("expected 1D vector for x")
+    if x.size == 0:
+        raise TypeError("expected non-empty vector for x")
+    if y.ndim < 1 or y.ndim > 2:
+        raise TypeError("expected 1D or 2D array for y")
+    if x.shape[0] != y.shape[0]:
+        raise TypeError("expected x and y to have same length")
 
     # set rcond
     if rcond is None:
@@ -763,51 +815,12 @@ def custom_polyfit_4(x, y, deg, rcond=None):
     lhs = vander(x, order)
     rhs = y
 
-    # apply weighting
-    #if w is not None:
-    #    w = NX.asarray(w) + 0.0
-    #    if w.ndim != 1:
-    #        raise TypeError("expected a 1-d array for weights")
-    #    if w.shape[0] != y.shape[0]:
-    #        raise TypeError("expected w and y to have the same length")
-    #    lhs *= w[:, NX.newaxis]
-    #    if rhs.ndim == 2:
-    #        rhs *= w[:, NX.newaxis]
-    #    else:
-    #        rhs *= w
-
     # scale lhs to improve condition number and solve
     scale = NX.sqrt((lhs*lhs).sum(axis=0))
     lhs /= scale
     c = lstsq(lhs, rhs, rcond)[0]
     c = (c.T/scale).T  # broadcast scale coefficients
 
-    # warn on rank reduction, which indicates an ill conditioned matrix
-    #if rank != order and not full:
-    #    msg = "Polyfit may be poorly conditioned"
-    #    warnings.warn(msg, RankWarning, stacklevel=2)
-
-    #if full:
-    #    return c, resids, rank, s, rcond
-    #elif cov:
-    #    Vbase = inv(dot(lhs.T, lhs))
-    #    Vbase /= NX.outer(scale, scale)
-    #    if cov == "unscaled":
-    #        fac = 1
-    #    else:
-    #        if len(x) <= order:
-    #            raise ValueError("the number of data points must exceed order "
-    #                             "to scale the covariance matrix")
-            # note, this used to be: fac = resids / (len(x) - order - 2.0)
-            # it was decided that the "- 2" (originally justified by "Bayesian
-            # uncertainty analysis") is not what the user expects
-            # (see gh-11196 and gh-11197)
-    #        fac = resids / (len(x) - order)
-    #    if y.ndim == 1:
-    #        return c, Vbase * fac
-    #    else:
-    #        return c, Vbase[:,:, NX.newaxis] * fac
-    #else:
     return c
 
 #################################################### Method 5 ##############################################################

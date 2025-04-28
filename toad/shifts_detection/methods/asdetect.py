@@ -10,6 +10,12 @@ import numpy as np
 import xarray as xr
 from scipy import stats
 from typing import Optional
+from numba import njit
+
+import numpy._core.numeric as nx
+from numpy._core import finfo
+from numpy.lib._twodim_base_impl import vander
+from numpy.linalg import lstsq
 
 from toad.shifts_detection.methods.base import ShiftsMethod
 
@@ -65,73 +71,7 @@ class ASDETECT(ShiftsMethod):
 
 
 # 1D time series analysis of abrupt shifts =====================================
-def centered_segmentation(l_tot: int, l_seg: int, verbose: bool = False) -> np.ndarray:
-    """Provide set of indices to divide a range into segments of equal length.
-
-    The range of l_tot is divided into segments of equal length l_seg,
-    with the remainder of the division being equally truncated at the
-    beginning and end, with the end+1 for uneven division.
-
-    Args:
-        l_tot: Total length of the range to be segmented
-        l_seg: Length of one segment
-        verbose: If true, print segmentation indices
-
-    Returns:
-        - List of indices of the segmentation; entry i are the first index of the ith segment
-
-    Examples:
-        >>> centered_segmentation(l_tot=103, l_seg=10)
-        array([  1,  11,  21,  31,  41,  51,  61,  71,  81,  91, 101])
-    """
-
-    # number of segments
-    n_seg = int(l_tot / l_seg)
-    # uncovered points
-    rest = l_tot - n_seg * l_seg
-    # first index of first segment
-    idx0 = int(rest / 2)
-    # first index of each segment
-    seg_idces = idx0 + l_seg * np.arange(n_seg + 1)
-
-    # For checking correct indexing: Print the segmentation indices in the form
-    # | a-b | where a/b = first/last index of the segment. (x) denotes the
-    # number of ommitted indices at the beginning and the end of the time
-    # series, respectively
-    if verbose:
-        # idx0 points are omitted in the beginning
-        if idx0 == 0:
-            segments = " (0) |"
-        elif idx0 == 1:
-            segments = " (1) 0 |"
-        else:
-            segments = " ({}) 0-{} |".format(idx0, idx0 - 1)
-
-        # nl segments of size l, starting at idx0
-        for idx in seg_idces[:-1]:
-            segments += " {}-{} |".format(idx, idx + l_seg - 1)
-
-        # (rest-idx0) points are omitted in the end
-        if idx0 + n_seg * l_seg == n_seg:
-            segments += " (0)"
-        elif idx0 + n_seg * l_seg == n_seg - 1:
-            segments += " {} (1)".format(n_seg - 1)
-        else:
-            segments += " {}-{} ({})".format(
-                idx0 + n_seg * l_seg, l_tot - 1, rest - idx0
-            )
-
-        print(
-            "\nl_tot={}, l_seg={}: n_seg={}, rest={}, idx0={}\n".format(
-                l_tot, l_seg, n_seg, rest, idx0
-            )
-            + "   "
-            + segments
-        )
-
-    return seg_idces
-
-
+@njit
 def construct_detection_ts(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
@@ -172,40 +112,179 @@ def construct_detection_ts(
     if lmax is None:
         lmax = int(n_tot / 3)
 
-    # segmentation values [lmin, lmin+1, ..., lmax-1, lmax]
-    segment_lengths = np.arange(lmin, lmax + 1, 1)
+    for length in range(lmin, lmax + 1):
+        # Note: numba-compatible version of centered_segmentation (deprecated)
+        n_seg = int(n_tot / length)                         # number of segments
+        rest = n_tot - n_seg * length                       # uncovered points
+        idx0 = int(rest / 2)                                # first index of the first segment
+        seg_idces = idx0 + length * np.arange(n_seg + 1)    # first index of each segment
 
-    # construct a detection time series for each segmentation choice l
-    for length in segment_lengths:
-        # center the segments around the middle of the ts and drop the outer
-        # points to get the segmented time series and the first index of each
-        # segment, respectively
-        seg_idces = centered_segmentation(n_tot, l_seg=int(length))
-        arr_segs = np.split(values_1d, seg_idces)[1:-1]
-        t_segs = np.split(times_1d, seg_idces)[1:-1]
+        # Note: numba-compatible version of data splitting and 1st degree polyfit
+        gradients = compute_gradients(values_1d, times_1d, seg_idces)
 
-        # calculate gradient for each segment and median absolute deviation
-        # of the resulting distribution
-        gradients = [
-            np.polyfit(tseg, aseg, 1)[0] for (tseg, aseg) in zip(t_segs, arr_segs)
-        ]
-        grad_MAD = stats.median_abs_deviation(gradients)
-        grad_MEAN = np.median(gradients)
+        # Note: numba-compatible versions of median absolute deviation (mad) and median
+        grad_MAD = mad(gradients)           # median absolute deviation of the gradients
+        grad_MEAN = median(gradients)       # median of the gradients
 
         # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
         # i1/i2 are the first/last index of a segment
-        for i, gradient in enumerate(gradients):
-            i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
-            if gradient - grad_MEAN > 3 * grad_MAD:
-                detection_ts[i1:i2] += 1
-            elif gradient - grad_MEAN < -3 * grad_MAD:
-                detection_ts[i1:i2] += -1
+        # - Create a mask for segments that exceed the threshold
+        detection_mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD   # boolean mask; wether the gradient is significant
+        sign_mask = np.sign(gradients - grad_MEAN)                      # sign of the gradient (positive or negative)    
+
+        # Update detection time series
+        for i, shift_detected in enumerate(detection_mask):
+            if shift_detected:
+                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1
+                detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one
-    detection_ts /= len(segment_lengths)
+    detection_ts /= (lmax - lmin + 1)
 
     return detection_ts
+
+@njit
+def compute_gradients(
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    seg_idces: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute the gradients of the segments defined by given indices.
+
+    Loops over the segments defined by seg_idces and computes the gradient
+    of the values_1d time series using a linear fit (1st degree polynomial).
+    The function returns an array of gradients, one for each segment.
+
+    >> Args:
+        values_1d:
+            1D array of values (e.g., temperature, pressure, etc.)
+        times_1d:
+            1D array of time points corresponding to the values
+        seg_idces:
+            1D array of segment indices defining the segments
+
+    >> Returns:
+        gradients:
+            1D array of gradients for each segment
+    """
+    n_segs = len(seg_idces) - 1
+    gradients = np.empty(n_segs)
+
+    for i in range(n_segs):
+        i1 = seg_idces[i]
+        i2 = seg_idces[i + 1]
+        tseg = times_1d[i1:i2]
+        aseg = values_1d[i1:i2]
+
+        gradients[i] = polyfit(tseg, aseg, 1)[0]
+
+    return gradients
+
+
+@njit
+def polyfit(
+    x: np.ndarray,
+    y: np.ndarray,
+    deg: int,
+) -> np.ndarray:
+    """
+    Least squares polynomial fit.
+
+    This function is a stripped-down version of numpy.polyfit, to make it
+    compatible with numba. It computes the least squares polynomial fit for
+    the given data points (x, y) of degree deg. The function returns the
+    coefficients of the polynomial.
+
+    >> Args:
+        x:
+            1D array of x-coordinates (independent variable)
+        y:
+            1D or 2D array of y-coordinates (dependent variable)
+        deg:
+            Degree of the polynomial to fit
+            (0 <= deg <= 1 for linear fit, 2 for quadratic, etc.)
+    >> Returns:
+        coefficients:
+            array of polynomial coefficients
+    """
+
+    order = int(deg) + 1
+    x = nx.asarray(x) + 0.0
+    y = nx.asarray(y) + 0.0
+
+    # check arguments.
+    if deg < 0:
+        raise ValueError("expected deg >= 0")
+    if x.ndim != 1:
+        raise TypeError("expected 1D vector for x")
+    if x.size == 0:
+        raise TypeError("expected non-empty vector for x")
+    if y.ndim < 1 or y.ndim > 2:
+        raise TypeError("expected 1D or 2D array for y")
+    if x.shape[0] != y.shape[0]:
+        raise TypeError("expected x and y to have same length")
+
+    # set rcond
+    rcond = len(x)*finfo(x.dtype).eps
+
+    # set up least squares equation for powers of x
+    lhs = vander(x, order)
+    rhs = y
+
+    # scale lhs to improve condition number and solve
+    scale = nx.sqrt((lhs*lhs).sum(axis=0))
+    lhs /= scale
+    coefficients = lstsq(lhs, rhs, rcond)[0]
+    coefficients = (coefficients.T/scale).T  # broadcast scale coefficients
+
+    return coefficients
+
+
+@njit
+def mad(
+    x: np.ndarray,
+) -> float:
+    """
+    Numba-compatible median-absolute-deviation function.
+
+    Computes the median absolute deviation of the input array x.
+
+    >> Args:
+        x:
+            1D array of values (e.g., gradients)
+
+    >> Returns:
+        The median absolute deviation of the input array x. 
+    """
+    med = median(x)
+    abs_dev = np.abs(x - med)
+    return median(abs_dev)
+
+
+@njit
+def median(
+    x: np.ndarray,
+) -> float:
+    """
+    Numba-compatible median function.
+
+    Computes the median of the input array x.
+
+    >> Args:
+        x:
+            1D array of values (e.g., gradients)
+            
+    >> Returns:
+        The median of the input array x.
+    """
+    x_sorted = np.sort(x.copy())
+    n = len(x_sorted)
+    if n % 2 == 0:
+        return np.array(0.5 * (x_sorted[n//2 - 1] + x_sorted[n//2]))
+    else:
+        return np.array(x_sorted[n//2])
 
 
 # ==============================================================================

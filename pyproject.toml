@@ -43,6 +43,7 @@ dependencies = [
         "healpy",
         "pandas",
         "fast-hdbscan",
+        "numba"
 ]
 
 [tool.setuptools]

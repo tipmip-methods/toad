@@ -32,10 +32,10 @@ def toad_instance():
 
 def test_asdetect_simple():
     """
-    Test the ASDETECT shift detection method on a simple dataset,
+    Test the ASDETECT shift detection method on a simple dataset
     that can be calculated by hand.
 
-    Advantage if this test is that it can be easier to trace if
+    Advantage of this test is that it can be easier to trace if
     there is anything wrong with the mathematics of the implementation.
 
     The exmaple here is:

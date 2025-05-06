@@ -33,15 +33,16 @@ classifiers = [
 ]
 
 dependencies = [
-        "numpy", # set to =2.0.0 when we add numba
+        "numpy<=2.1.0",
         "matplotlib",
-        "scipy",
+        "scipy>=0.17.0",    # to use lapack_driver of scipy.linalg.lstsq()
         "scikit-learn",
         "xarray",
         "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
         "cartopy",
         "healpy",
         "pandas",
+        "numba"
 ]
 
 [tool.setuptools]
@@ -64,6 +65,7 @@ cartopy = "cartopy"
 healpy = "healpy"
 pandas = "pandas"
 scikit-learn = "sklearn"
+numba = "numba"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

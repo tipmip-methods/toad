@@ -2,8 +2,7 @@ import pytest
 import numpy as np
 from toad import TOAD
 
-# from sklearn.cluster import HDBSCAN  # type: ignore
-import fast_hdbscan
+from sklearn.cluster import HDBSCAN  # type: ignore
 
 
 @pytest.fixture
@@ -23,7 +22,7 @@ def test_params():
         "lon": 6,
         "min_cluster_size": 25,
         "shifts_threshold": 0.5,
-        "expected_results": {-1: 330239, 0: 2845, 1: 914, 2: 292, 3: 78},
+        "expected_results": {-1: 330245, 0: 2845, 1: 914, 2: 286, 3: 78},
     }
 
 
@@ -59,7 +58,7 @@ def test_healpix_hdbscan(test_params, toad_instance):
     td.compute_clusters(
         "tas",
         shifts_filter_func=lambda x: np.abs(x) > test_params["shifts_threshold"],
-        method=fast_hdbscan.HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
+        method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
         overwrite=True,
     )
 

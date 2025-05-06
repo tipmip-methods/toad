@@ -65,7 +65,6 @@ netcdf4 = "netcdf4"
 cartopy = "cartopy"
 healpy = "healpy"
 pandas = "pandas"
-fast-hdbscan = "fast_hdbscan"
 scikit-learn = "sklearn"
 
 [project.urls]

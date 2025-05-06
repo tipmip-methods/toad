@@ -8,7 +8,6 @@ Refactored: Nov, 2024 (Jakob)
 
 import numpy as np
 import xarray as xr
-from scipy import stats
 from typing import Optional
 from numba import njit
 
@@ -223,7 +222,7 @@ def polyfit(
     if x.shape[0] != y.shape[0]:
         raise TypeError("expected x and y to have same length")
 
-    # set rcond
+    # set rcond, machine precision
     rcond = len(x) * np.finfo(x.dtype).eps
 
     # set up least squares equation for powers of x

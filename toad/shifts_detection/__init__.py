@@ -88,7 +88,14 @@ def compute_shifts(
 
     # 3. Apply the detector
     logger.info(f"applying detector {method} to data")
-    shifts = method.fit_predict(dataarray=data_array, time_dim=time_dim)
+    shifts = xr.apply_ufunc(
+        method.fit_predict,
+        data_array,
+        kwargs=dict(times_1d=data_array[time_dim].values),
+        input_core_dims=[[time_dim]],
+        output_core_dims=[[time_dim]],
+        vectorize=True,
+    ).transpose(*data_array.dims)
 
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)

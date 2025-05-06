@@ -8,7 +8,6 @@ Refactored: Nov, 2024 (Jakob)
 """
 
 import numpy as np
-import xarray as xr
 from typing import Optional
 from numba import njit
 
@@ -39,30 +38,31 @@ class ASDETECT(ShiftsMethod):
         self.lmin = lmin
         self.lmax = lmax
 
-    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
+    def fit_predict(
+        self,
+        values_1d: np.ndarray,
+        times_1d: np.ndarray,
+    ) -> np.ndarray:
         """Compute the detection time series for each grid cell in the 3D data array.
 
         Args:
-            - dataarray: A 3D xarray DataArray containing a variable over time and two spatial coordinates
-            - time_dim: Name of the time dimension in `dataarray`.
+            - values_1d: 1D array of values
+            - times_1d: 1D array of times
 
         Returns:
-            - A 3D xarray DataArray with the same shape as `dataarray`, where each value represents
+            - A 1D array of the same length as `values_1d`, where each value represents
             the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
                 - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
                 - `-1` indicates that all tested segment lengths detected a significant negative gradient.
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
         """
-        shifts = xr.apply_ufunc(
-            construct_detection_ts,
-            dataarray,
-            kwargs=dict(
-                times_1d=dataarray[time_dim].values, lmin=self.lmin, lmax=self.lmax
-            ),
-            input_core_dims=[[time_dim]],
-            output_core_dims=[[time_dim]],
-            vectorize=True,
-        ).transpose(*dataarray.dims)
+
+        shifts = construct_detection_ts(
+            values_1d=values_1d,
+            times_1d=times_1d,
+            lmin=self.lmin,
+            lmax=self.lmax,
+        )
 
         return shifts
 
@@ -288,90 +288,3 @@ def median(
         return np.array(0.5 * (x_sorted[n // 2 - 1] + x_sorted[n // 2]))
     else:
         return np.array(x_sorted[n // 2])
-
-
-# ==============================================================================
-# Sina leftovers TODO: need any of this? =======================================
-# ==============================================================================
-
-
-# Detection time series evaluation methods =====================================
-# def re_evaluate_dts(
-#     data_with_dts : xr.Dataset,
-#     var: str,
-#     dts_eval: str,
-#     thresh: float = None,
-#     tdist : int = None
-# ):
-
-#     # The following re-evaluation assumes that as_<var> is a detection time
-#     # series, which is the case if this variable was generated with
-#     # method =='asdetect' and dts_eval == 'all'.
-#     assert data_with_dts.get(f'as_{var}') is not None, \
-#             'No detection time series to re-evaluate: ' + \
-#             f'No abrupt shift data for variable {var}!'
-#     assert data_with_dts.attrs['as_detection_method'] == 'asdetect (all)', \
-#             'No detection time series to re-evaluate: ' +\
-#             f'as_{var} was not generated with asdetect (all)!'
-
-
-# # def detect(**methodkwargs, redo_asd = True):
-# #     pass
-#     # check xarray
-#     # map_dts_to_xarray
-#     # evaluate_dts
-#     # return xr dataset with vars
-#     # - var (len nt)
-#     # - as_var  (len nt, nonzero where as, value=magnitude)
-#     # - as_type_var (len nt, value=type)
-#     # and attribute
-#     # - types = dict{A:..., B:...}
-#     # - git commit?s
-
-
-# # evaluation of the detection time series =====================================
-# # dts evaluations + dts viewer
-# # 1 maxima
-# # 2 threshold event bunching
-# # 3 prob dist fit
-# def get_dts_maxima(dts: xr.DataArray, sign='all'):
-#     """dts: detection time series data array!"""
-#     if sign=='pos':
-#         maxt = dts.idmax(dim='time')
-#     elif sign=='neg':
-#         maxt = dts.idmin(dim='time')
-#     else:
-#         maxt = np.abs(dts).idxmax(dim="time")
-
-
-#     dmax = xr.Dataset(
-#         data_vars = dict(
-#             # time of the maximum
-#             maxtime = (["latitude", "longitude"], maxt.data),
-#             # value of det_ts at that time
-#             maxval = (["latitude", "longitude"], dts.sel(time=maxt).data)),
-#         coords = dict(
-#             longitude=dts.longitude,
-#             latitude=dts.latitude)
-#         )
-
-#     # shift at first time stamp is due to a nan dts at that location.
-#     # set those to nan. also drop the now useless time label
-#     dmax = dmax.where(dmax.maxtime>dts.time[0]).drop_vars("time")
-
-#     return dmax
-
-
-# demo zone ===================================================================
-# if __name__=='__main__':
-#     nt, nx, ny = 30,3,3
-#     arr3d = np.arange(nt*nx*ny).reshape(nt,nx,ny).astype(float)
-#     arr1d = arr3d[:,0,0]
-#     times = np.arange(nt)
-#     darr3d = xr.DataArray(
-#         data=arr3d, dims=['t','x','y'],
-#         coords = [ np.arange(nt), np.arange(nx), np.arange(ny) ]
-#     )
-
-#     res1d = construct_detection_ts(arr1d, times)
-#     resxd = map_dts_to_xarray(darr3d, time_dim='t')

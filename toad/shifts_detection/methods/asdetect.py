@@ -110,24 +110,28 @@ def construct_detection_ts(
 
     for length in range(lmin, lmax + 1):
         # Note: numba-compatible version of centered_segmentation (deprecated)
-        n_seg = int(n_tot / length)                         # number of segments
-        rest = n_tot - n_seg * length                       # uncovered points
-        idx0 = int(rest / 2)                                # first index of the first segment
-        seg_idces = idx0 + length * np.arange(n_seg + 1)    # first index of each segment
+        n_seg = int(n_tot / length)  # number of segments
+        rest = n_tot - n_seg * length  # uncovered points
+        idx0 = int(rest / 2)  # first index of the first segment
+        seg_idces = idx0 + length * np.arange(n_seg + 1)  # first index of each segment
 
         # Note: numba-compatible version of data splitting and 1st degree polyfit
         gradients = compute_gradients(values_1d, times_1d, seg_idces)
 
         # Note: numba-compatible versions of median absolute deviation (mad) and median
-        grad_MAD = mad(gradients)           # median absolute deviation of the gradients
-        grad_MEAN = median(gradients)       # median of the gradients
+        grad_MAD = mad(gradients)  # median absolute deviation of the gradients
+        grad_MEAN = median(gradients)  # median of the gradients
 
         # for each segment, check whether its gradient is larger than the
         # threshold. if yes, update the detection time series accordingly.
         # i1/i2 are the first/last index of a segment
         # - Create a mask for segments that exceed the threshold
-        detection_mask = np.abs(gradients - grad_MEAN) > 3 * grad_MAD   # boolean mask; wether the gradient is significant
-        sign_mask = np.sign(gradients - grad_MEAN)                      # sign of the gradient (positive or negative)    
+        detection_mask = (
+            np.abs(gradients - grad_MEAN) > 3 * grad_MAD
+        )  # boolean mask; wether the gradient is significant
+        sign_mask = np.sign(
+            gradients - grad_MEAN
+        )  # sign of the gradient (positive or negative)
 
         # Update detection time series
         for i, shift_detected in enumerate(detection_mask):
@@ -136,9 +140,10 @@ def construct_detection_ts(
                 detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one
-    detection_ts /= (lmax - lmin + 1)
+    detection_ts /= lmax - lmin + 1
 
     return detection_ts
+
 
 @njit
 def compute_gradients(
@@ -230,10 +235,10 @@ def polyfit(
     rhs = y
 
     # scale lhs to improve condition number and solve
-    scale = np.sqrt((lhs*lhs).sum(axis=0))
+    scale = np.sqrt((lhs * lhs).sum(axis=0))
     lhs /= scale
     coefficients = lstsq(lhs, rhs, rcond)[0]
-    coefficients = (coefficients.T/scale).T  # broadcast scale coefficients
+    coefficients = (coefficients.T / scale).T  # broadcast scale coefficients
 
     return coefficients
 
@@ -252,7 +257,7 @@ def mad(
             1D array of values (e.g., gradients)
 
     >> Returns:
-        The median absolute deviation of the input array x. 
+        The median absolute deviation of the input array x.
     """
     med = median(x)
     abs_dev = np.abs(x - med)
@@ -271,17 +276,17 @@ def median(
     >> Args:
         x:
             1D array of values (e.g., gradients)
-            
+
     >> Returns:
         The median of the input array x.
     """
-    
+
     x_sorted = np.sort(x.copy())
     n = len(x_sorted)
     if n % 2 == 0:
-        return np.array(0.5 * (x_sorted[n//2 - 1] + x_sorted[n//2]))
+        return np.array(0.5 * (x_sorted[n // 2 - 1] + x_sorted[n // 2]))
     else:
-        return np.array(x_sorted[n//2])
+        return np.array(x_sorted[n // 2])
 
 
 # ==============================================================================

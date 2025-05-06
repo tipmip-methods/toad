@@ -1,3 +1,3 @@
-from toad.visualisation.toad_plotter import TOADPlotter
+from toad.visualisation.toad_plotter import TOADPlotter, PlotConfig
 
-__all__ = ["TOADPlotter"]
+__all__ = ["TOADPlotter", "PlotConfig"]

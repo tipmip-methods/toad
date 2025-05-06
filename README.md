@@ -1,4 +1,4 @@
-![TOAD](doc/source/resources/toad.png)
+![TOAD](docs/source/resources/toad.png)
 
 # TOAD
 
@@ -27,7 +27,7 @@ The TOAD pipeline consists of three main components:
 3. **Synthesis:** Generate plots and summaries of the identified clusters, facilitating insights and interpretation of the results.
 
 <div align="center">
-    <img src="doc/source/resources/TOAD_pipeline.png" width="1000px" alt="TOAD pipeline overview">
+    <img src="docs/source/resources/TOAD_pipeline.png" width="1000px" alt="TOAD pipeline overview">
 </div>
 
 TOAD's core functionality is exposed through the `TOAD` class, which analyzes netCDF files or xarray datasets. The two primary methods - `compute_shifts` and `compute_clusters` - handle the main analysis steps. Additional helper functions and visualization tools make it easy to explore and understand the results.
@@ -40,24 +40,33 @@ from toad.shifts_detection.methods import ASDETECT
 from sklearn.cluster import HDBSCAN
 
 
-# init TOAD object
-td = TOAD("data.nc")
+# init TOAD object with Global Mean Surface Temperature as custom "time" dimension
+td = TOAD("ice_thickness.nc", time_dim="GMST)
 
 # Compute shifts for variable 'temp' using the method ASDETECT (Boulton & Lenton, 2019)
-td.compute_shifts("temp", method=ASDETECT())
+td.compute_shifts("thk", method=ASDETECT())
 
-# Compute clusters for points that have shifts larger than 0.8 using HDBSCAN (McInnes, 2017)
+# Compute clusters for points that have shifts larger than 0.9 using HDBSCAN (McInnes, 2017)
 td.compute_clusters(
-    var="temp",
-    shifts_filter_func=lambda x: np.abs(x)>0.8,
-    method=HDBSCAN(min_cluster_size=25),
+    var="thk",
+    shifts_filter_func=lambda x: np.abs(x)>0.9,
+    method=HDBSCAN(min_cluster_size=10),
 )
 
-# Visualise results
-td.plotter().plot_clusters_on_map("temp");
+# Plot 8 largest clusters in ccrs.SouthPolarStereo() projection
+td.plotter().cluster_overview("thk", cluster_ids=range(8), projection="south_pole");
 ```
 
-For more details, please see the [tutorial](https://github.com/tipmip-methods/toad_torial/blob/main/tutorials/basics.ipynb).
+<div align="center">
+    <img src="docs/source/resources/cluster_overview_example.png" width="1000px" alt="Cluster Overview Example">
+</div>
+
+For more details, check out our tutorials:
+
+- [Basics](https://github.com/tipmip-methods/toad/blob/main/tutorials/basics.ipynb): Learn the core concepts and workflow
+- [Visualization](https://github.com/tipmip-methods/toad/blob/main/tutorials/visualisation_examples.ipynb): Explore the plotting capabilities
+- [Custom Clustering](https://github.com/tipmip-methods/toad/blob/main/tutorials/clustering_methods.ipynb): Implement your own clustering methods
+- [Custom Shift Detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/shift_detection_methods.ipynb): Create new shift detection algorithms
 
 ## Development
 

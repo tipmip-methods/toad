@@ -23,25 +23,55 @@ class ClusterTimeStats:
             self.td.apply_cluster_mask(self.var, self.td.time_dim, cluster_id).min()
         )
 
+    def start_timestep(self, cluster_id) -> float:
+        """Return the start index of the cluster"""
+        dens = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        idx_start = np.where(dens > 0)[0][0]
+        return float(idx_start)
+
     def end(self, cluster_id) -> float:
         """Return the end time of the cluster"""
         return float(
             self.td.apply_cluster_mask(self.var, self.td.time_dim, cluster_id).max()
         )
 
+    def end_timestep(self, cluster_id) -> int:
+        """Return the end index of the cluster"""
+        dens = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        idx_end = np.where(dens > 0)[0][-1]
+        return int(idx_end)
+
     def duration(self, cluster_id) -> float:
         """Return duration of the cluster in time."""
         return float(float(self.end(cluster_id) - self.start(cluster_id)))
 
-    def peak(self, cluster_id) -> float:
+    def duration_timesteps(self, cluster_id) -> int:
+        """Return duration of the cluster in timesteps."""
+        return int(self.end_timestep(cluster_id) - self.start_timestep(cluster_id))
+
+    def membership_peak(self, cluster_id) -> float:
         """Return the time of the largest cluster temporal density"""
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         return float(ctd[self.td.time_dim][ctd.argmax()].values)
 
-    def peak_density(self, cluster_id) -> float:
+    def membership_peak_density(self, cluster_id) -> float:
         """Return the largest cluster temporal density"""
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         return float(ctd.max().values)
+
+    def steepest_gradient(self, cluster_id) -> float:
+        """Return the time of the steepest gradient of the mean cluster timeseries inside the cluster time bounds"""
+        grad = self.td.get_cluster_timeseries(
+            self.var, cluster_id, aggregation="mean", keep_full_timeseries=False
+        ).diff(self.td.time_dim)
+        return float(grad.idxmin())
+
+    def steepest_gradient_timestep(self, cluster_id) -> float:
+        """Return the index of the steepest gradient of the mean cluster timeseries inside the cluster time bounds"""
+        grad = self.td.get_cluster_timeseries(
+            self.var, cluster_id, aggregation="mean", keep_full_timeseries=False
+        ).diff(self.td.time_dim)
+        return float(grad.argmin())
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float
@@ -80,6 +110,10 @@ class ClusterTimeStats:
     def iqr_50(self, cluster_id) -> tuple[float, float]:
         """Get start and end time of the 50% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.25, 0.75)
+
+    def iqr_68(self, cluster_id) -> tuple[float, float]:
+        """Get start and end time of the 68% interquantile range of the cluster temporal density"""
+        return self.iqr(cluster_id, 0.16, 0.84)
 
     def iqr_90(self, cluster_id) -> tuple[float, float]:
         """Get start and end time of the 90% interquantile range of the cluster temporal density"""

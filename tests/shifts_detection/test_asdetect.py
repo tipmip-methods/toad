@@ -25,15 +25,15 @@ def test_params():
         "expected_std": 0.19410655,
     }
 
+
 @pytest.fixture
 def toad_instance():
     return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
 
 
-
 def test_asdetect(test_params, toad_instance):
     """Test the ASDETECT shift detection method.
-    
+
     Two tests are performed:
     1. A simple test with a known dataset to verify the correctness of the
        shift detection method.
@@ -68,7 +68,7 @@ def test_asdetect(test_params, toad_instance):
         2025-04-30 NOTE: with the current implementation of ASDETECT.construct_detection_ts,
                             the shifts values will actually be [0, 0, 0.5, 0, 0, 0]. This is
                             due to a potential bug that has to be resolved.
-    
+
     - Test 2 - additional notes:
         This test verifies the computation of shifts using the ASDETECT method
         after coarsening the data based on specified latitude, longitude, and
@@ -80,25 +80,19 @@ def test_asdetect(test_params, toad_instance):
     # test 1
 
     # - setup
-    data_arr = np.array([0,0,0,1,1,1],dtype=float)
+    data_arr = np.array([0, 0, 0, 1, 1, 1], dtype=float)
     time_arr = np.arange(len(data_arr))
     td = TOAD(
         xr.Dataset(
-            {
-                "data": (["lat", "lon", "time"], data_arr.reshape( 1, 1, -1))
-            },
-            coords={
-                "time": time_arr,
-                "lat": [0],
-                "lon": [0]
-            }
+            {"data": (["lat", "lon", "time"], data_arr.reshape(1, 1, -1))},
+            coords={"time": time_arr, "lat": [0], "lon": [0]},
         )
     )
 
     # - call function
-    td.compute_shifts("data", ASDETECT(lmin=2,lmax=3), overwrite=True)
-    shifts = td.get_shifts("data").data[0,0]
-    
+    td.compute_shifts("data", ASDETECT(lmin=2, lmax=3), overwrite=True)
+    shifts = td.get_shifts("data").data[0, 0]
+
     # - compare results
     assert np.array_equal(shifts, np.array([0, 0, 0.5, 0, 0, 0], dtype=float))
 

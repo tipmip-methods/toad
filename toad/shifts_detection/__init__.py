@@ -3,6 +3,7 @@ from typing import Union
 import xarray as xr
 from toad._version import __version__
 import numpy as np
+from dask.diagnostics import ProgressBar
 
 from toad.shifts_detection.methods.base import ShiftsMethod
 
@@ -17,6 +18,7 @@ def compute_shifts(
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
+    chunk_size: int = 10,
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -42,6 +44,14 @@ def compute_shifts(
         ValueError:
             If data is invalid or required parameters are missing
     """
+
+    # ensure DASK array
+    if not data.chunks:
+        # get default spatial indices of dataarray
+        spatial_indices = list(data.dims)
+        spatial_indices.remove(time_dim)
+        data = data.chunk({dim: chunk_size for dim in spatial_indices})
+            
 
     # 1. Set output label
     output_label = f"{var}_dts{output_label_suffix}"
@@ -95,7 +105,12 @@ def compute_shifts(
         input_core_dims=[[time_dim]],
         output_core_dims=[[time_dim]],
         vectorize=True,
+        dask="parallelized",
+        output_dtypes=[np.float32],
     ).transpose(*data_array.dims)
+
+    with ProgressBar():
+        shifts = shifts.compute()
 
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)

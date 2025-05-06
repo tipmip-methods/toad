@@ -1,4 +1,5 @@
-"""asdetect method for shifts detection.
+"""
+asdetect method for shifts detection.
 
 Contains the asdetect algorithm with associated helper functions.
 

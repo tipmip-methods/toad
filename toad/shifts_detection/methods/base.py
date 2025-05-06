@@ -1,22 +1,26 @@
 from abc import ABC, abstractmethod
-import xarray as xr
+import numpy as np
 
 
 # Abstract class for shifts detection methods
 class ShiftsMethod(ABC):
     @abstractmethod
-    def fit_predict(self, dataarray: xr.DataArray, time_dim: str) -> xr.DataArray:
+    def fit_predict(
+        self,
+        values_1d: np.ndarray,
+        times_1d: np.ndarray,
+    ) -> np.ndarray:
         """Apply the shifts detection method.
 
         >> Args:
-            dataarray : (xr.DataArray)
-                Input data array to detect shifts in.
-            time_dim : (str)
-                Name of the temporal dimension.
+            values_1d : (np.ndarray)
+                Input values.
+            times_1d : (np.ndarray)
+                Input times.
 
         >> Returns:
-            xr.DataArray:
-                A detection time series with the same shape as the input,
+            np.ndarray:
+                A detection time series with the same length as the input,
                 where each value indicates the presence or magnitude of a detected shift.
         """
         pass

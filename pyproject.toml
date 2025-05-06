@@ -42,7 +42,6 @@ dependencies = [
         "cartopy",
         "healpy",
         "pandas",
-        "fast-hdbscan",
         "numba"
 ]
 
@@ -66,6 +65,7 @@ cartopy = "cartopy"
 healpy = "healpy"
 pandas = "pandas"
 scikit-learn = "sklearn"
+numba = "numba"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

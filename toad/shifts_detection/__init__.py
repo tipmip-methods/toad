@@ -18,7 +18,7 @@ def compute_shifts(
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
-    chunk_size: int = 10,
+    chunk_size: int = None,
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -35,6 +35,8 @@ def compute_shifts(
             Whether to overwrite existing variable. Defaults to False.
         merge_input:
             Whether to merge results into input dataset (True) or return separately (False)
+        chunk_size:
+            Size of the chunks to use for parallel processing. If None, the data will be chunked into one big chunk. Defaults to None.
 
     >> Returns:
         - xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the detected shifts.
@@ -43,14 +45,15 @@ def compute_shifts(
     >> Raises:
         ValueError:
             If data is invalid or required parameters are missing
-    """
+    """ 
 
-    # ensure DASK array
-    if not data.chunks:
-        # get default spatial indices of dataarray
-        spatial_indices = list(data.dims)
-        spatial_indices.remove(time_dim)
-        data = data.chunk({dim: chunk_size for dim in spatial_indices})
+    # set chunk size
+    if chunk_size is None:
+        data = data.chunk(data.sizes)           # one big chunk
+    else:
+        spatial_indices = list(data.dims)       # get all default dimensions/indices of the data object
+        spatial_indices.remove(time_dim)        # remove time dimension from the list, only spatial dimensions should be chunked
+        data = data.chunk({dim: chunk_size for dim in spatial_indices})     # chunk the spatial dimensions
             
 
     # 1. Set output label

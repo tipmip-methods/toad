@@ -49,7 +49,7 @@ def test_asdetect(test_params, toad_instance):
         there is anything wrong with the mathematics of the implementation.
         The given example can be computed by hand.
 
-        >> The exmaple here is:
+        >> The example here is:
         data = [0, 0, 0, 1, 1, 1]       <- clear shift between index 2 and 3
         l_min = 2                       <- minimum segmentation length
         l_max = 3                       <- maximum segmentation length

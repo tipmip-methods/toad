@@ -21,8 +21,8 @@ def test_params():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.0038361712,
-        "expected_std": 0.19410655,
+        "expected_mean": 0.0045629148,
+        "expected_std": 0.2109171152,
     }
 
 
@@ -65,10 +65,6 @@ def test_asdetect(test_params, toad_instance):
             The shift values are divided by the number of segment lenghts:
             -> shifts = [0, 0, 0.5, 0.5, 0, 0]
 
-        2025-04-30 NOTE: with the current implementation of ASDETECT.construct_detection_ts,
-                            the shifts values will actually be [0, 0, 0.5, 0, 0, 0]. This is
-                            due to a potential bug that has to be resolved.
-
     - Test 2 - additional notes:
         This test verifies the computation of shifts using the ASDETECT method
         after coarsening the data based on specified latitude, longitude, and
@@ -94,7 +90,7 @@ def test_asdetect(test_params, toad_instance):
     shifts = td.get_shifts("data").data[0, 0]
 
     # - compare results
-    assert np.array_equal(shifts, np.array([0, 0, 0.5, 0, 0, 0], dtype=float))
+    assert np.array_equal(shifts, np.array([0, 0, 0.5, 0.5, 0, 0], dtype=float))
 
     ##########################################
     # test 2

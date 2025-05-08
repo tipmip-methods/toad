@@ -137,7 +137,7 @@ def construct_detection_ts(
         # Update detection time series
         for i, shift_detected in enumerate(detection_mask):
             if shift_detected:
-                i1, i2 = seg_idces[i], seg_idces[i + 1] - 1         #<-- BUG: i2 is off by one
+                i1, i2 = seg_idces[i], seg_idces[i + 1]
                 detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one

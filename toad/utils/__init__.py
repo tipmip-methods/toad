@@ -4,6 +4,10 @@ from typing import Union
 import xarray as xr
 import numpy as np
 
+from .synthetic_data import create_global_dataset
+
+__all__ = ["create_global_dataset"]
+
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.

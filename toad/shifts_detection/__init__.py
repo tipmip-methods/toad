@@ -100,6 +100,7 @@ def compute_shifts(
     }
 
     # 3. Apply the detector
+    # dask lazy function
     logger.info(f"applying detector {method} to data")
     shifts = xr.apply_ufunc(
         method.fit_predict,
@@ -112,6 +113,7 @@ def compute_shifts(
         output_dtypes=[np.float32],
     ).transpose(*data_array.dims)
 
+    # dask.compute() to trigger the computation - use progress bar
     with ProgressBar():
         shifts = shifts.compute()
 

@@ -689,6 +689,8 @@ class TOAD:
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
+                - "max": Maximum across space
+                - "min": Minimum across space
                 - "raw": Return data for each grid cell separately (default).
             percentile:
                 Percentile value between 0-1 when using percentile aggregation
@@ -704,6 +706,10 @@ class TOAD:
             return data.sum(dim=self.space_dims)
         elif method == "std":
             return data.std(dim=self.space_dims)
+        elif method == "max":
+            return data.max(dim=self.space_dims)
+        elif method == "min":
+            return data.min(dim=self.space_dims)
         elif method == "percentile":
             if percentile is None:
                 raise ValueError(
@@ -722,7 +728,7 @@ class TOAD:
         cluster_id: Union[int, List[int]], # TODO: rename to cluster_ids ? 
         cluster_var: Optional[str] = None,
         aggregation: Literal[
-            "raw", "mean", "sum", "std", "median", "percentile"
+            "raw", "mean", "sum", "std", "median", "percentile", "max", "min"
         ] = "raw",
         percentile: Optional[float] = None,
         normalize: Optional[Literal["first", "max", "last"]] = None,
@@ -744,6 +750,8 @@ class TOAD:
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
+                - "max": Maximum across space
+                - "min": Minimum across space
                 - "raw": Return data for each grid cell separately
             percentile:
                 Percentile value between 0-1 when using percentile aggregation

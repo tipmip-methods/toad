@@ -58,9 +58,8 @@ def test_healpix_hdbscan(test_params, toad_instance):
 
     td.compute_clusters(
         "tas",
-        shifts_filter_func=lambda x: np.abs(x) > test_params["shifts_threshold"],
+        shift_threshold=test_params["shifts_threshold"],
         method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
-        regridder=HealPixRegridder(),
         overwrite=True,
     )
 

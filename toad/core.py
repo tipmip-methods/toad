@@ -1,7 +1,7 @@
 import logging
 import xarray as xr
 import numpy as np
-from typing import List, Union, Callable, Optional, Literal
+from typing import List, Union, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -195,8 +195,8 @@ class TOAD:
         self,
         var: str,
         method: ClusterMixin,
-        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
-        var_filter_func: Callable = lambda _: True,  # empty filtering function as default
+        shift_threshold: float = 0.8,
+        shift_sign: str = "absolute",
         shifts_label: Optional[str] = None,
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
@@ -214,10 +214,10 @@ class TOAD:
                 Name of the variable in the dataset to cluster.
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-            shifts_filter_func:
-                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
-            var_filter_func:
-                A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
+            shift_threshold:
+                The threshold for the shift magnitude. Defaults to 0.8.
+            shift_sign:
+                The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
             shifts_label:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
@@ -248,8 +248,8 @@ class TOAD:
             data=self.data,
             var=var,
             method=method,
-            shifts_filter_func=shifts_filter_func,
-            var_filter_func=var_filter_func,
+            shift_threshold=shift_threshold,
+            shift_sign=shift_sign,
             shifts_label=shifts_label,
             time_dim=self.time_dim,
             space_dims=self.space_dims,

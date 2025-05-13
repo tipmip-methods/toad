@@ -1,9 +1,7 @@
 import logging
 import xarray as xr
 import numpy as np
-from typing import Callable
 from toad._version import __version__
-import inspect
 from typing import Optional, Union
 from toad.utils import get_space_dims, reorder_space_dims
 
@@ -24,8 +22,8 @@ def compute_clusters(
     data: xr.Dataset,
     var: str,
     method: ClusterMixin,
-    shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
-    var_filter_func: Callable = lambda _: True,  # empty filtering function as default
+    shift_threshold: float = 0.8,
+    shift_sign: str = "absolute",
     shifts_label: Optional[str] = None,
     time_dim: str = "time",
     space_dims: Optional[list[str]] = None,
@@ -45,10 +43,10 @@ def compute_clusters(
             Name of the variable in the dataset to cluster.
         method:
             The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-        shifts_filter_func:
-            A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
-        var_filter_func:
-            A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
+        shift_threshold:
+            The threshold for the shift magnitude. Defaults to 0.8.
+        shift_sign:
+            The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
         shifts_label:
             Name of the variable containing precomputed shifts. Defaults to {var}_dts.
         scaler:
@@ -119,6 +117,10 @@ def compute_clusters(
     if data[shifts_label].ndim != 3:
         raise ValueError("data must be 3-dimensional")  # TODO: make it work for 2D data
 
+    # we add neg sign manually to detect negative shift
+    if shift_threshold < 0:
+        raise ValueError(f"shift_threshold must be positive, got {shift_threshold}")
+
     # Set output label and check if already in data
     output_label = f"{var}_cluster{output_label_suffix}"
     if output_label in data and merge_input:
@@ -135,12 +137,25 @@ def compute_clusters(
         "var": data[var].to_dataframe().reset_index(),
         "dts": data[shifts_label].to_dataframe().reset_index(),
     }
-    mask = df_data["var"][var].apply(var_filter_func) & df_data["dts"][
-        shifts_label
-    ].apply(shifts_filter_func)
-    filtered_df = df_data["dts"][mask]
+
+    def shifts_filter_func(x):
+        """Filter shifts based on sign and threshold."""
+        if shift_sign == "absolute":
+            return np.abs(x) > shift_threshold
+        elif shift_sign == "positive":
+            return x > shift_threshold
+        elif shift_sign == "negative":
+            return x < -shift_threshold
+        else:
+            raise ValueError(
+                f"shift_sign must be 'absolute', 'positive', or 'negative', got {shift_sign}"
+            )
+
+    filtered_df = df_data["dts"][df_data["dts"][shifts_label].apply(shifts_filter_func)]
     if filtered_df.empty:
-        raise ValueError("No data left after filtering.")
+        raise ValueError(
+            f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
+        )
 
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
@@ -237,12 +252,8 @@ def compute_clusters(
     clusters.attrs.update(
         {
             "cluster_ids": np.unique(cluster_labels).astype(int),
-            "var_filter_func": inspect.getsource(var_filter_func)
-            if var_filter_func
-            else "None",
-            "shifts_filter_func": inspect.getsource(shifts_filter_func)
-            if shifts_filter_func
-            else "None",
+            "shift_threshold": shift_threshold,
+            "shift_sign": shift_sign,
             "scaler": scaler,
             "method_name": method.__class__.__name__,
             "toad_version": __version__,

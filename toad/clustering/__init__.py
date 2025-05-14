@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
     MaxAbsScaler,
 )
 from toad.regridding.base import BaseRegridder
-from toad.regridding import HealPixRegridder
+#from toad.regridding import HealPixRegridder
 
 logger = logging.getLogger("TOAD")
 
@@ -157,11 +157,11 @@ def compute_clusters(
     )  # take absolute value of shifts as weights
 
     # HealPixRegridder is only supported for lat/lon coordinates
-    if isinstance(regridder, HealPixRegridder) and not isLatLon:
-        logger.info(
-            "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
-        )
-        regridder = None
+    #if isinstance(regridder, HealPixRegridder) and not isLatLon:
+    #    logger.info(
+    #        "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
+    #    )
+    #    regridder = None
 
     # Regrid and scale
     if regridder:

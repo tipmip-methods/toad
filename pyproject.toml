@@ -40,7 +40,6 @@ dependencies = [
         "xarray",
         "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
         "cartopy",
-        "healpy",
         "pandas",
         "numba"
 ]
@@ -62,7 +61,6 @@ scipy = "scipy"
 xarray = "xarray"
 netcdf4 = "netcdf4"
 cartopy = "cartopy"
-healpy = "healpy"
 pandas = "pandas"
 scikit-learn = "sklearn"
 numba = "numba"

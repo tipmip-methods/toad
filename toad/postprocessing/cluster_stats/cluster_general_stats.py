@@ -85,3 +85,57 @@ class ClusterGeneralStats:
             return standardized_score, _score_fit
         else:
             return standardized_score
+
+    # TODO: implement this
+    def cluster_consistency(
+        self,
+        cluster_id,
+    ) -> float:
+        """
+        Describe the function.
+
+        >> Args:
+            cluster_id: id of the cluster to score.
+
+        >> Returns:
+            - ?
+        """
+
+        # Get "time" values
+        xvals = self.td.data[self.td.time_dim].values  # time values
+
+        # get mean y-values
+        y_mean = self.td.get_cluster_timeseries(
+            self.var,
+            cluster_id=cluster_id,
+            aggregation="mean",
+        ).values
+
+        # Or get all time series in the cluster
+        y_vals = self.td.get_cluster_timeseries(
+            self.var,
+            cluster_id=cluster_id,
+        )
+
+        for ts in y_vals:
+            # compute_something_with_each_timeseries(ts)
+            pass
+
+        score = 1  # ...
+        return score
+
+    # TODO: implement this
+    def cluster_spatial_autocorrelation(
+        self,
+        cluster_id,
+    ) -> float:
+        score = 1  # ...
+        return score
+
+    # TODO: implement this, unless same as cluster_abruptness()
+    def cluster_nonlinearity(
+        self,
+        cluster_id,
+    ) -> float:
+        score = 1  # ...
+        return score

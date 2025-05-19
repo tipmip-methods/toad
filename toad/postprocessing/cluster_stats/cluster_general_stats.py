@@ -1,7 +1,7 @@
 from typing import Union, Literal, Optional
 import numpy as np
-from scipy.cluster.hierarchy import linkage, inconsistent # package needed for consistency measure
-from scipy.spatial.distance import squareform # package needed for autcorrelation measure
+from scipy.cluster.hierarchy import linkage, inconsistent
+from scipy.spatial.distance import squareform
 
 
 class ClusterGeneralStats:
@@ -19,7 +19,7 @@ class ClusterGeneralStats:
         self.var = var
         # Initialize other necessary attributes
 
-    def cluster_abruptness(
+    def score_heaviside(
         self,
         cluster_id,
         return_score_fit=False,
@@ -88,16 +88,16 @@ class ClusterGeneralStats:
         else:
             return standardized_score
 
-    def cluster_consistency(
+    def score_consistency(
         self,
         cluster_id,
     ) -> float:
         """
         Measures the internal consistency of the cluster using hierarchical linkage inconsistency.
-        
+
         >> Args:
             cluster_id: ID of the cluster to evaluate.
-        
+
         >> Returns:
             - consistency score (float): Higher means more internally consistent.
         """
@@ -115,7 +115,7 @@ class ClusterGeneralStats:
 
         # Compute R² similarity matrix
         r_matrix = np.corrcoef(time_series)
-        r_squared_matrix = np.nan_to_num(r_matrix ** 2)
+        r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Compute distance matrix
         distance_matrix = 1 - r_squared_matrix
@@ -125,7 +125,7 @@ class ClusterGeneralStats:
         np.fill_diagonal(distance_matrix, 0)
 
         # Linkage for hierarchical clustering
-        Z = linkage(squareform(distance_matrix), method='ward')
+        Z = linkage(squareform(distance_matrix), method="ward")
         d = len(time_series) - 1
         R = inconsistent(Z, d=d)
 
@@ -133,21 +133,21 @@ class ClusterGeneralStats:
         inconsistency_value = R[-1, -1]
 
         # Convert to consistency score
-        if inconsistency_value < 1e-10: # to avoid numerical issues 
+        if inconsistency_value < 1e-10:  # to avoid numerical issues
             return 1.0
         else:
             return 1.0 / inconsistency_value
 
-    def cluster_spatial_autocorrelation(
+    def score_spatial_autocorrelation(
         self,
         cluster_id,
     ) -> float:
         """
         Computes average pairwise similarity (R²) of all time series in the cluster.
-        
+
         >> Args:
             cluster_id: ID of the cluster to evaluate.
-        
+
         >> Returns:
             - similarity score (float): Higher means more internally similar.
         """
@@ -165,7 +165,7 @@ class ClusterGeneralStats:
 
         # Compute R² similarity matrix
         r_matrix = np.corrcoef(time_series)
-        r_squared_matrix = np.nan_to_num(r_matrix ** 2)
+        r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Extract upper triangle (excluding diagonal)
         upper_triangle_indices = np.triu_indices_from(r_squared_matrix, k=1)
@@ -173,11 +173,7 @@ class ClusterGeneralStats:
 
         return avg_similarity
 
-# TODO: implement this, unless same as cluster_abruptness(). 
-# It is not the same, but they serve the same purpose.
-# I will add the nonlinearity measure I used for my thesis here so we can still compare them and select the best/most efficient
-    
-    def cluster_nonlinearity(
+    def score_nonlinearity(
         self,
         cluster_id,
         aggregation: Literal["mean", "sum", "std", "median", "percentile"] = "mean",
@@ -198,32 +194,25 @@ class ClusterGeneralStats:
         >> Returns:
             nonlinearity score (float): Higher means more nonlinear behavior.
         """
-    # Get aggregated cluster time series
+        # Get aggregated cluster time series
         yvals = self.td.get_cluster_timeseries(
             self.var,
             cluster_id=cluster_id,
             aggregation=aggregation,
             percentile=percentile,
+            normalize="max",
         ).values
 
-        # Normalize using min-max
-        y_min = np.nanmin(yvals)
-        y_max = np.nanmax(yvals)
-        if y_max - y_min == 0:
-            normalized_y = np.zeros_like(yvals)
-        else:
-            normalized_y = (yvals - y_min) / (y_max - y_min)
-
         xvals = self.td.data[self.td.time_dim].values
-        if len(xvals) != len(normalized_y):
+        if len(xvals) != len(yvals):
             raise ValueError("Time and data dimensions do not match.")
 
         # Fit linear model with polyfit
-        coeffs = np.polyfit(xvals, normalized_y, 1)
+        coeffs = np.polyfit(xvals, yvals, 1)
         predicted = np.polyval(coeffs, xvals)
 
         # RMSE for clustered series
-        rmse_cluster = float(np.sqrt(np.mean((normalized_y - predicted) ** 2)))
+        rmse_cluster = float(np.sqrt(np.mean((yvals - predicted) ** 2)))
 
         if not normalize_against_unclustered:
             return rmse_cluster
@@ -240,7 +229,9 @@ class ClusterGeneralStats:
             ts = ts.astype(np.float32)
             if np.all(np.isnan(ts)) or np.nanmax(ts) - np.nanmin(ts) == 0:
                 continue
-            norm_ts = (ts - np.nanmin(ts)) / (np.nanmax(ts) - np.nanmin(ts))
+            norm_ts = (ts - np.nanmin(ts)) / (
+                np.nanmax(ts) - np.nanmin(ts)
+            )  # Normalise each trajectory individually
             coeffs = np.polyfit(xvals, norm_ts, 1)
             pred = np.polyval(coeffs, xvals)
             rmse = np.sqrt(np.mean((norm_ts - pred) ** 2))
@@ -254,6 +245,4 @@ class ClusterGeneralStats:
             avg_rmse_unclustered = 1e-10  # avoid divide-by-zero
 
         # Return normalized nonlinearity
-        return rmse_cluster / avg_rmse_unclustered
-
-
+        return float(rmse_cluster / avg_rmse_unclustered)

@@ -93,13 +93,25 @@ class ClusterGeneralStats:
         cluster_id,
     ) -> float:
         """
-        Measures the internal consistency of the cluster using hierarchical linkage inconsistency.
+        Measures how internally consistent a cluster is by analyzing the similarity between its time series.
+        Uses hierarchical clustering to group similar time series and computes an inconsistency score.
+        The final score is inverted so higher values indicate more consistency.
+
+        The method works by:
+        1. Computing pairwise R² correlations between all time series in the cluster
+        2. Converting correlations to distances (1 - R²)
+        3. Performing hierarchical clustering using Ward linkage
+        4. Calculating inconsistency coefficients at the highest level
+        5. Converting to a consistency score by taking the inverse
 
         >> Args:
             cluster_id: ID of the cluster to evaluate.
 
         >> Returns:
-            - consistency score (float): Higher means more internally consistent.
+            - consistency score (float): Between 0-1, where:
+                - 1.0: Perfect consistency (all time series are identical)
+                - ~0.5: Moderate consistency
+                - 0.0: No consistency (single point or completely inconsistent)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -143,13 +155,22 @@ class ClusterGeneralStats:
         cluster_id,
     ) -> float:
         """
-        Computes average pairwise similarity (R²) of all time series in the cluster.
+        Computes average pairwise similarity (R²) between all time series in a cluster.
+        This measures how spatially coherent the cluster behavior is.
+
+        The score is calculated by:
+        1. Getting all time series for cells in the cluster
+        2. Computing pairwise R² correlations between all time series
+        3. Taking the mean of the upper triangle of the correlation matrix
 
         >> Args:
             cluster_id: ID of the cluster to evaluate.
 
         >> Returns:
-            - similarity score (float): Higher means more internally similar.
+            - similarity score (float): Between 0-1, where:
+                - 1.0: Perfect similarity (all time series identical)
+                - ~0.5: Moderate spatial coherence
+                - 0.0: No similarity (completely uncorrelated)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -178,21 +199,35 @@ class ClusterGeneralStats:
         cluster_id,
         aggregation: Literal["mean", "sum", "std", "median", "percentile"] = "mean",
         percentile: Optional[float] = None,
-        normalize_against_unclustered: bool = False,
+        normalise_against_unclustered: bool = False,
     ) -> float:
         """
-        Computes nonlinearity of a cluster's aggregated time series using RMSE from a linear (polyfit) fit.
-        Optionally normalizes by RMSE of unclustered time series.
+        Computes nonlinearity of a cluster's aggregated time series using RMSE from a linear fit.
+        The score measures how much the time series deviates from a linear trend.
+
+        When normalise_against_unclustered=True:
+            - Score > 1: Cluster is more nonlinear than typical unclustered behavior
+            - Score ≈ 1: Cluster has similar nonlinearity to unclustered data
+            - Score < 1: Cluster is more linear than unclustered data
+        When normalise_against_unclustered=False:
+            - Returns raw RMSE (0 = perfectly linear, higher = more nonlinear)
+            - Useful for comparing clusters to each other
 
         >> Args:
             cluster_id: Cluster ID to evaluate.
             aggregation: How to aggregate spatial data:
-            - "mean", "sum", "std", "median", "percentile"
+                - "mean": Average across space
+                - "median": Median across space
+                - "sum": Sum across space
+                - "std": Standard deviation across space
+                - "percentile": Percentile across space (requires percentile arg)
             percentile: Percentile value between 0–1 (only used if aggregation="percentile")
-            normalize_against_unclustered: If True, normalize RMSE by RMSE of unclustered points.
+            normalize_against_unclustered: If True, normalize score by average RMSE of unclustered points.
+                This helps identify clusters that stand out from background behavior.
 
         >> Returns:
             nonlinearity score (float): Higher means more nonlinear behavior.
+                Interpretation depends on normalize_against_unclustered parameter.
         """
         # Get aggregated cluster time series
         yvals = self.td.get_cluster_timeseries(
@@ -214,7 +249,7 @@ class ClusterGeneralStats:
         # RMSE for clustered series
         rmse_cluster = float(np.sqrt(np.mean((yvals - predicted) ** 2)))
 
-        if not normalize_against_unclustered:
+        if not normalise_against_unclustered:
             return rmse_cluster
 
         # Get unclustered time series (raw, no aggregation)

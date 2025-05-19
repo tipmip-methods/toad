@@ -20,7 +20,7 @@ from toad import (
 )
 from toad.utils import get_space_dims, is_equal_to, contains_value
 from toad.regridding.base import BaseRegridder
-#from toad.regridding import HealPixRegridder
+from toad.regridding import HealPixRegridder
 
 
 class TOAD:
@@ -201,7 +201,7 @@ class TOAD:
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
-        regridder: Optional[BaseRegridder] = None,#HealPixRegridder(),
+        regridder: Optional[BaseRegridder] = HealPixRegridder(),
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,

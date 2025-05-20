@@ -1,5 +1,5 @@
 import numpy as np
-import healpy as hp
+import healpix as hp
 import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional
@@ -63,7 +63,8 @@ class HealPixRegridder(BaseRegridder):
             n_pixels = len(np.unique(coords[:, 1])) * len(
                 np.unique(coords[:, 2])
             )  # this assumes that the original grid is a regular grid..
-            self.nside = hp.pixelfunc.get_min_valid_nside(n_pixels)
+            order = 0.5 * np.log2(n_pixels / 12.0)      # this and next line is implementation 
+            self.nside = 1 << int(np.ceil(order))       # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
             logger.info(f"Automatically computed nside: {self.nside}")
 
         # Get unique lat/lon pairs and compute healpix indices once
@@ -151,6 +152,8 @@ class HealPixRegridder(BaseRegridder):
         self, val_var: str = "cluster", time=None, cmap="coolwarm", center_lon=180
     ):
         """Plot regridded data in HEALPix projection."""
+        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        """
         if self.df_healpix is None:
             raise ValueError("No data available. Run regrid() first")
         df = self.df_healpix
@@ -160,7 +163,8 @@ class HealPixRegridder(BaseRegridder):
         sparse_map = np.zeros(hp.nside2npix(self.nside))
         sparse_map[plot_df["hp_pix"]] = plot_df[val_var]
 
-        hp.mollview(
+        # no surrogate for healpy.mollview function found yet
+        healpy.mollview(
             sparse_map,
             title=f"HEALPix Grid (nside={self.nside})"
             + (f" at {time}" if time else ""),
@@ -168,11 +172,12 @@ class HealPixRegridder(BaseRegridder):
             unit=val_var,
             rot=(center_lon, 0, 0),
         )
-        plt.show()
+        plt.show()"""
 
     def plot_clusters(
         self, s=1, cmap=None, color=None, ax=None, extent=None, add_colorbar=True
     ):
+        #raise NotImplementedError()
         if ax is None:
             fig = plt.figure(figsize=(15, 10))
             ax = fig.add_subplot(111, projection=ccrs.Mollweide())
@@ -208,6 +213,8 @@ class HealPixRegridder(BaseRegridder):
     def demo_plot(self):
         """Demo the HEALPix grid with a simple latitude-based pattern"""
 
+        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        """
         if self.nside is None:
             raise ValueError(
                 "Please provide an nside value in the HealPixRegridder constructor for the demo plot."
@@ -229,4 +236,4 @@ class HealPixRegridder(BaseRegridder):
         coords, weights = self.regrid(coords, vals)
 
         # Plot results
-        self.plot(val_var="vals", cmap="RdBu_r")
+        self.plot(val_var="vals", cmap="RdBu_r")"""

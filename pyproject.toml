@@ -41,7 +41,8 @@ dependencies = [
         "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
         "cartopy",
         "pandas",
-        "numba"
+        "numba",
+        "healpix"
 ]
 
 [tool.setuptools]
@@ -64,6 +65,7 @@ cartopy = "cartopy"
 pandas = "pandas"
 scikit-learn = "sklearn"
 numba = "numba"
+healpix = "healpix"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

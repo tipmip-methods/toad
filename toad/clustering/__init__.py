@@ -15,7 +15,7 @@ from sklearn.preprocessing import (
     MaxAbsScaler,
 )
 from toad.regridding.base import BaseRegridder
-#from toad.regridding import HealPixRegridder
+from toad.regridding import HealPixRegridder
 
 logger = logging.getLogger("TOAD")
 
@@ -32,7 +32,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    regridder: Optional[BaseRegridder] = None,#HealPixRegridder(),
+    regridder: Optional[BaseRegridder] = HealPixRegridder(),
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,

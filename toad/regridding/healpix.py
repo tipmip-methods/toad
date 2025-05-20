@@ -1,6 +1,5 @@
 import numpy as np
-#import healpy as hp
-import healpix as hx
+import healpix as hp
 import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional
@@ -34,11 +33,11 @@ class HealPixRegridder(BaseRegridder):
 
     def latlon_to_healpix(self, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         """Convert arrays of latitude and longitude to HEALPix pixel indices."""
-        return hx.ang2pix(self.nside, lons, lats, lonlat=True)
+        return hp.ang2pix(self.nside, lons, lats, lonlat=True)
 
     def healpix_to_latlon(self, pix: int) -> tuple:
         """Convert a HEALPix pixel index back to its center latitude and longitude."""
-        theta, phi = hx.pix2ang(self.nside, pix)
+        theta, phi = hp.pix2ang(self.nside, pix)
         return 90 - np.degrees(theta), np.degrees(phi)  # lat, lon
 
     def regrid(
@@ -64,7 +63,6 @@ class HealPixRegridder(BaseRegridder):
             n_pixels = len(np.unique(coords[:, 1])) * len(
                 np.unique(coords[:, 2])
             )  # this assumes that the original grid is a regular grid..
-            #self.nside = hp.pixelfunc.get_min_valid_nside(n_pixels)
             order = 0.5 * np.log2(n_pixels / 12.0)      # this and next line is implementation 
             self.nside = 1 << int(np.ceil(order))       # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
             logger.info(f"Automatically computed nside: {self.nside}")
@@ -154,29 +152,32 @@ class HealPixRegridder(BaseRegridder):
         self, val_var: str = "cluster", time=None, cmap="coolwarm", center_lon=180
     ):
         """Plot regridded data in HEALPix projection."""
+        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        """
         if self.df_healpix is None:
             raise ValueError("No data available. Run regrid() first")
         df = self.df_healpix
 
         plot_df = df[df["time"] == time] if time is not None else df
 
-        sparse_map = np.zeros(hx.nside2npix(self.nside))
+        sparse_map = np.zeros(hp.nside2npix(self.nside))
         sparse_map[plot_df["hp_pix"]] = plot_df[val_var]
 
-        # no surrogate for healpy function found yet
-        """hp.mollview(
+        # no surrogate for healpy.mollview function found yet
+        healpy.mollview(
             sparse_map,
             title=f"HEALPix Grid (nside={self.nside})"
             + (f" at {time}" if time else ""),
             cmap=cmap,
             unit=val_var,
             rot=(center_lon, 0, 0),
-        )"""
-        plt.show()
+        )
+        plt.show()"""
 
     def plot_clusters(
         self, s=1, cmap=None, color=None, ax=None, extent=None, add_colorbar=True
     ):
+        #raise NotImplementedError()
         if ax is None:
             fig = plt.figure(figsize=(15, 10))
             ax = fig.add_subplot(111, projection=ccrs.Mollweide())
@@ -212,17 +213,19 @@ class HealPixRegridder(BaseRegridder):
     def demo_plot(self):
         """Demo the HEALPix grid with a simple latitude-based pattern"""
 
+        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        """
         if self.nside is None:
             raise ValueError(
                 "Please provide an nside value in the HealPixRegridder constructor for the demo plot."
             )
 
         # Generate evenly spaced points across the sphere
-        npix = hx.nside2npix(self.nside)
+        npix = hp.nside2npix(self.nside)
         pixels = np.arange(npix)
 
         # Get coordinates in lat/lon
-        lons, lats = hx.pix2ang(self.nside, pixels, lonlat=True)
+        lons, lats = hp.pix2ang(self.nside, pixels, lonlat=True)
 
         # Create demo data
         time_dummy = np.zeros(npix)
@@ -233,4 +236,4 @@ class HealPixRegridder(BaseRegridder):
         coords, weights = self.regrid(coords, vals)
 
         # Plot results
-        self.plot(val_var="vals", cmap="RdBu_r")
+        self.plot(val_var="vals", cmap="RdBu_r")"""

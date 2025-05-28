@@ -63,8 +63,12 @@ class HealPixRegridder(BaseRegridder):
             n_pixels = len(np.unique(coords[:, 1])) * len(
                 np.unique(coords[:, 2])
             )  # this assumes that the original grid is a regular grid..
-            order = 0.5 * np.log2(n_pixels / 12.0)      # this and next line is implementation 
-            self.nside = 1 << int(np.ceil(order))       # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
+            order = 0.5 * np.log2(
+                n_pixels / 12.0
+            )  # this and next line is implementation
+            self.nside = 1 << int(
+                np.ceil(order)
+            )  # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
             logger.info(f"Automatically computed nside: {self.nside}")
 
         # Get unique lat/lon pairs and compute healpix indices once
@@ -152,7 +156,9 @@ class HealPixRegridder(BaseRegridder):
         self, val_var: str = "cluster", time=None, cmap="coolwarm", center_lon=180
     ):
         """Plot regridded data in HEALPix projection."""
-        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        raise NotImplementedError(
+            "Demo plot not implemented yet. Missing healpy.mollview surrogate."
+        )
         """
         if self.df_healpix is None:
             raise ValueError("No data available. Run regrid() first")
@@ -177,7 +183,7 @@ class HealPixRegridder(BaseRegridder):
     def plot_clusters(
         self, s=1, cmap=None, color=None, ax=None, extent=None, add_colorbar=True
     ):
-        #raise NotImplementedError()
+        # raise NotImplementedError()
         if ax is None:
             fig = plt.figure(figsize=(15, 10))
             ax = fig.add_subplot(111, projection=ccrs.Mollweide())
@@ -213,7 +219,9 @@ class HealPixRegridder(BaseRegridder):
     def demo_plot(self):
         """Demo the HEALPix grid with a simple latitude-based pattern"""
 
-        raise NotImplementedError("Demo plot not implemented yet. Missing healpy.mollview surrogate.")
+        raise NotImplementedError(
+            "Demo plot not implemented yet. Missing healpy.mollview surrogate."
+        )
         """
         if self.nside is None:
             raise ValueError(

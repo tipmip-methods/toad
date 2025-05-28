@@ -32,7 +32,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    regridder: Optional[BaseRegridder] = None,#HealPixRegridder(),
+    regridder: Optional[BaseRegridder] = None,  # HealPixRegridder(),
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,

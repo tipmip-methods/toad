@@ -3,6 +3,7 @@ import numpy as np
 from toad import TOAD
 
 from sklearn.cluster import HDBSCAN  # type: ignore
+from toad.regridding import HealPixRegridder
 
 @pytest.fixture
 def test_params():

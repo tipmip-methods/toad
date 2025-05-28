@@ -32,7 +32,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    regridder: Optional[BaseRegridder] = HealPixRegridder(),
+    regridder: Optional[BaseRegridder] = None,#HealPixRegridder(),
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
@@ -157,11 +157,11 @@ def compute_clusters(
     )  # take absolute value of shifts as weights
 
     # HealPixRegridder is only supported for lat/lon coordinates
-    #if isinstance(regridder, HealPixRegridder) and not isLatLon:
-    #    logger.info(
-    #        "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
-    #    )
-    #    regridder = None
+    if isinstance(regridder, HealPixRegridder) and not isLatLon:
+        logger.info(
+            "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
+        )
+        regridder = None
 
     # Regrid and scale
     if regridder:

@@ -7,6 +7,7 @@ import logging
 
 logger = logging.getLogger("TOAD")
 
+
 class HealPixRegridder(BaseRegridder):
     """Regrid data onto a equal-area HEALPix grid to avoid polar bias in clustering"""
 

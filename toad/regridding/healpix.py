@@ -3,17 +3,10 @@ import healpix as hp
 import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional
-
-from matplotlib.colors import ListedColormap
-import cartopy.crs as ccrs
-
 from toad.regridding.base import BaseRegridder
-
-
 import logging
 
 logger = logging.getLogger("TOAD")
-
 
 class HealPixRegridder(BaseRegridder):
     """Regrid data onto a equal-area HEALPix grid to avoid polar bias in clustering"""
@@ -151,97 +144,3 @@ class HealPixRegridder(BaseRegridder):
         )
 
         return result
-
-    def plot(
-        self, val_var: str = "cluster", time=None, cmap="coolwarm", center_lon=180
-    ):
-        """Plot regridded data in HEALPix projection."""
-        raise NotImplementedError(
-            "Demo plot not implemented yet. Missing healpy.mollview surrogate."
-        )
-        """
-        if self.df_healpix is None:
-            raise ValueError("No data available. Run regrid() first")
-        df = self.df_healpix
-
-        plot_df = df[df["time"] == time] if time is not None else df
-
-        sparse_map = np.zeros(hp.nside2npix(self.nside))
-        sparse_map[plot_df["hp_pix"]] = plot_df[val_var]
-
-        # no surrogate for healpy.mollview function found yet
-        healpy.mollview(
-            sparse_map,
-            title=f"HEALPix Grid (nside={self.nside})"
-            + (f" at {time}" if time else ""),
-            cmap=cmap,
-            unit=val_var,
-            rot=(center_lon, 0, 0),
-        )
-        plt.show()"""
-
-    def plot_clusters(
-        self, s=1, cmap=None, color=None, ax=None, extent=None, add_colorbar=True
-    ):
-        # raise NotImplementedError()
-        if ax is None:
-            fig = plt.figure(figsize=(15, 10))
-            ax = fig.add_subplot(111, projection=ccrs.Mollweide())
-            ax.coastlines()  # type: ignore
-
-        if self.df_healpix is None:
-            raise ValueError("No data available. Run regrid() first")
-
-        df_plot = self.df_healpix[self.df_healpix["cluster"] >= 0]
-
-        if cmap is None:
-            N_clusters = len(df_plot["cluster"].unique())
-            cmap = (
-                "tab10" if N_clusters <= 10 else "tab20" if N_clusters <= 20 else "jet"
-            )
-
-        if color is not None:
-            cmap = ListedColormap([color])
-
-        sc = ax.scatter(
-            df_plot["lon"],
-            df_plot["lat"],
-            c=df_plot["cluster"],
-            s=s,
-            cmap=cmap,
-            transform=ccrs.PlateCarree(),
-        )
-        if add_colorbar:
-            plt.colorbar(sc, ax=ax, orientation="horizontal", pad=0.05)
-        if extent:
-            ax.set_extent(extent, crs=ccrs.PlateCarree())  # type: ignore
-
-    def demo_plot(self):
-        """Demo the HEALPix grid with a simple latitude-based pattern"""
-
-        raise NotImplementedError(
-            "Demo plot not implemented yet. Missing healpy.mollview surrogate."
-        )
-        """
-        if self.nside is None:
-            raise ValueError(
-                "Please provide an nside value in the HealPixRegridder constructor for the demo plot."
-            )
-
-        # Generate evenly spaced points across the sphere
-        npix = hp.nside2npix(self.nside)
-        pixels = np.arange(npix)
-
-        # Get coordinates in lat/lon
-        lons, lats = hp.pix2ang(self.nside, pixels, lonlat=True)
-
-        # Create demo data
-        time_dummy = np.zeros(npix)
-        vals = lats
-
-        # Run through regridding pipeline
-        coords = np.column_stack([time_dummy, lats, lons])
-        coords, weights = self.regrid(coords, vals)
-
-        # Plot results
-        self.plot(val_var="vals", cmap="RdBu_r")"""

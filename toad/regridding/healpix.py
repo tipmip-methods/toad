@@ -1,12 +1,12 @@
 import numpy as np
 import healpix as hp
-import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional
 from toad.regridding.base import BaseRegridder
 import logging
 
 logger = logging.getLogger("TOAD")
+
 
 class HealPixRegridder(BaseRegridder):
     """Regrid data onto a equal-area HEALPix grid to avoid polar bias in clustering"""

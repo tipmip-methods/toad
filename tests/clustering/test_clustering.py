@@ -3,6 +3,7 @@ import numpy as np
 from toad import TOAD
 
 from sklearn.cluster import HDBSCAN  # type: ignore
+from toad.regridding import HealPixRegridder
 
 
 @pytest.fixture
@@ -59,6 +60,7 @@ def test_healpix_hdbscan(test_params, toad_instance):
         "tas",
         shifts_filter_func=lambda x: np.abs(x) > test_params["shifts_threshold"],
         method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
+        regridder=HealPixRegridder(),
         overwrite=True,
     )
 

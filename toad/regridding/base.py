@@ -37,8 +37,3 @@ class BaseRegridder(ABC):
             Array of cluster labels for original coordinates
         """
         pass
-
-    @abstractmethod
-    def plot(self, value_column: str = "cluster", **kwargs):
-        """Plot the regridded data."""
-        pass

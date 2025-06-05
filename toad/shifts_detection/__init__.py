@@ -18,8 +18,8 @@ def compute_shifts(
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
-    chunk_size: int = None,
     dask_compute: bool = True,
+    chunk_size: int = None,
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -49,12 +49,15 @@ def compute_shifts(
     """ 
 
     # set chunk size
-    if chunk_size is None:
-        data = data.chunk(data.sizes)           # one big chunk
+    if dask_compute:
+        spatial_indices = list(data.sizes)                      # get all default dimensions/indices of the data object
+        #spatial_indices.remove(time_dim)                        # remove time dimension from the list, only spatial dimensions should be chunked
+        cs_dict = {dim: chunk_size for dim in spatial_indices}
+        cs_dict[time_dim] = -1                                  # keep time dimension unchunked
+        data = data.chunk(cs_dict)                              # chunk the spatial dimensions
+        dask_str = "parallelized"
     else:
-        spatial_indices = list(data.sizes)      # get all default dimensions/indices of the data object
-        spatial_indices.remove(time_dim)        # remove time dimension from the list, only spatial dimensions should be chunked
-        data = data.chunk({dim: chunk_size for dim in spatial_indices})     # chunk the spatial dimensions
+        dask_str = "allowed"
             
 
     # 1. Set output label
@@ -110,7 +113,7 @@ def compute_shifts(
         input_core_dims=[[time_dim]],
         output_core_dims=[[time_dim]],
         vectorize=True,
-        dask="parallelized",
+        dask=dask_str,
         output_dtypes=[np.float32],
     ).transpose(*data_array.dims)
 

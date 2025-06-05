@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-filename_in = "chunk_size_performance_real"
+filename_in = "20250605_chunk_size_performance_real"
 filename_out = filename_in
 shape = (86, 324, 324)
 sample_size = 5
@@ -11,7 +11,7 @@ col2 = 'black'
 df = pd.read_pickle(filename_in + ".pkl")
 
 plt.figure(figsize=(10, 5))
-plt.bar(df["Chunk Size"], df["Time (s)"], color="lightblue")
+plt.bar(df["Chunk Size"], df["Time (s)"], color="lightgreen")
 plt.xlabel("Chunk Memory Size [MB]")
 plt.ylabel("Time [s]")
 full_mem = float(np.prod(shape) * np.dtype(np.float32).itemsize) / 1e6

@@ -48,8 +48,15 @@ dependencies = [
 [tool.setuptools]
 packages = {find = {}}
 
+# dynamic attributes collection
 [tool.setuptools.dynamic]
 version = {attr = "toad._version.__version__"}
+
+# pytest configuration
+[tool.pytest.ini_options]
+testpaths = "tests"
+python_files = "test_*.py"
+addopts = "-v --cov=toad"
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["netcdf4"]            # ignore unused dependencies

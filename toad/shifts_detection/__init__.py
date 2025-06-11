@@ -3,6 +3,7 @@ from typing import Union
 import xarray as xr
 from toad._version import __version__
 import numpy as np
+import dask
 from dask.diagnostics import ProgressBar
 
 from toad.shifts_detection.methods.base import ShiftsMethod
@@ -20,6 +21,7 @@ def compute_shifts(
     merge_input: bool = True,
     dask_compute: bool = True,
     chunk_size: int = None,
+    scheduler: str = "threads",
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -119,8 +121,9 @@ def compute_shifts(
 
     # dask.compute() to trigger the computation - use progress bar
     if dask_compute:
-        with ProgressBar():
-            shifts = shifts.compute()
+        with dask.config.set(scheduler=scheduler):
+            with ProgressBar():
+                shifts = shifts.compute()
 
     # 4. Rename the output variable
     shifts = shifts.rename(output_label)

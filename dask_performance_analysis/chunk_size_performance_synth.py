@@ -17,20 +17,28 @@ import xarray as xr
 import numpy as np
 import time
 import os
+import mpi4py.MPI as MPI
+import sys
 
-shape = (100, 1000, 1000)
+shape = (100, 500, 500)
 tim = np.arange(shape[0])
 lat = np.linspace(-90, 90, shape[1])
 lon = np.linspace(-180, 180, shape[2])
 var = "value"
 sample_size = 1#10
-chunk_sizes = [None, 5, 20, 50, 100, 150, 250, 350, 500]
-data_dir = "datasets_synth"
-filename_out = "chunk_size_performance_synth"
+chunk_sizes = [None, 5, 250]
+scheduler = "synchronous" #"synchronous" #"threads" #"processes"
+data_dir = "dataset_500"
+filename_out = "dask_500_" + scheduler
 
 results = []
 memory_chunk = []
 chunk_labels = []
+
+# parallelisation
+rank = MPI.COMM_WORLD.Get_rank()  # Each process gets a unique rank
+sys.stdout = open(f"log/{scheduler}_{rank}.out", "w")
+sys.stderr = open(f"log/{scheduler}_{rank}.err", "w")
 
 print("\n\n> Running benchmark...")
 for size in chunk_sizes:
@@ -50,10 +58,11 @@ for size in chunk_sizes:
                               method=ASDETECT(),
                               overwrite=True,
                               chunk_size=None,
-                              dask_compute=False)
+                              dask_compute=False,
+                              scheduler=scheduler)
             elapsed = time.time() - start
 
-            output_path = os.path.join(data_dir, f"sample_{i}_out_none.nc")
+            output_path = os.path.join(data_dir, f"sample_{i}_out_none_{scheduler}_r{rank}.nc")
             td.data.to_netcdf(output_path)
 
         else:
@@ -70,10 +79,11 @@ for size in chunk_sizes:
                                 method=ASDETECT(),
                                 overwrite=True,
                                 chunk_size=size,
-                                dask_compute=True)
+                                dask_compute=True,
+                                scheduler=scheduler)
             elapsed = time.time() - start
 
-            output_path = os.path.join(data_dir, f"sample_{i}_out_{str(size)}.nc")
+            output_path = os.path.join(data_dir, f"sample_{i}_out_{str(size)}_{scheduler}_r{rank}.nc")
             td.data.to_netcdf(output_path)
 
         times.append(elapsed)
@@ -106,7 +116,7 @@ for size in chunk_sizes:
     plt.xlabel("Chunk Memory Size [MB]")
     plt.ylabel("Time [s]")
     full_mem = float(np.prod(shape) * np.dtype(np.float32).itemsize) / 1e6
-    plt.title(f"Chunk Size Performance\nData Shape: {shape}, Total Memory: {full_mem} MB\nSamples: {sample_size}")
+    plt.title(f"Chunk Size Performance\nData Shape: {shape}, Total Memory: {full_mem} MB\nSamples: {sample_size}, Scheduler: {scheduler}")
     plt.xticks(df["Chunk Size"].unique(), df["Memory Size (MB)"].unique(), rotation=45)
 
     # second x-axis label

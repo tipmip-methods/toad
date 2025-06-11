@@ -153,6 +153,7 @@ class TOAD:
         return_results_directly: bool = False,
         chunk_size: int = None,
         dask_compute: bool = True,
+        scheduler: str = "threads",
     ) -> Union[xr.DataArray, None]:
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -188,6 +189,7 @@ class TOAD:
             merge_input=not return_results_directly,
             chunk_size=chunk_size,
             dask_compute=dask_compute,
+            scheduler=scheduler,
         )
 
         if return_results_directly and isinstance(results, xr.DataArray):

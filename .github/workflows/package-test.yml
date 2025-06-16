@@ -45,3 +45,5 @@ jobs:
         run: |
           pytest --cov=toad
         shell: bash
+        env:
+          NUMBA_DISABLE_JIT: 1  # Disable Numba JIT compilation for testing; necc. to report coverage correctly

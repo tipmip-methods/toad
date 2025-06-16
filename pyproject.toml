@@ -58,6 +58,16 @@ testpaths = "tests"
 python_files = "test_*.py"
 addopts = "-v --cov=toad"
 
+# pytest coverage configuration
+[tool.coverage.report]
+omit = [
+    "toad/clustering/prepare_data.py"       # file will be deleted eventually
+]
+exclude_lines = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError"
+]
+
 [tool.deptry.per_rule_ignores]
 DEP002 = ["netcdf4"]            # ignore unused dependencies
 

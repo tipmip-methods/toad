@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for toad/shifts_detection/methods/asdetect.py: 93%</title>
+    <title>Coverage for toad/shifts_detection/methods/asdetect.py: 99%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>toad/shifts_detection/methods/asdetect.py</b>:
-            <span class="pc_cov">93%</span>
+            <span class="pc_cov">99%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,10 +54,10 @@
             </div>
         </aside>
         <h2>
-            <span class="text">82 statements &nbsp;</span>
+            <span class="text">77 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">76<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">6<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">1<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">5<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_992492ea07186b29___init___py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_992492ea07186b29_base_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -300,15 +300,15 @@
     <p class="pln"><span class="n"><a id="t218" href="#t218">218</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t219" href="#t219">219</a></span><span class="t">    <span class="com"># check arguments.</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">    <span class="key">if</span> <span class="nam">deg</span> <span class="op">&lt;</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t221" href="#t221">221</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"expected deg >= 0"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t221" href="#t221">221</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"expected deg >= 0"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t222" href="#t222">222</a></span><span class="t">    <span class="key">if</span> <span class="nam">x</span><span class="op">.</span><span class="nam">ndim</span> <span class="op">!=</span> <span class="num">1</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t223" href="#t223">223</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected 1D vector for x"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t223" href="#t223">223</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected 1D vector for x"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t224" href="#t224">224</a></span><span class="t">    <span class="key">if</span> <span class="nam">x</span><span class="op">.</span><span class="nam">size</span> <span class="op">==</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t225" href="#t225">225</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected non-empty vector for x"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t225" href="#t225">225</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected non-empty vector for x"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t226" href="#t226">226</a></span><span class="t">    <span class="key">if</span> <span class="nam">y</span><span class="op">.</span><span class="nam">ndim</span> <span class="op">&lt;</span> <span class="num">1</span> <span class="key">or</span> <span class="nam">y</span><span class="op">.</span><span class="nam">ndim</span> <span class="op">></span> <span class="num">2</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected 1D or 2D array for y"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected 1D or 2D array for y"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t228" href="#t228">228</a></span><span class="t">    <span class="key">if</span> <span class="nam">x</span><span class="op">.</span><span class="nam">shape</span><span class="op">[</span><span class="num">0</span><span class="op">]</span> <span class="op">!=</span> <span class="nam">y</span><span class="op">.</span><span class="nam">shape</span><span class="op">[</span><span class="num">0</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected x and y to have same length"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">        <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"expected x and y to have same length"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t231" href="#t231">231</a></span><span class="t">    <span class="com"># set rcond, machine precision</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t232" href="#t232">232</a></span><span class="t">    <span class="nam">rcond</span> <span class="op">=</span> <span class="nam">len</span><span class="op">(</span><span class="nam">x</span><span class="op">)</span> <span class="op">*</span> <span class="nam">np</span><span class="op">.</span><span class="nam">finfo</span><span class="op">(</span><span class="nam">x</span><span class="op">.</span><span class="nam">dtype</span><span class="op">)</span><span class="op">.</span><span class="nam">eps</span>&nbsp;</span><span class="r"></span></p>
@@ -379,7 +379,7 @@
             <a class="nav" href="z_992492ea07186b29_base_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

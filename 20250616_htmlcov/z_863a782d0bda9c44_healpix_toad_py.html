@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for toad/regridding/healpix_toad.py: 93%</title>
+    <title>Coverage for toad/regridding/healpix_toad.py: 98%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>toad/regridding/healpix_toad.py</b>:
-            <span class="pc_cov">93%</span>
+            <span class="pc_cov">98%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,10 +54,10 @@
             </div>
         </aside>
         <h2>
-            <span class="text">45 statements &nbsp;</span>
+            <span class="text">43 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">42<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">3<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">1<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">2<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_863a782d0bda9c44_base_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_163c88dd417684e3___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -103,7 +103,7 @@
     <p class="pln"><span class="n"><a id="t21" href="#t21">21</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t22" href="#t22">22</a></span><span class="t">        <span class="com"># Make sure nside is a power of 2</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t">        <span class="key">if</span> <span class="nam">nside</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span> <span class="key">and</span> <span class="key">not</span> <span class="nam">np</span><span class="op">.</span><span class="nam">log2</span><span class="op">(</span><span class="nam">nside</span><span class="op">)</span><span class="op">.</span><span class="nam">is_integer</span><span class="op">(</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">nside must be a power of 2, got </span><span class="op">{</span><span class="nam">nside</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">nside must be a power of 2, got </span><span class="op">{</span><span class="nam">nside</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">nside</span> <span class="op">=</span> <span class="nam">nside</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t">    <span class="key">def</span> <span class="nam">latlon_to_healpix</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">lats</span><span class="op">:</span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">,</span> <span class="nam">lons</span><span class="op">:</span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">)</span> <span class="op">-></span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -197,7 +197,7 @@
     <p class="run"><span class="n"><a id="t115" href="#t115">115</a></span><span class="t">    <span class="key">def</span> <span class="nam">regrid_clusters_back</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">cluster_labels</span><span class="op">:</span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">)</span> <span class="op">-></span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t">        <span class="str">"""Map cluster labels back to original grid."""</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t117" href="#t117">117</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">original_coords</span> <span class="key">is</span> <span class="key">None</span> <span class="key">or</span> <span class="nam">self</span><span class="op">.</span><span class="nam">df_healpix</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t118" href="#t118">118</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"Must call regrid() first"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t118" href="#t118">118</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"Must call regrid() first"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t119" href="#t119">119</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t120" href="#t120">120</a></span><span class="t">        <span class="com"># Add cluster labels to healpix DataFrame</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">df_healpix</span><span class="op">[</span><span class="str">"cluster"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">cluster_labels</span>&nbsp;</span><span class="r"></span></p>
@@ -235,7 +235,7 @@
             <a class="nav" href="z_163c88dd417684e3___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

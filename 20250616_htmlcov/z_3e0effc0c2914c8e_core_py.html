@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for toad/core.py: 51%</title>
+    <title>Coverage for toad/core.py: 53%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>toad/core.py</b>:
-            <span class="pc_cov">51%</span>
+            <span class="pc_cov">53%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,18 +54,18 @@
             </div>
         </aside>
         <h2>
-            <span class="text">197 statements &nbsp;</span>
+            <span class="text">190 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">101<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">96<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">89<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">7<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
-            <a id="prevFileLink" class="nav" href="z_c414ad438520e0f1_prepare_data_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a id="prevFileLink" class="nav" href="z_c414ad438520e0f1___init___py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="z_d6e26c9bb68496f3___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -125,7 +125,7 @@
     <p class="pln"><span class="n"><a id="t43" href="#t43">43</a></span><span class="t">        <span class="com"># load data from path if string</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t44" href="#t44">44</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">data</span><span class="op">,</span> <span class="nam">str</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t">            <span class="key">if</span> <span class="key">not</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">exists</span><span class="op">(</span><span class="nam">data</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">File </span><span class="op">{</span><span class="nam">data</span><span class="op">}</span><span class="fst"> does not exist.</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">File </span><span class="op">{</span><span class="nam">data</span><span class="op">}</span><span class="fst"> does not exist.</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">data</span> <span class="op">=</span> <span class="nam">xr</span><span class="op">.</span><span class="nam">open_dataset</span><span class="op">(</span><span class="nam">data</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">data</span><span class="op">.</span><span class="nam">attrs</span><span class="op">[</span><span class="str">"title"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">basename</span><span class="op">(</span><span class="nam">data</span><span class="op">)</span><span class="op">.</span><span class="nam">split</span><span class="op">(</span><span class="str">"."</span><span class="op">)</span><span class="op">[</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">                <span class="num">0</span>&nbsp;</span><span class="r"></span></p>
@@ -207,7 +207,7 @@
     <p class="pln"><span class="n"><a id="t125" href="#t125">125</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t126" href="#t126">126</a></span><span class="t">        <span class="nam">level</span> <span class="op">=</span> <span class="nam">level</span><span class="op">.</span><span class="nam">upper</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t127" href="#t127">127</a></span><span class="t">        <span class="key">if</span> <span class="nam">level</span> <span class="key">not</span> <span class="key">in</span> <span class="op">[</span><span class="str">"DEBUG"</span><span class="op">,</span> <span class="str">"INFO"</span><span class="op">,</span> <span class="str">"WARNING"</span><span class="op">,</span> <span class="str">"ERROR"</span><span class="op">,</span> <span class="str">"CRITICAL"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t128" href="#t128">128</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t128" href="#t128">128</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t129" href="#t129">129</a></span><span class="t">                <span class="str">"Invalid log level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t130" href="#t130">130</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t131" href="#t131">131</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
@@ -410,7 +410,7 @@
     <p class="mis show_mis"><span class="n"><a id="t328" href="#t328">328</a></span><span class="t">        <span class="nam">all_shift_vars</span><span class="op">:</span> <span class="nam">List</span><span class="op">[</span><span class="nam">str</span><span class="op">]</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t329" href="#t329">329</a></span><span class="t">            <span class="nam">str</span><span class="op">(</span><span class="nam">data_var</span><span class="op">)</span> <span class="key">for</span> <span class="nam">data_var</span> <span class="key">in</span> <span class="nam">self</span><span class="op">.</span><span class="nam">data</span><span class="op">.</span><span class="nam">data_vars</span> <span class="key">if</span> <span class="str">"_dts"</span> <span class="key">in</span> <span class="nam">str</span><span class="op">(</span><span class="nam">data_var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t330" href="#t330">330</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t331" href="#t331">331</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t331" href="#t331">331</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t332" href="#t332">332</a></span><span class="t">            <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t333" href="#t333">333</a></span><span class="t">                <span class="fst">f"</span><span class="fst">No shifts variable found for </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst"> or </span><span class="op">{</span><span class="nam">shifts_var</span><span class="op">}</span><span class="fst">. Please first run compute_shifts().</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t334" href="#t334">334</a></span><span class="t">                <span class="fst">f"</span><span class="fst"> Or did you mean to use any of these?: </span><span class="op">{</span><span class="str">', '</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">all_shift_vars</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
@@ -454,7 +454,7 @@
     <p class="pln"><span class="n"><a id="t372" href="#t372">372</a></span><span class="t">            <span class="key">for</span> <span class="nam">data_var</span> <span class="key">in</span> <span class="nam">self</span><span class="op">.</span><span class="nam">data</span><span class="op">.</span><span class="nam">data_vars</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t373" href="#t373">373</a></span><span class="t">            <span class="key">if</span> <span class="str">"_cluster"</span> <span class="key">in</span> <span class="nam">str</span><span class="op">(</span><span class="nam">data_var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t374" href="#t374">374</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t375" href="#t375">375</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t375" href="#t375">375</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t376" href="#t376">376</a></span><span class="t">            <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t377" href="#t377">377</a></span><span class="t">                <span class="fst">f"</span><span class="fst">No cluster variable found for </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst"> or </span><span class="op">{</span><span class="nam">cluster_var</span><span class="op">}</span><span class="fst">. Please first run compute_clusters().</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t378" href="#t378">378</a></span><span class="t">                <span class="fst">f"</span><span class="fst"> Or did you mean to use any of these?: </span><span class="op">{</span><span class="str">', '</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">alt_cluster_vars</span><span class="op">)</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
@@ -783,7 +783,7 @@
     <p class="mis show_mis"><span class="n"><a id="t701" href="#t701">701</a></span><span class="t">            <span class="key">return</span> <span class="nam">data</span><span class="op">.</span><span class="nam">std</span><span class="op">(</span><span class="nam">dim</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">space_dims</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t702" href="#t702">702</a></span><span class="t">        <span class="key">elif</span> <span class="nam">method</span> <span class="op">==</span> <span class="str">"percentile"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t703" href="#t703">703</a></span><span class="t">            <span class="key">if</span> <span class="nam">percentile</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t704" href="#t704">704</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t704" href="#t704">704</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t705" href="#t705">705</a></span><span class="t">                    <span class="str">"percentile argument required for percentile aggregation"</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t706" href="#t706">706</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t707" href="#t707">707</a></span><span class="t">            <span class="key">return</span> <span class="nam">data</span><span class="op">.</span><span class="nam">quantile</span><span class="op">(</span><span class="nam">percentile</span><span class="op">,</span> <span class="nam">dim</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">space_dims</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -791,7 +791,7 @@
     <p class="mis show_mis"><span class="n"><a id="t709" href="#t709">709</a></span><span class="t">            <span class="nam">result</span> <span class="op">=</span> <span class="nam">data</span><span class="op">.</span><span class="nam">stack</span><span class="op">(</span><span class="nam">cell_xy</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">space_dims</span><span class="op">)</span><span class="op">.</span><span class="nam">transpose</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t710" href="#t710">710</a></span><span class="t">            <span class="key">return</span> <span class="nam">result</span><span class="op">.</span><span class="nam">dropna</span><span class="op">(</span><span class="nam">dim</span><span class="op">=</span><span class="str">"cell_xy"</span><span class="op">,</span> <span class="nam">how</span><span class="op">=</span><span class="str">"all"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t711" href="#t711">711</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t712" href="#t712">712</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Unknown aggregation method: </span><span class="op">{</span><span class="nam">method</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t712" href="#t712">712</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Unknown aggregation method: </span><span class="op">{</span><span class="nam">method</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t713" href="#t713">713</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t714" href="#t714">714</a></span><span class="t">    <span class="key">def</span> <span class="nam">get_cluster_timeseries</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t715" href="#t715">715</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
@@ -874,7 +874,7 @@
     <p class="pln"><span class="n"><a id="t792" href="#t792">792</a></span><span class="t">                    <span class="key">else</span> <span class="nam">np</span><span class="op">.</span><span class="nam">nan</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t793" href="#t793">793</a></span><span class="t">                <span class="op">)</span>  <span class="com"># get last non-zero, non-nan timestep if exists</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t794" href="#t794">794</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t795" href="#t795">795</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Unknown normalization method: </span><span class="op">{</span><span class="nam">normalize</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t795" href="#t795">795</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Unknown normalization method: </span><span class="op">{</span><span class="nam">normalize</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t796" href="#t796">796</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t797" href="#t797">797</a></span><span class="t">            <span class="key">if</span> <span class="nam">scalar</span> <span class="op">==</span> <span class="num">0</span> <span class="key">or</span> <span class="nam">np</span><span class="op">.</span><span class="nam">isnan</span><span class="op">(</span><span class="nam">scalar</span><span class="op">)</span> <span class="key">or</span> <span class="nam">scalar</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t798" href="#t798">798</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">logger</span><span class="op">.</span><span class="nam">error</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Failed to normalise by </span><span class="op">{</span><span class="nam">normalize</span><span class="op">}</span><span class="fst"> = </span><span class="op">{</span><span class="nam">scalar</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -916,12 +916,12 @@
 <footer>
     <div class="content">
         <p>
-            <a class="nav" href="z_c414ad438520e0f1_prepare_data_py.html">&#xab; prev</a> &nbsp; &nbsp;
+            <a class="nav" href="z_c414ad438520e0f1___init___py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
             <a class="nav" href="z_d6e26c9bb68496f3___init___py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

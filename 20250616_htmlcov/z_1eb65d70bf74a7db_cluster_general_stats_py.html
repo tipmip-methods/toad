@@ -54,10 +54,10 @@
             </div>
         </aside>
         <h2>
-            <span class="text">74 statements &nbsp;</span>
+            <span class="text">73 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">10<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">64<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">63<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">1<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_1eb65d70bf74a7db___init___py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_1eb65d70bf74a7db_cluster_space_stats_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -322,7 +322,7 @@
     <p class="pln"><span class="n"><a id="t240" href="#t240">240</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t241" href="#t241">241</a></span><span class="t">        <span class="nam">xvals</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">td</span><span class="op">.</span><span class="nam">data</span><span class="op">[</span><span class="nam">self</span><span class="op">.</span><span class="nam">td</span><span class="op">.</span><span class="nam">time_dim</span><span class="op">]</span><span class="op">.</span><span class="nam">values</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t242" href="#t242">242</a></span><span class="t">        <span class="key">if</span> <span class="nam">len</span><span class="op">(</span><span class="nam">xvals</span><span class="op">)</span> <span class="op">!=</span> <span class="nam">len</span><span class="op">(</span><span class="nam">yvals</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t243" href="#t243">243</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"Time and data dimensions do not match."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t243" href="#t243">243</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"Time and data dimensions do not match."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t244" href="#t244">244</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t245" href="#t245">245</a></span><span class="t">        <span class="com"># Fit linear model with polyfit</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t246" href="#t246">246</a></span><span class="t">        <span class="nam">coeffs</span> <span class="op">=</span> <span class="nam">np</span><span class="op">.</span><span class="nam">polyfit</span><span class="op">(</span><span class="nam">xvals</span><span class="op">,</span> <span class="nam">yvals</span><span class="op">,</span> <span class="num">1</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -372,7 +372,7 @@
             <a class="nav" href="z_1eb65d70bf74a7db_cluster_space_stats_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

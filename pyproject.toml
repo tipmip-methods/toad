@@ -65,7 +65,9 @@ omit = [
 ]
 exclude_lines = [
     "if __name__ == .__main__.:",
-    "raise NotImplementedError"
+    "raise NotImplementedError",
+    "raise ValueError",
+    "raise TypeError",
 ]
 
 [tool.deptry.per_rule_ignores]

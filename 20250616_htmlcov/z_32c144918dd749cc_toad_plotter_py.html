@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for toad/visualisation/toad_plotter.py: 14%</title>
+    <title>Coverage for toad/visualisation/toad_plotter.py: 15%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>toad/visualisation/toad_plotter.py</b>:
-            <span class="pc_cov">14%</span>
+            <span class="pc_cov">15%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,10 +54,10 @@
             </div>
         </aside>
         <h2>
-            <span class="text">399 statements &nbsp;</span>
+            <span class="text">392 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">57<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">342<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">335<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">7<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_32c144918dd749cc___init___py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="index.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -184,7 +184,7 @@
     <p class="mis show_mis"><span class="n"><a id="t102" href="#t102">102</a></span><span class="t">        <span class="nam">projection</span> <span class="op">=</span> <span class="nam">projection</span> <span class="key">if</span> <span class="nam">projection</span> <span class="key">else</span> <span class="nam">config</span><span class="op">.</span><span class="nam">projection</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t103" href="#t103">103</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t104" href="#t104">104</a></span><span class="t">        <span class="key">if</span> <span class="nam">projection</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">_projection_map</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Invalid projection '</span><span class="op">{</span><span class="nam">projection</span><span class="op">}</span><span class="fst">'</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t105" href="#t105">105</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">Invalid projection '</span><span class="op">{</span><span class="nam">projection</span><span class="op">}</span><span class="fst">'</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t106" href="#t106">106</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t107" href="#t107">107</a></span><span class="t">        <span class="key">if</span> <span class="nam">subplot_spec</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t108" href="#t108">108</a></span><span class="t">            <span class="com"># Create map in existing figure using subplot_spec</span>&nbsp;</span><span class="r"></span></p>
@@ -512,7 +512,7 @@
     <p class="pln"><span class="n"><a id="t430" href="#t430">430</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t431" href="#t431">431</a></span><span class="t">        <span class="nam">clusters</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">td</span><span class="op">.</span><span class="nam">get_clusters</span><span class="op">(</span><span class="nam">var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t432" href="#t432">432</a></span><span class="t">        <span class="key">if</span> <span class="nam">clusters</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t433" href="#t433">433</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No clusters found for variable </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t433" href="#t433">433</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No clusters found for variable </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t434" href="#t434">434</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t435" href="#t435">435</a></span><span class="t">        <span class="key">if</span> <span class="nam">ax</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t436" href="#t436">436</a></span><span class="t">            <span class="nam">fig</span><span class="op">,</span> <span class="nam">ax</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">map</span><span class="op">(</span><span class="nam">projection</span><span class="op">=</span><span class="nam">projection</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -529,7 +529,7 @@
     <p class="pln"><span class="n"><a id="t447" href="#t447">447</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t448" href="#t448">448</a></span><span class="t">        <span class="com"># Check that we have a valid cluster_ids value</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t449" href="#t449">449</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">cluster_ids</span><span class="op">,</span> <span class="op">(</span><span class="nam">int</span><span class="op">,</span> <span class="nam">list</span><span class="op">,</span> <span class="nam">np</span><span class="op">.</span><span class="nam">ndarray</span><span class="op">,</span> <span class="nam">range</span><span class="op">)</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t450" href="#t450">450</a></span><span class="t">            <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"cluster_ids must be int, list, np.ndarray, range, or None"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t450" href="#t450">450</a></span><span class="t">            <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"cluster_ids must be int, list, np.ndarray, range, or None"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t451" href="#t451">451</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t452" href="#t452">452</a></span><span class="t">        <span class="com"># Convert single cluster_id to list for consistent handling</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t453" href="#t453">453</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">cluster_ids</span><span class="op">,</span> <span class="nam">int</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -572,7 +572,7 @@
     <p class="pln"><span class="n"><a id="t490" href="#t490">490</a></span><span class="t">                    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t491" href="#t491">491</a></span><span class="t">                <span class="nam">color_list</span> <span class="op">=</span> <span class="nam">cmap_colors</span><span class="op">[</span><span class="op">:</span> <span class="nam">len</span><span class="op">(</span><span class="nam">cluster_ids</span><span class="op">)</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t492" href="#t492">492</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">                <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"cmap must be a string or ListedColormap"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t493" href="#t493">493</a></span><span class="t">                <span class="key">raise</span> <span class="nam">TypeError</span><span class="op">(</span><span class="str">"cmap must be a string or ListedColormap"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t494" href="#t494">494</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t495" href="#t495">495</a></span><span class="t">        <span class="com"># Create a ListedColormap for each cluster</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t496" href="#t496">496</a></span><span class="t">        <span class="nam">cmap_list</span> <span class="op">=</span> <span class="op">[</span><span class="nam">ListedColormap</span><span class="op">(</span><span class="op">[</span><span class="nam">c</span><span class="op">]</span><span class="op">)</span> <span class="key">for</span> <span class="nam">c</span> <span class="key">in</span> <span class="nam">color_list</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -703,7 +703,7 @@
     <p class="pln"><span class="n"><a id="t621" href="#t621">621</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t622" href="#t622">622</a></span><span class="t">        <span class="nam">cluster_counts</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">td</span><span class="op">.</span><span class="nam">get_cluster_counts</span><span class="op">(</span><span class="nam">var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t623" href="#t623">623</a></span><span class="t">        <span class="key">if</span> <span class="nam">cluster_counts</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t624" href="#t624">624</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No clusters found for variable </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t624" href="#t624">624</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No clusters found for variable </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t625" href="#t625">625</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t626" href="#t626">626</a></span><span class="t">        <span class="com"># Filter cluster_ids to only include existing clusters</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t627" href="#t627">627</a></span><span class="t">        <span class="nam">cluster_ids</span> <span class="op">=</span> <span class="op">[</span><span class="nam">id</span> <span class="key">for</span> <span class="nam">id</span> <span class="key">in</span> <span class="nam">cluster_ids</span> <span class="key">if</span> <span class="nam">id</span> <span class="key">in</span> <span class="nam">self</span><span class="op">.</span><span class="nam">td</span><span class="op">.</span><span class="nam">get_cluster_ids</span><span class="op">(</span><span class="nam">var</span><span class="op">)</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
@@ -799,7 +799,7 @@
     <p class="pln"><span class="n"><a id="t717" href="#t717">717</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t718" href="#t718">718</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t719" href="#t719">719</a></span><span class="t">            <span class="key">if</span> <span class="nam">cells</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t720" href="#t720">720</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No timeseries found for cluster </span><span class="op">{</span><span class="nam">id</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t720" href="#t720">720</a></span><span class="t">                <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="fst">f"</span><span class="fst">No timeseries found for cluster </span><span class="op">{</span><span class="nam">id</span><span class="op">}</span><span class="fst">"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t721" href="#t721">721</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t722" href="#t722">722</a></span><span class="t">            <span class="com"># Limit the number of trajectories to plot</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t723" href="#t723">723</a></span><span class="t">            <span class="nam">max_trajectories</span> <span class="op">=</span> <span class="nam">np</span><span class="op">.</span><span class="nam">min</span><span class="op">(</span><span class="op">[</span><span class="nam">max_trajectories</span><span class="op">,</span> <span class="nam">len</span><span class="op">(</span><span class="nam">cells</span><span class="op">)</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -1133,7 +1133,7 @@
     <p class="mis show_mis"><span class="n"><a id="t1051" href="#t1051">1051</a></span><span class="t">        <span class="nam">cluster_ids</span> <span class="op">=</span> <span class="op">[</span><span class="nam">id</span> <span class="key">for</span> <span class="nam">id</span> <span class="key">in</span> <span class="nam">cluster_ids</span> <span class="key">if</span> <span class="nam">id</span> <span class="key">in</span> <span class="nam">found_cluster_ids</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1052" href="#t1052">1052</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1053" href="#t1053">1053</a></span><span class="t">        <span class="key">if</span> <span class="nam">len</span><span class="op">(</span><span class="nam">cluster_ids</span><span class="op">)</span> <span class="op">==</span> <span class="num">0</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1054" href="#t1054">1054</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"No clusters found for variable"</span><span class="op">,</span> <span class="nam">cluster_var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t1054" href="#t1054">1054</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"No clusters found for variable"</span><span class="op">,</span> <span class="nam">cluster_var</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1055" href="#t1055">1055</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1056" href="#t1056">1056</a></span><span class="t">        <span class="com"># Calculate layout dimensions</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1057" href="#t1057">1057</a></span><span class="t">        <span class="nam">n_ts</span> <span class="op">=</span> <span class="nam">len</span><span class="op">(</span><span class="nam">cluster_ids</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -1337,7 +1337,7 @@
             <a class="nav" href="index.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for toad/clustering/__init__.py: 87%</title>
+    <title>Coverage for toad/clustering/__init__.py: 90%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_58284776.png">
     <link rel="stylesheet" href="style_cb_8e611ae1.css" type="text/css">
     <script src="coverage_html_cb_6fb7b396.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>toad/clustering/__init__.py</b>:
-            <span class="pc_cov">87%</span>
+            <span class="pc_cov">90%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,18 +54,18 @@
             </div>
         </aside>
         <h2>
-            <span class="text">85 statements &nbsp;</span>
+            <span class="text">82 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">74<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">11<span class="text"> missing</span></button>
-            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">8<span class="text"> missing</span></button>
+            <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_3e0effc0c2914c8e__version_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a id="nextFileLink" class="nav" href="z_c414ad438520e0f1_prepare_data_py.html">&#xbb; next</a>
+            <a id="nextFileLink" class="nav" href="z_3e0effc0c2914c8e_core_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -195,11 +195,11 @@
     <p class="pln"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">    <span class="op">)</span>  <span class="com"># default to {var}_dts</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t114" href="#t114">114</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t115" href="#t115">115</a></span><span class="t">    <span class="key">if</span> <span class="nam">shifts_label</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">all_vars</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t117" href="#t117">117</a></span><span class="t">            <span class="fst">f'</span><span class="fst">Shifts not found at </span><span class="op">{</span><span class="nam">shifts_label</span><span class="op">}</span><span class="fst">. Please run shifts on </span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst"> first, or provide a custom "shifts_label"</span><span class="fst">'</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t118" href="#t118">118</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t119" href="#t119">119</a></span><span class="t">    <span class="key">if</span> <span class="nam">data</span><span class="op">[</span><span class="nam">shifts_label</span><span class="op">]</span><span class="op">.</span><span class="nam">ndim</span> <span class="op">!=</span> <span class="num">3</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t120" href="#t120">120</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"data must be 3-dimensional"</span><span class="op">)</span>  <span class="com"># TODO: make it work for 2D data</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t120" href="#t120">120</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"data must be 3-dimensional"</span><span class="op">)</span>  <span class="com"># TODO: make it work for 2D data</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t121" href="#t121">121</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t122" href="#t122">122</a></span><span class="t">    <span class="com"># Set output label and check if already in data</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t123" href="#t123">123</a></span><span class="t">    <span class="nam">output_label</span> <span class="op">=</span> <span class="fst">f"</span><span class="op">{</span><span class="nam">var</span><span class="op">}</span><span class="fst">_cluster</span><span class="op">{</span><span class="nam">output_label_suffix</span><span class="op">}</span><span class="fst">"</span>&nbsp;</span><span class="r"></span></p>
@@ -222,7 +222,7 @@
     <p class="pln"><span class="n"><a id="t140" href="#t140">140</a></span><span class="t">    <span class="op">]</span><span class="op">.</span><span class="nam">apply</span><span class="op">(</span><span class="nam">shifts_filter_func</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t141" href="#t141">141</a></span><span class="t">    <span class="nam">filtered_df</span> <span class="op">=</span> <span class="nam">df_data</span><span class="op">[</span><span class="str">"dts"</span><span class="op">]</span><span class="op">[</span><span class="nam">mask</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t142" href="#t142">142</a></span><span class="t">    <span class="key">if</span> <span class="nam">filtered_df</span><span class="op">.</span><span class="nam">empty</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t143" href="#t143">143</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"No data left after filtering."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="exc show_exc"><span class="n"><a id="t143" href="#t143">143</a></span><span class="t">        <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">"No data left after filtering."</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t144" href="#t144">144</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t145" href="#t145">145</a></span><span class="t">    <span class="com"># Handle dimensions</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t146" href="#t146">146</a></span><span class="t">    <span class="nam">space_dims</span> <span class="op">=</span> <span class="nam">space_dims</span> <span class="key">if</span> <span class="nam">space_dims</span> <span class="key">else</span> <span class="nam">get_space_dims</span><span class="op">(</span><span class="nam">data</span><span class="op">,</span> <span class="nam">time_dim</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -387,10 +387,10 @@
         <p>
             <a class="nav" href="z_3e0effc0c2914c8e__version_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a class="nav" href="z_c414ad438520e0f1_prepare_data_py.html">&#xbb; next</a>
+            <a class="nav" href="z_3e0effc0c2914c8e_core_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.8.2">coverage.py v7.8.2</a>,
-            created at 2025-06-16 10:35 +0200
+            created at 2025-06-16 18:06 +0200
         </p>
     </div>
 </footer>

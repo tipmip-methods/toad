@@ -202,7 +202,7 @@ class TOAD:
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
         time_scale_factor: Optional[float] = None,
-        regridder: Optional[BaseRegridder] = HealPixRegridder(),
+        regridder: Optional[BaseRegridder] = None,
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -226,7 +226,8 @@ class TOAD:
             time_scale_factor:
                 The factor to scale the time values by. Defaults to None.
             regridder:
-                The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
+                The regridding method to use from `toad.clustering.regridding`. 
+                Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:

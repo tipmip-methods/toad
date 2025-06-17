@@ -55,7 +55,8 @@ def compute_clusters(
         time_scale_factor:
             The factor to scale the time values by. Defaults to None.
         regridder:
-            The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
+            The regridding method to use from `toad.clustering.regridding`. 
+            Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
         output_label_suffix:
             A suffix to add to the output label. Defaults to "".
         overwrite:
@@ -173,6 +174,11 @@ def compute_clusters(
     weights = np.abs(
         filtered_df[shifts_label].to_numpy()
     )  # take absolute value of shifts as weights
+
+    # Create HealPixRegridder if regridder is None and coordinates are lat/lon
+    if regridder is None and isLatLon:
+        regridder = HealPixRegridder()
+        logger.info("Created default HealPixRegridder for lat/lon coordinates")
 
     # HealPixRegridder is only supported for lat/lon coordinates
     if isinstance(regridder, HealPixRegridder) and not isLatLon:

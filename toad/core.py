@@ -201,6 +201,7 @@ class TOAD:
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
+        time_scale_factor: Optional[float] = None,
         regridder: Optional[BaseRegridder] = HealPixRegridder(),
         output_label_suffix: str = "",
         overwrite: bool = False,
@@ -222,6 +223,8 @@ class TOAD:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+            time_scale_factor:
+                The factor to scale the time values by. Defaults to None.
             regridder:
                 The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
             output_label_suffix:
@@ -254,6 +257,7 @@ class TOAD:
             time_dim=self.time_dim,
             space_dims=self.space_dims,
             scaler=scaler,
+            time_scale_factor=time_scale_factor,
             regridder=regridder,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
@@ -714,7 +718,7 @@ class TOAD:
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Union[int, List[int]],
+        cluster_id: Union[int, List[int]], # TODO: rename to cluster_ids ? 
         cluster_var: Optional[str] = None,
         aggregation: Literal[
             "raw", "mean", "sum", "std", "median", "percentile"

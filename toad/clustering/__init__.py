@@ -30,6 +30,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
+    time_scale_factor: Optional[float] = None,
     regridder: Optional[BaseRegridder] = None,
     output_label_suffix: str = "",
     overwrite: bool = False,
@@ -51,6 +52,8 @@ def compute_clusters(
             Name of the variable containing precomputed shifts. Defaults to {var}_dts.
         scaler:
             The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+        time_scale_factor:
+            The factor to scale the time values by. Defaults to None.
         regridder:
             The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
         output_label_suffix:
@@ -182,13 +185,20 @@ def compute_clusters(
     if regridder:
         coords, weights = regridder.regrid(coords, weights)
 
+    # If lat/lon, convert to Cartesian (time, x, y, z) coordinates
     if isLatLon:
         coords = geodetic_to_cartesian(
             time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
         )
+    
+    # Scale coordinates using sklearn preprocessing
     if scaler:
         coords = scaler.fit_transform(coords)
 
+    # Scale time values by scaler value
+    if time_scale_factor:
+        coords[:, 0] = coords[:, 0] * time_scale_factor
+    
     # Save method params before clustering (because they might change during clustering)
     method_params = {
         f"method_{param}": str(value)

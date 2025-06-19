@@ -4,6 +4,8 @@
 
 **T**ipping and **O**ther **A**brupt events **D**etector.
 
+Documentation: [toad-docs.pages.dev](https://toad-docs.pages.dev/)
+
 ## Installation
 
 Until TOAD is published on pip/conda you can install it like this:

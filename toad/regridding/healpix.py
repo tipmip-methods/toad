@@ -50,7 +50,7 @@ class HealPixRegridder(BaseRegridder):
         # Store original spatial coordinates
         self.original_coords = coords
         self.original_weights = weights
-
+        
         # If nside is not provided, compute it automatically based on the resolution of the data
         if self.nside is None:
             n_pixels = len(np.unique(coords[:, 1])) * len(

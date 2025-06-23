@@ -1,4 +1,6 @@
 import xarray as xr
+from typing import Callable, Optional, Union
+import numpy as np
 
 
 class Preprocess:
@@ -27,6 +29,22 @@ class Preprocess:
         # apply XMIP preprocessing ...
 
         return self.data
+
+    def preprocess_variable(
+        self,
+        var: str,
+        filter_func: Callable,
+        fill_value: Optional[Union[float, int]] = np.nan,
+    ) -> None:
+        """Apply preprocessing filter to a variable.
+
+        Args:
+            var: Variable name
+            filter_func: Function that returns True for valid data points
+            fill_value: Value to use for filtered out points
+        """
+        data = self.td.data[var].where(filter_func(self.td.data[var]), fill_value)
+        self.td.data[var] = data
 
     def dimension_to_variables(
         self,

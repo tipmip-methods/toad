@@ -51,8 +51,8 @@ td.compute_shifts("thk", method=ASDETECT())
 # Compute clusters for points that have shifts larger than 0.9 using HDBSCAN (McInnes, 2017)
 td.compute_clusters(
     var="thk",
-    shifts_filter_func=lambda x: np.abs(x)>0.9,
     method=HDBSCAN(min_cluster_size=10),
+    shift_threshold=0.9,
 )
 
 # Plot 8 largest clusters in ccrs.SouthPolarStereo() projection

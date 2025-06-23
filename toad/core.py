@@ -1,7 +1,7 @@
 import logging
 import xarray as xr
 import numpy as np
-from typing import List, Union, Callable, Optional, Literal
+from typing import List, Union, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -20,7 +20,6 @@ from toad import (
 )
 from toad.utils import get_space_dims, is_equal_to, contains_value
 from toad.regridding.base import BaseRegridder
-from toad.regridding import HealPixRegridder
 
 
 class TOAD:
@@ -195,13 +194,14 @@ class TOAD:
         self,
         var: str,
         method: ClusterMixin,
-        shifts_filter_func: Callable = lambda _: True,  # empty filtering function as default
-        var_filter_func: Callable = lambda _: True,  # empty filtering function as default
+        shift_threshold: float = 0.8,
+        shift_sign: str = "absolute",
         shifts_label: Optional[str] = None,
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
-        regridder: Optional[BaseRegridder] = HealPixRegridder(),
+        time_scale_factor: Optional[float] = None,
+        regridder: Optional[BaseRegridder] = None,
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -214,16 +214,19 @@ class TOAD:
                 Name of the variable in the dataset to cluster.
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-            shifts_filter_func:
-                A callable used to filter the shifts before clustering, such as `lambda x: np.abs(x)>0.8`. Defaults to a filter that keeps all values.
-            var_filter_func:
-                A callable used to filter the primary variable before clustering. Defaults to a filter that keeps all values.
+            shift_threshold:
+                The threshold for the shift magnitude. Defaults to 0.8.
+            shift_sign:
+                The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
             shifts_label:
                 Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+            time_scale_factor:
+                The factor to scale the time values by. Defaults to None.
             regridder:
-                The regridding method to use from `toad.clustering.regridding`. Defaults to HealPixRegridder() if using lat/lon coordinates, otherwise None.
+                The regridding method to use from `toad.clustering.regridding`.
+                Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
             overwrite:
@@ -248,12 +251,13 @@ class TOAD:
             data=self.data,
             var=var,
             method=method,
-            shifts_filter_func=shifts_filter_func,
-            var_filter_func=var_filter_func,
+            shift_threshold=shift_threshold,
+            shift_sign=shift_sign,
             shifts_label=shifts_label,
             time_dim=self.time_dim,
             space_dims=self.space_dims,
             scaler=scaler,
+            time_scale_factor=time_scale_factor,
             regridder=regridder,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
@@ -684,6 +688,8 @@ class TOAD:
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
+                - "max": Maximum across space
+                - "min": Minimum across space
                 - "raw": Return data for each grid cell separately (default).
             percentile:
                 Percentile value between 0-1 when using percentile aggregation
@@ -699,6 +705,10 @@ class TOAD:
             return data.sum(dim=self.space_dims)
         elif method == "std":
             return data.std(dim=self.space_dims)
+        elif method == "max":
+            return data.max(dim=self.space_dims)
+        elif method == "min":
+            return data.min(dim=self.space_dims)
         elif method == "percentile":
             if percentile is None:
                 raise ValueError(
@@ -714,10 +724,10 @@ class TOAD:
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Union[int, List[int]],
+        cluster_id: Union[int, List[int]],  # TODO: rename to cluster_ids ?
         cluster_var: Optional[str] = None,
         aggregation: Literal[
-            "raw", "mean", "sum", "std", "median", "percentile"
+            "raw", "mean", "sum", "std", "median", "percentile", "max", "min"
         ] = "raw",
         percentile: Optional[float] = None,
         normalize: Optional[Literal["first", "max", "last"]] = None,
@@ -739,6 +749,8 @@ class TOAD:
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
+                - "max": Maximum across space
+                - "min": Minimum across space
                 - "raw": Return data for each grid cell separately
             percentile:
                 Percentile value between 0-1 when using percentile aggregation

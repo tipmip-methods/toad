@@ -718,7 +718,11 @@ class TOADPlotter:
                     id_color = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)[i]
 
             cells = self.td.get_cluster_timeseries(
-                plot_var, id, cluster_var=var, keep_full_timeseries=full_timeseries, normalize=normalize
+                plot_var,
+                id,
+                cluster_var=var,
+                keep_full_timeseries=full_timeseries,
+                normalize=normalize,
             )
 
             if cells is None:
@@ -955,7 +959,7 @@ class TOADPlotter:
         remaining_clusters_color: Optional[str] = None,
     ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
         """Plot the cumulative sum of the timeseries for one or multiple clusters.
-        
+
         When specific cluster_ids are provided, remaining clusters will be grouped together
         and shown as a single layer at the bottom of the plot.
         """
@@ -967,14 +971,20 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-        all_cluster_ids = [cid for cid in self.td.get_cluster_ids(cluster_var) if cid != -1]
-        
+        all_cluster_ids = [
+            cid for cid in self.td.get_cluster_ids(cluster_var) if cid != -1
+        ]
+
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
                 cluster_ids = [cluster_ids]
-            selected_cluster_ids = [cid for cid in cluster_ids if cid in all_cluster_ids]
-            remaining_cluster_ids = [cid for cid in all_cluster_ids if cid not in selected_cluster_ids]
+            selected_cluster_ids = [
+                cid for cid in cluster_ids if cid in all_cluster_ids
+            ]
+            remaining_cluster_ids = [
+                cid for cid in all_cluster_ids if cid not in selected_cluster_ids
+            ]
         else:
             selected_cluster_ids = all_cluster_ids
             remaining_cluster_ids = []
@@ -993,14 +1003,21 @@ class TOADPlotter:
         else:
             if isinstance(cmap, str):
                 base_cmap = plt.get_cmap(cmap)
-                colors = [base_cmap(i) for i in np.linspace(0, 1, len(selected_cluster_ids))]
+                colors = [
+                    base_cmap(i) for i in np.linspace(0, 1, len(selected_cluster_ids))
+                ]
 
         # Create a mapping of cluster IDs to their colors
         color_map = dict(zip(selected_cluster_ids, colors))
 
         # Sort clusters by shift time (Early shifts first should be on top)
-        shift_times = [self.td.cluster_stats(cluster_var).time.start(cid) for cid in selected_cluster_ids]
-        sorted_indices = np.argsort(shift_times)[::-1]  # Add [::-1] to reverse the order
+        shift_times = [
+            self.td.cluster_stats(cluster_var).time.start(cid)
+            for cid in selected_cluster_ids
+        ]
+        sorted_indices = np.argsort(shift_times)[
+            ::-1
+        ]  # Add [::-1] to reverse the order
         series_list = [series_list[i] for i in sorted_indices]
         selected_cluster_ids = [selected_cluster_ids[i] for i in sorted_indices]
 
@@ -1018,15 +1035,17 @@ class TOADPlotter:
                     remaining_series = series
                 else:
                     remaining_series += series
-            
+
             if remaining_series is not None and remaining_clusters_color is not None:
                 # Get the highest cluster ID from the individually plotted clusters
                 max_plotted_id = max(selected_cluster_ids)
-                
+
                 # Append to the end instead of inserting at the beginning
                 series_list.append(remaining_series)  # Add to the end of the stack
                 colors.append(remaining_clusters_color)  # Add color to the end
-                selected_cluster_ids.append(f">{max_plotted_id}")  # Add label to the end
+                selected_cluster_ids.append(
+                    f">{max_plotted_id}"
+                )  # Add label to the end
 
         # Stack the areas for clusters
         ax.stackplot(

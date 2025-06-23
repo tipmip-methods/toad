@@ -55,7 +55,7 @@ def compute_clusters(
         time_scale_factor:
             The factor to scale the time values by. Defaults to None.
         regridder:
-            The regridding method to use from `toad.clustering.regridding`. 
+            The regridding method to use from `toad.clustering.regridding`.
             Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
         output_label_suffix:
             A suffix to add to the output label. Defaults to "".
@@ -196,7 +196,7 @@ def compute_clusters(
         coords = geodetic_to_cartesian(
             time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
         )
-    
+
     # Scale coordinates using sklearn preprocessing
     if scaler:
         coords = scaler.fit_transform(coords)
@@ -204,7 +204,7 @@ def compute_clusters(
     # Scale time values by scaler value
     if time_scale_factor:
         coords[:, 0] = coords[:, 0] * time_scale_factor
-    
+
     # Save method params before clustering (because they might change during clustering)
     method_params = {
         f"method_{param}": str(value)

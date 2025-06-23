@@ -1,4 +1,4 @@
-from typing import Union, Literal, Optional
+from typing import Literal, Optional, Tuple, overload
 import numpy as np
 from scipy.cluster.hierarchy import linkage, inconsistent
 from scipy.spatial.distance import squareform
@@ -19,14 +19,38 @@ class ClusterGeneralStats:
         self.var = var
         # Initialize other necessary attributes
 
+    @overload
+    def score_heaviside(
+        self,
+        cluster_id: int,
+        return_score_fit: Literal[False] = False,
+        aggregation: Literal[
+            "mean", "sum", "std", "median", "percentile", "max", "min"
+        ] = "mean",
+        percentile: Optional[float] = None,
+        normalize: Optional[Literal["first", "max", "last"]] = None,
+    ) -> float: ...
+
+    @overload
+    def score_heaviside(
+        self,
+        cluster_id: int,
+        return_score_fit: Literal[True],
+        aggregation: Literal[
+            "mean", "sum", "std", "median", "percentile", "max", "min"
+        ] = "mean",
+        percentile: Optional[float] = None,
+        normalize: Optional[Literal["first", "max", "last"]] = None,
+    ) -> Tuple[float, np.ndarray]: ...
+
     def score_heaviside(
         self,
         cluster_id,
         return_score_fit=False,
-        aggregation: Literal["mean", "sum", "std", "median", "percentile"] = "mean",
-        percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] = None,
-    ) -> Union[float, tuple[float, np.ndarray]]:
+        aggregation="mean",
+        percentile=None,
+        normalize=None,
+    ):
         """
         Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
         A score of 1 indicates a perfect step function, while 0 indicates a linear trend.
@@ -43,6 +67,8 @@ class ClusterGeneralStats:
                 - "sum": Sum across space
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
+                - "max": Maximum across space
+                - "min": Minimum across space
             percentile:
                 Percentile value between 0-1 when using percentile aggregation
             normalize:
@@ -55,6 +81,8 @@ class ClusterGeneralStats:
             - score: Cluster score between 0-1.
             - If return_score_fit is True:
                 - tuple: (score, linear fit)
+        >> References:
+            - Kobe De Maeyer Master Thesis (2025)
         """
 
         # Does not work with raw
@@ -112,6 +140,8 @@ class ClusterGeneralStats:
                 - 1.0: Perfect consistency (all time series are identical)
                 - ~0.5: Moderate consistency
                 - 0.0: No consistency (single point or completely inconsistent)
+        >> References:
+            - Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -171,6 +201,8 @@ class ClusterGeneralStats:
                 - 1.0: Perfect similarity (all time series identical)
                 - ~0.5: Moderate spatial coherence
                 - 0.0: No similarity (completely uncorrelated)
+        >> References:
+            - Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -228,6 +260,8 @@ class ClusterGeneralStats:
         >> Returns:
             nonlinearity score (float): Higher means more nonlinear behavior.
                 Interpretation depends on normalize_against_unclustered parameter.
+        >> References:
+            - Kobe De Maeyer Master Thesis (2025)
         """
         # Get aggregated cluster time series
         yvals = self.td.get_cluster_timeseries(

@@ -64,13 +64,16 @@ class ClusterTimeStats:
         ts = self.td.get_cluster_timeseries(
             self.var, cluster_id, aggregation="mean", keep_full_timeseries=False
         )
-        
+
         # Check if all values are NaN before computing gradient
         if ts.isnull().all():
             import warnings
-            warnings.warn(f"All-NaN timeseries found for cluster {cluster_id}. Returning first timestamp.")
+
+            warnings.warn(
+                f"All-NaN timeseries found for cluster {cluster_id}. Returning first timestamp."
+            )
             return float(ts.time.values[0])
-        
+
         grad = ts.diff(self.td.time_dim)
         return float(grad.idxmin())
 
@@ -79,13 +82,16 @@ class ClusterTimeStats:
         ts = self.td.get_cluster_timeseries(
             self.var, cluster_id, aggregation="mean", keep_full_timeseries=False
         )
-        
+
         # Check if all values are NaN before computing gradient
         if ts.isnull().all():
             import warnings
-            warnings.warn(f"All-NaN timeseries found for cluster {cluster_id}. Returning 0.")
+
+            warnings.warn(
+                f"All-NaN timeseries found for cluster {cluster_id}. Returning 0."
+            )
             return 0.0
-        
+
         grad = ts.diff(self.td.time_dim)
         return float(grad.argmin())
 

@@ -20,7 +20,6 @@ from toad import (
 )
 from toad.utils import get_space_dims, is_equal_to, contains_value
 from toad.regridding.base import BaseRegridder
-from toad.regridding import HealPixRegridder
 
 
 class TOAD:
@@ -226,7 +225,7 @@ class TOAD:
             time_scale_factor:
                 The factor to scale the time values by. Defaults to None.
             regridder:
-                The regridding method to use from `toad.clustering.regridding`. 
+                The regridding method to use from `toad.clustering.regridding`.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
             output_label_suffix:
                 A suffix to add to the output label. Defaults to "".
@@ -725,7 +724,7 @@ class TOAD:
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Union[int, List[int]], # TODO: rename to cluster_ids ? 
+        cluster_id: Union[int, List[int]],  # TODO: rename to cluster_ids ?
         cluster_var: Optional[str] = None,
         aggregation: Literal[
             "raw", "mean", "sum", "std", "median", "percentile", "max", "min"

@@ -15,6 +15,7 @@ __all__ = ["ASDETECT", "compute_shifts", "ShiftsMethod"]
 
 logger = logging.getLogger("TOAD")
 
+
 def compute_shifts(
     data: xr.Dataset,
     var: str,

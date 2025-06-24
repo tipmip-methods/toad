@@ -4,7 +4,14 @@ import xarray as xr
 from toad._version import __version__
 import numpy as np
 
-from toad.shifts_detection.methods.base import ShiftsMethod
+from .methods.base import ShiftsMethod
+from .methods.asdetect import ASDETECT
+
+# Currently implemented methods:
+# - ASDETECT: Implementation of the [Boulton+Lenton2019]_ algorithm for detecting abrupt shifts
+
+# Expose all methods here
+__all__ = ["ASDETECT", "compute_shifts", "ShiftsMethod"]
 
 logger = logging.getLogger("TOAD")
 
@@ -24,7 +31,7 @@ def compute_shifts(
         var:
             Name of the variable in the dataset to analyze for abrupt shifts.
         method:
-            The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+            The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts or create your own following the base class in toad.shifts.methods.base
         time_dim:
             Name of the dimension along which the time-series analysis is performed. Defaults to "time".
         output_label_suffix:

@@ -13,7 +13,7 @@ from numba import njit
 
 from numpy.linalg import lstsq
 
-from toad.shifts_detection.methods.base import ShiftsMethod
+from .base import ShiftsMethod
 
 
 class ASDETECT(ShiftsMethod):

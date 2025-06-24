@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import xarray as xr
 from toad import TOAD
-from toad.shifts_detection.methods import ASDETECT
+from toad.shifts import ASDETECT
 
 
 @pytest.fixture

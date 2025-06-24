@@ -4,7 +4,7 @@
 
 ```python
 from toad import TOAD
-from toad.shifts_detection.methods import ASDETECT
+from toad.shifts import ASDETECT
 from sklearn.cluster import HDBSCAN
 
 

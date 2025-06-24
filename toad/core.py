@@ -12,7 +12,7 @@ from sklearn.preprocessing import (
 )
 
 from toad import (
-    shifts_detection,
+    shifts,
     clustering,
     postprocessing,
     visualisation,
@@ -146,7 +146,7 @@ class TOAD:
     def compute_shifts(
         self,
         var: str,
-        method: shifts_detection.ShiftsMethod,
+        method: shifts.ShiftsMethod,
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -157,7 +157,7 @@ class TOAD:
             var:
                 Name of the variable in the dataset to analyze for abrupt shifts.
             method:
-                The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts_detection.methods or create your own following the base class in toad.shifts_detection.methods.base
+                The abrupt shift detection algorithm to use. Choose from predefined method objects in `toad.shifts` (e.g., `ASDETECT`), or create your own by subclassing `ShiftsMethod` from `toad.shifts`.
             time_dim:
                 Name of the dimension along which the time-series analysis is performed. Defaults to "time".
             output_label_suffix:
@@ -175,7 +175,7 @@ class TOAD:
             ValueError:
                 If data is invalid or required parameters are missing
         """
-        results = shifts_detection.compute_shifts(
+        results = shifts.compute_shifts(
             data=self.data,
             var=var,
             time_dim=self.time_dim,

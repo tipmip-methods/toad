@@ -38,7 +38,7 @@ TOAD's core functionality is exposed through the `TOAD` class, which analyzes ne
 
 ```python
 from toad import TOAD
-from toad.shifts_detection.methods import ASDETECT
+from toad.shifts import ASDETECT
 from sklearn.cluster import HDBSCAN
 
 

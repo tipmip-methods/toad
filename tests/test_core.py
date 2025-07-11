@@ -7,7 +7,7 @@ from toad import TOAD
 The following tests are written to cover cases that are not yet covered by other tests.
 
 Things to test:
-- TOAD.init: check if names of coordinated are renamed correctly
+- TOAD.init: check if names of coordinates are renamed correctly
 """
 
 def test_init():

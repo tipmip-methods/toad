@@ -369,22 +369,20 @@ class TOAD:
         cluster_var = f"{var}_cluster{label_suffix}"
         if cluster_var in self.data:
             return self.data[cluster_var]
+        else:
+            # Tell the user about alternative cluster variables
+            alt_cluster_vars: List[str] = [
+                str(data_var)
+                for data_var in self.data.data_vars
+                if "_cluster" in str(data_var)
+            ]
+                
+            message = f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."    
+            if alt_cluster_vars:
+                message += f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
+            raise ValueError(message)
 
-        # Tell the user about alternative cluster variables
-        alt_cluster_vars: List[str] = [
-            str(data_var)
-            for data_var in self.data.data_vars
-            if "_cluster" in str(data_var)
-        ]
-        raise ValueError(
-            (
-                f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."
-                f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
-                if alt_cluster_vars
-                else ""
-            )
-        )
-
+        
     def get_cluster_counts(self, var):
         """Returns sorted dictionary with number of cells in both space and time for each cluster.
 

@@ -155,11 +155,34 @@ def compute_clusters(
                 f"shift_sign must be 'absolute', 'positive', or 'negative', got {shift_sign}"
             )
 
+    # apply filter
     filtered_df = df_data["dts"][df_data["dts"][shifts_label].apply(shifts_filter_func)]
+    
+    # return empty clusters if no data points left
     if filtered_df.empty:
-        raise ValueError(
-            f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
+        logger.warning(f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}")
+            
+        clusters = data[var].copy().rename(output_label)
+        clusters.data[:] = -1
+        clusters.attrs = {}
+
+        # Save details as attributes
+        clusters.attrs.update(
+            {
+                "cluster_ids": [],
+                "shift_threshold": shift_threshold,
+                "shift_sign": shift_sign,
+                "n_data_points": 0,
+                "toad_version": __version__,
+            }
         )
+
+        # Merge the cluster labels back into the original data
+        return (
+            xr.merge([data, clusters], combine_attrs="override")
+            if merge_input
+            else clusters
+        ) 
 
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
@@ -271,6 +294,7 @@ def compute_clusters(
             "shift_threshold": shift_threshold,
             "shift_sign": shift_sign,
             "scaler": scaler,
+            "n_data_points": len(coords),
             "method_name": method.__class__.__name__,
             "toad_version": __version__,
             **method_params,

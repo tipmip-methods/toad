@@ -155,8 +155,9 @@ class ClusterGeneralStats:
         if len(time_series) <= 1:
             return 0.0  # Not enough data to assess consistency
 
-        # Compute R² similarity matrix
-        r_matrix = np.corrcoef(time_series)
+        # Compute R² similarity matrix # prevent warning about division by zero variance
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r_matrix = np.corrcoef(time_series)
         r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Compute distance matrix
@@ -207,7 +208,7 @@ class ClusterGeneralStats:
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
             self.var,
-            cluster_id=cluster_id,
+            cluster_id=cluster_id, 
         )
 
         # Convert to array
@@ -216,8 +217,9 @@ class ClusterGeneralStats:
         if len(time_series) <= 1:
             return 0.0  # Not enough data to assess similarity
 
-        # Compute R² similarity matrix
-        r_matrix = np.corrcoef(time_series)
+        # Compute R² similarity matrix # prevent warning about division by zero variance
+        with np.errstate(divide="ignore", invalid="ignore"):  
+            r_matrix = np.corrcoef(time_series)
         r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Extract upper triangle (excluding diagonal)

@@ -327,19 +327,19 @@ class TOAD:
         shifts_var = f"{var}_dts{label_suffix}"
         if shifts_var in self.data:
             return self.data[shifts_var]
-
-        # Tell the user about alternative shifts variables
-        all_shift_vars: List[str] = [
-            str(data_var) for data_var in self.data.data_vars if "_dts" in str(data_var)
-        ]
-        raise ValueError(
-            (
-                f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."
-                f" Or did you mean to use any of these?: {', '.join(all_shift_vars)}"
-                if all_shift_vars
-                else ""
-            )
-        )
+        else:
+            # Tell the user about alternative shifts variables
+            alt_shift_vars: List[str] = [
+                str(data_var)
+                for data_var in self.data.data_vars
+                if "_dts" in str(data_var)
+            ]
+                
+            message = f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."    
+            if alt_shift_vars:
+                message += f" Or did you mean to use any of these?: {', '.join(alt_shift_vars)}"
+            raise ValueError(message)
+            
 
     def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
         """

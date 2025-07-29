@@ -255,7 +255,14 @@ def compute_clusters(
 
     # Perform clustering
     logger.info(f"Applying clustering method {method}")
-    cluster_labels = np.array(method.fit_predict(coords, weights))
+    try:
+        cluster_labels = np.array(method.fit_predict(coords, weights))
+    except ValueError as e:
+        if "min_samples" in str(e) and "must be at most" in str(e):
+            logger.warning(f"HDBSCAN failed due to insufficient data points. Returning no clusters. Error: {e}")
+            cluster_labels = np.full(len(coords), -1)
+        else:
+            raise e
 
     # Regrid back
     if regridder:
@@ -294,6 +301,7 @@ def compute_clusters(
             "shift_threshold": shift_threshold,
             "shift_sign": shift_sign,
             "scaler": scaler,
+            "time_scale_factor": time_scale_factor,
             "n_data_points": len(coords),
             "method_name": method.__class__.__name__,
             "toad_version": __version__,

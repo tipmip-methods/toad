@@ -42,7 +42,8 @@ dependencies = [
         "cartopy",
         "pandas",
         "numba",
-        "healpix"
+        "healpix",
+        "optuna"
 ]
 
 [tool.setuptools]
@@ -66,6 +67,7 @@ pandas = "pandas"
 scikit-learn = "sklearn"
 numba = "numba"
 healpix = "healpix"
+optuna = "optuna"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

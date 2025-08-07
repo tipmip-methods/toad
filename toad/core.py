@@ -412,6 +412,7 @@ class TOAD:
             list: A list of cluster ids.
         """
         return np.array(list(self.get_cluster_counts(var).keys()))
+            return cluster_ids
 
     def get_active_clusters_count_per_timestep(self, var):
         """Get number of active clusters for each timestep.

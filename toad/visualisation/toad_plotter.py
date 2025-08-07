@@ -657,7 +657,7 @@ class TOADPlotter:
         for i, cluster_id in enumerate(cluster_ids):
             ax = axs.flat[i]
             self.cluster_map(
-                var, ax=ax, cluster_ids=int(cluster_id), color=color, **kwargs
+                var, ax=ax, cluster_ids=int(cluster_id), color=color, remaining_clusters_cmap=None, **kwargs
             )
             ax.set_title(
                 f"id {cluster_id} with {cluster_counts[cluster_id]} members",
@@ -970,22 +970,18 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-        all_cluster_ids = [
-            cid for cid in self.td.get_cluster_ids(cluster_var) if cid != -1
-        ]
+        
 
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
                 cluster_ids = [cluster_ids]
-            selected_cluster_ids = [
-                cid for cid in cluster_ids if cid in all_cluster_ids
-            ]
+            selected_cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
             remaining_cluster_ids = [
-                cid for cid in all_cluster_ids if cid not in selected_cluster_ids
+                cid for cid in self.td.get_cluster_ids(cluster_var) if cid not in selected_cluster_ids
             ]
         else:
-            selected_cluster_ids = all_cluster_ids
+            selected_cluster_ids = self.td.get_cluster_ids(cluster_var)
             remaining_cluster_ids = []
 
         # Get timeseries for selected clusters
@@ -1282,6 +1278,7 @@ class TOADPlotter:
 
         # Create and plot timeseries
         ts_axes = []
+        y_label = ""
         for i in range(n_ts):
             row = i // n_timeseries_col
             col = i % n_timeseries_col
@@ -1301,6 +1298,7 @@ class TOADPlotter:
             ax.set_title("")
 
             if not timeseries_ylabel:
+                y_label = ax.get_ylabel()
                 ax.set_ylabel("")
 
             # Handle axis cleanup
@@ -1326,7 +1324,8 @@ class TOADPlotter:
 
         # set title of time series axes
         ts_axes[0].set_title(
-            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) == len(self.td.get_cluster_ids(cluster_var)) else ''}clusters"
+            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}" + \
+            f"clusters{' in ' + y_label if y_label != '' else ''}"
         )
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
@@ -1364,7 +1363,7 @@ class TOADPlotter:
         if isinstance(cluster_ids, int):
             cluster_ids = [cluster_ids]
 
-        return [id for id in cluster_ids if id in [-1, *self.td.get_cluster_ids(var)]]
+        return [id for id in cluster_ids if id in self.td.get_cluster_ids(var, exclude_noise=False)]
 
 
 # end of TOADPlotter

@@ -62,7 +62,7 @@ def test_healpix_hdbscan(test_params, toad_instance):
     )
 
     # Verify results
-    actual_counts = td.get_cluster_counts("tas")
+    actual_counts = td.get_cluster_counts("tas", exclude_noise=False)
 
     assert actual_counts == test_params["expected_results"], (
         f"Expected {test_params['expected_results']}, got {actual_counts}"

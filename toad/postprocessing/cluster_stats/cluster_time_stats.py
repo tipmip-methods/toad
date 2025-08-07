@@ -148,13 +148,13 @@ class ClusterTimeStats:
         )
 
     def median(self, cluster_id) -> float:
-        """Return median of the active time values weighted by spatial extent"""
+        """Return median time of the cluster"""
         return float(
             self.td.apply_cluster_mask(self.var, self.td.time_dim, cluster_id).median()
         )
 
     def std(self, cluster_id) -> float:
-        """Return standard deviation of the active time values weighted by spatial extent"""
+        """Return standard deviation of the time of the cluster"""
         return float(
             self.td.apply_cluster_mask(self.var, self.td.time_dim, cluster_id).std()
         )

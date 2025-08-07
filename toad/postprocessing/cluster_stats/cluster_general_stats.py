@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple, overload
+from typing import Literal, Optional, Tuple, overload, Union, Callable
 import numpy as np
 from scipy.cluster.hierarchy import linkage, inconsistent
 from scipy.spatial.distance import squareform
@@ -155,8 +155,9 @@ class ClusterGeneralStats:
         if len(time_series) <= 1:
             return 0.0  # Not enough data to assess consistency
 
-        # Compute R² similarity matrix
-        r_matrix = np.corrcoef(time_series)
+        # Compute R² similarity matrix # prevent warning about division by zero variance
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r_matrix = np.corrcoef(time_series)
         r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Compute distance matrix
@@ -216,8 +217,9 @@ class ClusterGeneralStats:
         if len(time_series) <= 1:
             return 0.0  # Not enough data to assess similarity
 
-        # Compute R² similarity matrix
-        r_matrix = np.corrcoef(time_series)
+        # Compute R² similarity matrix # prevent warning about division by zero variance
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r_matrix = np.corrcoef(time_series)
         r_squared_matrix = np.nan_to_num(r_matrix**2)
 
         # Extract upper triangle (excluding diagonal)
@@ -315,3 +317,35 @@ class ClusterGeneralStats:
 
         # Return normalized nonlinearity
         return float(rmse_cluster / avg_rmse_unclustered)
+
+    def aggregate_cluster_scores(
+        self,
+        cluster_ids,
+        score_method: str,
+        aggregation: Union[str, Callable] = "mean",
+        weights: Optional[np.ndarray] = None,
+        **kwargs,
+    ) -> float:
+        """
+        Compute a score for multiple clusters and aggregate the results.
+
+        Args:
+            cluster_ids: List of cluster IDs
+            score_method: Name of the scoring method (e.g., "score_nonlinearity")
+            aggregation: "mean", "median", "weighted", or custom function
+            weights: Weights for each cluster (if aggregation="weighted")
+            **kwargs: Arguments passed to the scoring method
+        """
+        method = getattr(self, score_method)
+        scores = [method(cid, **kwargs) for cid in cluster_ids]
+
+        if callable(aggregation):
+            return aggregation(scores)
+        elif aggregation == "mean":
+            return float(np.mean(scores))
+        elif aggregation == "median":
+            return float(np.median(scores))
+        elif aggregation == "weighted":
+            return float(np.average(scores, weights=weights))
+        else:
+            return 0

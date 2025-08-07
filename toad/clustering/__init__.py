@@ -95,6 +95,7 @@ def compute_clusters(
         - Extract spatial and temporal coordinates
         - Apply optional regridding to standardize coordinates
         - Scale coordinates using sklearn preprocessing
+        - Scale time values by time_scale_factor
         - Calculate weights from shift magnitudes
     3. Clustering
         - Store clustering parameters as metadata
@@ -155,10 +156,35 @@ def compute_clusters(
                 f"shift_sign must be 'absolute', 'positive', or 'negative', got {shift_sign}"
             )
 
+    # apply filter
     filtered_df = df_data["dts"][df_data["dts"][shifts_label].apply(shifts_filter_func)]
+
+    # return empty clusters if no data points left
     if filtered_df.empty:
-        raise ValueError(
+        logger.warning(
             f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
+        )
+
+        clusters = data[var].copy().rename(output_label)
+        clusters.data[:] = -1
+        clusters.attrs = {}
+
+        # Save details as attributes
+        clusters.attrs.update(
+            {
+                "cluster_ids": [],
+                "shift_threshold": shift_threshold,
+                "shift_sign": shift_sign,
+                "n_data_points": 0,
+                "toad_version": __version__,
+            }
+        )
+
+        # Merge the cluster labels back into the original data
+        return (
+            xr.merge([data, clusters], combine_attrs="override")
+            if merge_input
+            else clusters
         )
 
     # Handle dimensions
@@ -232,7 +258,16 @@ def compute_clusters(
 
     # Perform clustering
     logger.info(f"Applying clustering method {method}")
-    cluster_labels = np.array(method.fit_predict(coords, weights))
+    try:
+        cluster_labels = np.array(method.fit_predict(coords, weights))
+    except ValueError as e:
+        if "min_samples" in str(e) and "must be at most" in str(e):
+            logger.warning(
+                f"HDBSCAN failed due to insufficient data points. Returning no clusters. Error: {e}"
+            )
+            cluster_labels = np.full(len(coords), -1)
+        else:
+            raise e
 
     # Regrid back
     if regridder:
@@ -271,6 +306,8 @@ def compute_clusters(
             "shift_threshold": shift_threshold,
             "shift_sign": shift_sign,
             "scaler": scaler,
+            "time_scale_factor": time_scale_factor,
+            "n_data_points": len(coords),
             "method_name": method.__class__.__name__,
             "toad_version": __version__,
             **method_params,

@@ -398,7 +398,7 @@ class TOADPlotter:
         only_contour: bool = False,
         add_labels: bool = True,
         unclustered_color: Optional[str] = None,
-        remaining_clusters_color: Optional[str] = None,
+        remaining_clusters_cmap: Optional[str] = "Blues",
         **kwargs: Any,
     ) -> Tuple[matplotlib.figure.Figure, Axes]:
         """Plot one or multiple clusters on a map.
@@ -418,7 +418,7 @@ class TOADPlotter:
             add_labels: If True, add cluster ID labels using a geometrically
                         central point (`central_point_for_labeling`).
             unclustered_color: Optional color to fill unclustered grid cells.
-            remaining_clusters_color: Optional color to fill grid cells belonging
+            remaining_clusters_cmap: Optional color to fill grid cells belonging
                                      to clusters not specified in `cluster_ids`.
             **kwargs: Additional arguments passed to xarray.plot methods
                       (e.g., `plot`, `plot.contour`).
@@ -567,17 +567,31 @@ class TOADPlotter:
                 ax.set_title(f"{var}_cluster {id}")
 
         # Plot remaining clusters
-        if remaining_clusters_color:
+        if remaining_clusters_cmap:
             remaining_cluster_ids = [  # get unplotted clusters ids (except -1)
                 int(id) for id in all_cluster_ids if id not in cluster_ids and id != -1
             ]
-            mask = self.td.get_spatial_cluster_mask(var, remaining_cluster_ids)
-            mask = mask.where(mask > 0, np.nan)
-            mask.plot(
-                cmap=ListedColormap([remaining_clusters_color]),
-                add_colorbar=False,
-                ax=ax,
-            )
+            if len(remaining_cluster_ids) > 0:
+                mask = self.td.get_cluster_mask(var, remaining_cluster_ids)
+                cl = self.td.get_clusters(var).where(mask)
+                cl.max(dim=self.td.time_dim).plot(
+                    ax=ax,
+                    cmap=remaining_clusters_cmap,
+                    add_colorbar=True,
+                    cbar_kwargs={
+                        'label': 'Remaining clusters ids',
+                        'orientation': 'horizontal',
+                        'location': 'bottom'
+                    },
+                    transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
+                )
+                # mask = self.td.get_spatial_cluster_mask(var, remaining_cluster_ids)
+                # mask = mask.where(mask > 0, np.nan)
+                # mask.plot(
+                #     cmap=ListedColormap([remaining_clusters_cmap]),
+                #     add_colorbar=False,
+                #     ax=ax,
+                # )
 
         # Plot unclustered cells
         if unclustered_color:
@@ -589,6 +603,7 @@ class TOADPlotter:
                 cmap=ListedColormap([unclustered_color]),
                 add_colorbar=False,
                 ax=ax,
+                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
             )
 
         return fig, ax
@@ -627,7 +642,7 @@ class TOADPlotter:
             raise ValueError(f"No clusters found for variable {var}")
 
         # Filter cluster_ids to only include existing clusters
-        cluster_ids = [id for id in cluster_ids if id in self.td.get_cluster_ids(var)]
+        cluster_ids = self.filter_by_existing_clusters(cluster_ids, var)
 
         nrows = int(np.ceil(len(cluster_ids) / ncols))
 
@@ -642,7 +657,7 @@ class TOADPlotter:
         for i, cluster_id in enumerate(cluster_ids):
             ax = axs.flat[i]
             self.cluster_map(
-                var, ax=ax, cluster_ids=int(cluster_id), color=color, **kwargs
+                var, ax=ax, cluster_ids=int(cluster_id), color=color, remaining_clusters_cmap=None, **kwargs
             )
             ax.set_title(
                 f"id {cluster_id} with {cluster_counts[cluster_id]} members",
@@ -698,7 +713,7 @@ class TOADPlotter:
         """
 
         # Filter cluster_ids to only include existing clusters
-        cluster_ids = [id for id in cluster_ids if id in self.td.get_cluster_ids(var)]
+        cluster_ids = self.filter_by_existing_clusters(cluster_ids, var)
 
         plot_var = plot_var if plot_var is not None else var
 
@@ -849,8 +864,7 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Filter cluster_ids to only include existing clusters
-        found_cluster_ids = self.td.get_cluster_ids(cluster_var)
-        cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
+        cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
 
         for i, id in enumerate(cluster_ids):
             if color:
@@ -922,24 +936,9 @@ class TOADPlotter:
             if plot_shift_indicator:
                 start = self.td.cluster_stats(cluster_var).time.start(id)
                 end = self.td.cluster_stats(cluster_var).time.end(id)
-                iqr_68 = self.td.cluster_stats(cluster_var).time.iqr_68(id)
-                y_offset = ax.get_ylim()[1] * (
-                    (i + 1) * -0.05
-                )  # offset if we plot multiple clusters
-                ax.plot(
-                    [start, end],
-                    [y_offset, y_offset],
-                    color=id_color,
-                    linewidth=shift_indicator_linewidth,
-                    alpha=alpha,
-                )
-                ax.plot(
-                    [iqr_68[0], iqr_68[1]],
-                    [y_offset, y_offset],
-                    color=id_color,
-                    linewidth=shift_indicator_linewidth,
-                    alpha=alpha,
-                )
+                median = self.td.cluster_stats(cluster_var).time.median(id)
+                ax.axvspan(start, end, color=id_color, alpha=0.25, zorder=-100)
+                ax.axvline(median, ls="--", color="k", lw=1.0, zorder=100, alpha=0.25)
 
             if add_legend:
                 ax.legend(frameon=False)
@@ -971,22 +970,18 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-        all_cluster_ids = [
-            cid for cid in self.td.get_cluster_ids(cluster_var) if cid != -1
-        ]
+        
 
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
                 cluster_ids = [cluster_ids]
-            selected_cluster_ids = [
-                cid for cid in cluster_ids if cid in all_cluster_ids
-            ]
+            selected_cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
             remaining_cluster_ids = [
-                cid for cid in all_cluster_ids if cid not in selected_cluster_ids
+                cid for cid in self.td.get_cluster_ids(cluster_var) if cid not in selected_cluster_ids
             ]
         else:
-            selected_cluster_ids = all_cluster_ids
+            selected_cluster_ids = self.td.get_cluster_ids(cluster_var)
             remaining_cluster_ids = []
 
         # Get timeseries for selected clusters
@@ -1161,7 +1156,7 @@ class TOADPlotter:
     def cluster_overview(
         self,
         cluster_var: str,
-        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = range(5),
         plot_var: Optional[str] = None,
         projection: Optional[str] = None,
         figsize: tuple = (12, 6),
@@ -1217,8 +1212,7 @@ class TOADPlotter:
             cluster_ids = [cluster_ids]  # Convert single int to list
 
         # Filter cluster_ids to only include existing clusters
-        found_cluster_ids = self.td.get_cluster_ids(cluster_var)
-        cluster_ids = [id for id in cluster_ids if id in found_cluster_ids]
+        cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
 
         if len(cluster_ids) == 0:
             raise ValueError("No clusters found for variable", cluster_var)
@@ -1284,6 +1278,7 @@ class TOADPlotter:
 
         # Create and plot timeseries
         ts_axes = []
+        y_label = ""
         for i in range(n_ts):
             row = i // n_timeseries_col
             col = i % n_timeseries_col
@@ -1303,6 +1298,7 @@ class TOADPlotter:
             ax.set_title("")
 
             if not timeseries_ylabel:
+                y_label = ax.get_ylabel()
                 ax.set_ylabel("")
 
             # Handle axis cleanup
@@ -1325,7 +1321,15 @@ class TOADPlotter:
             col = i % n_timeseries_col
             ax = fig.add_subplot(gs[row, col])
             ax.set_visible(False)
+
+        # set title of time series axes
+        ts_axes[0].set_title(
+            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}" + \
+            f"clusters{' in ' + y_label if y_label != '' else ''}"
+        )
+
         return fig, {"map": map_ax, "timeseries": ts_axes}
+
 
     def shifts_distribution(self, figsize: Optional[tuple] = None):
         """Plot histograms showing the distribution of shifts for each shift variable."""
@@ -1353,6 +1357,14 @@ class TOADPlotter:
             )
         return fig, axs
 
+    def filter_by_existing_clusters(self, cluster_ids: Union[int, List[int], np.ndarray, range], var: str) -> List[int]:
+        """Filter cluster_ids to only include existing clusters."""
+
+        if isinstance(cluster_ids, int):
+            cluster_ids = [cluster_ids]
+
+        return [id for id in cluster_ids if id in self.td.get_cluster_ids(var, exclude_noise=False)]
+
 
 # end of TOADPlotter
 
@@ -1365,6 +1377,7 @@ class TOADPlotter:
 #             return pos.stop
 #         return (n_rows - 1) if n_rows is not None else 0
 #     return pos
+
 
 
 def get_high_constrast_text_color(color: Union[tuple, str]) -> str:

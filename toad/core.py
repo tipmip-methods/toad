@@ -4,6 +4,7 @@ import numpy as np
 from typing import List, Union, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
+import sklearn.cluster
 from sklearn.preprocessing import (
     StandardScaler,
     MinMaxScaler,
@@ -17,6 +18,7 @@ from toad import (
     postprocessing,
     visualisation,
     preprocessing,
+    optimising,
 )
 from toad.utils import get_space_dims, is_equal_to, contains_value
 from toad.regridding.base import BaseRegridder
@@ -99,6 +101,7 @@ class TOAD:
     ) -> visualisation.TOADPlotter:
         """Access plotting methods."""
         return visualisation.TOADPlotter(self, config=config)
+
 
     # # ======================================================================
     # #               SET functions
@@ -271,6 +274,75 @@ class TOAD:
             self.data = results
             return None
 
+
+    # # ======================================================================
+    # #               OPTIMISE functions
+    # # ======================================================================
+
+    def optimise(
+        self,
+        var,
+        shifts_method=shifts.ASDETECT,
+        cluster_method=sklearn.cluster.HDBSCAN,
+        shifts_param_ranges=dict({}),
+        cluster_param_ranges=optimising.default_cluster_param_ranges,
+        objective=optimising.combined_spatial_nonlinearity,
+        n_trials=50,
+        direction="maximize",
+        log_level="WARNING",
+        show_progress_bar=True
+    ):
+        """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
+
+        >> Args:
+            var:
+                Name of the variable to cluster.
+            shifts_method:
+                Class for shift detection. Defaults to ASDETECT.
+            cluster_method:
+                Class for clustering. Defaults to HDBSCAN.
+            shifts_param_ranges:
+                Dict of parameter ranges for shift detection. Defaults to empty dict.
+            cluster_param_ranges:
+                Dict of parameter ranges for clustering. Defaults to default_cluster_param_ranges.
+            objective:
+                Function or string specifying evaluation metric. Defaults to combined_spatial_nonlinearity.
+                Can be one of:
+                - callable: Custom objective function taking (td, cluster_ids, var) as arguments
+                - "median_abruptness": Median heaviside score across clusters
+                - "mean_abruptness": Mean heaviside score across clusters  
+                - "mean_consistency": Mean consistency score across clusters
+                - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
+                - "mean_nonlinearity": Mean nonlinearity score across clusters
+            n_trials:
+                Number of optimization trials to run. Defaults to 50.
+            direction:
+                Whether to maximize or minimize objective. Defaults to "maximize".
+            log_level:
+                The logging level for the optuna logger. Defaults to "WARNING".
+            show_progress_bar:
+                Whether to show the progress bar. Defaults to True.
+
+        >> Returns:
+            dict: Best parameters found during optimization
+
+        >> Raises:
+            ValueError: If objective is not valid
+        """
+        optimising.optimise(
+            td=self,
+            var=var,
+            shifts_method=shifts_method,
+            cluster_method=cluster_method,
+            shifts_param_ranges=shifts_param_ranges,
+            cluster_param_ranges=cluster_param_ranges,
+            objective=objective,
+            n_trials=n_trials,
+            direction=direction,
+            log_level=log_level,
+            show_progress_bar=show_progress_bar,
+        )
+    
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
@@ -327,19 +399,19 @@ class TOAD:
         shifts_var = f"{var}_dts{label_suffix}"
         if shifts_var in self.data:
             return self.data[shifts_var]
-
-        # Tell the user about alternative shifts variables
-        all_shift_vars: List[str] = [
-            str(data_var) for data_var in self.data.data_vars if "_dts" in str(data_var)
-        ]
-        raise ValueError(
-            (
-                f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."
-                f" Or did you mean to use any of these?: {', '.join(all_shift_vars)}"
-                if all_shift_vars
-                else ""
-            )
-        )
+        else:
+            # Tell the user about alternative shifts variables
+            alt_shift_vars: List[str] = [
+                str(data_var)
+                for data_var in self.data.data_vars
+                if "_dts" in str(data_var)
+            ]
+                
+            message = f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."    
+            if alt_shift_vars:
+                message += f" Or did you mean to use any of these?: {', '.join(alt_shift_vars)}"
+            raise ValueError(message)
+            
 
     def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
         """
@@ -369,23 +441,21 @@ class TOAD:
         cluster_var = f"{var}_cluster{label_suffix}"
         if cluster_var in self.data:
             return self.data[cluster_var]
+        else:
+            # Tell the user about alternative cluster variables
+            alt_cluster_vars: List[str] = [
+                str(data_var)
+                for data_var in self.data.data_vars
+                if "_cluster" in str(data_var)
+            ]
+                
+            message = f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."    
+            if alt_cluster_vars:
+                message += f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
+            raise ValueError(message)
 
-        # Tell the user about alternative cluster variables
-        alt_cluster_vars: List[str] = [
-            str(data_var)
-            for data_var in self.data.data_vars
-            if "_cluster" in str(data_var)
-        ]
-        raise ValueError(
-            (
-                f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."
-                f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
-                if alt_cluster_vars
-                else ""
-            )
-        )
-
-    def get_cluster_counts(self, var):
+        
+    def get_cluster_counts(self, var, exclude_noise: bool = True):
         """Returns sorted dictionary with number of cells in both space and time for each cluster.
 
         >> Args:
@@ -396,13 +466,13 @@ class TOAD:
             dict: {cluster_id: count}
         """
         counts = {}
-        for cluster_id in self.get_clusters(var).cluster_ids:
+        for cluster_id in self.get_cluster_ids(var, exclude_noise):
             count = self.get_cluster_mask(var, cluster_id).sum()
             counts[int(cluster_id)] = int(count)
 
         return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
 
-    def get_cluster_ids(self, var):
+    def get_cluster_ids(self, var, exclude_noise: bool = True):
         """
         Return list of cluster ids sorted by total number of cells in each cluster.
 
@@ -413,7 +483,11 @@ class TOAD:
         >> Returns:
             list: A list of cluster ids.
         """
-        return np.array(list(self.get_cluster_counts(var).keys()))
+        cluster_ids = self.get_clusters(var).cluster_ids
+        if exclude_noise:
+            return np.array([id for id in cluster_ids if id != -1])
+        else:
+            return cluster_ids
 
     def get_active_clusters_count_per_timestep(self, var):
         """Get number of active clusters for each timestep.

@@ -5,9 +5,10 @@ import numpy as np
 from toad.shifts import ASDETECT
 from sklearn.cluster import HDBSCAN
 
-__all__ = ['optimise', 'combined_spatial_nonlinearity', 'default_cluster_param_ranges']
+__all__ = ["optimise", "combined_spatial_nonlinearity", "default_cluster_param_ranges"]
 
-def combined_spatial_nonlinearity(td, var, weights=[1,1]):
+
+def combined_spatial_nonlinearity(td, var, weights=[1, 1]):
     """Compute a weighted combination of spatial autocorrelation and nonlinearity scores.
 
     Args:
@@ -24,23 +25,26 @@ def combined_spatial_nonlinearity(td, var, weights=[1,1]):
     score1 = td.cluster_stats(var).general.aggregate_cluster_scores(
         cluster_ids=cluster_ids[:10],
         score_method="score_spatial_autocorrelation",
-        aggregation="median"
+        aggregation="median",
     )
 
     score2 = td.cluster_stats(var).general.aggregate_cluster_scores(
         cluster_ids=cluster_ids[:10],
         score_method="score_nonlinearity",
-        aggregation="median"
+        aggregation="median",
     )
 
-    return float(weights[0]*score1 + weights[1]*score2)
+    return float(weights[0] * score1 + weights[1] * score2)
 
 
-default_cluster_param_ranges=dict({
-    "min_cluster_size": (10, 25),
-    "shift_threshold": (0.6, 0.95),
-    "time_scale_factor": (0.5, 1.5)
-})
+default_cluster_param_ranges = dict(
+    {
+        "min_cluster_size": (10, 25),
+        "shift_threshold": (0.6, 0.95),
+        "time_scale_factor": (0.5, 1.5),
+    }
+)
+
 
 def optimise(
     td,
@@ -54,7 +58,7 @@ def optimise(
     direction="maximize",
     log_level="WARNING",
     show_progress_bar=True,
-): 
+):
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
     >> Args:
@@ -73,7 +77,7 @@ def optimise(
             Can be one of:
             - callable: Custom objective function taking (td, cluster_ids, var) as arguments
             - "median_heaviside": Median heaviside score across clusters
-            - "mean_heaviside": Mean heaviside score across clusters  
+            - "mean_heaviside": Mean heaviside score across clusters
             - "mean_consistency": Mean consistency score across clusters
             - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
             - "mean_nonlinearity": Mean nonlinearity score across clusters
@@ -161,7 +165,7 @@ def optimise(
     best_score = -np.inf if direction == "maximize" else np.inf
     best_shift_data = None
     best_cluster_data = None
-    
+
     # Track previous shift parameters to avoid recomputation
     old_shift_params = None
 
@@ -185,16 +189,14 @@ def optimise(
 
         shift_params = get_params(trial, shifts_param_ranges)
         cluster_params = get_params(trial, cluster_param_ranges)
-        
+
         # Extract time_scale_factor and shift_threshold if present
-        time_scale_factor = cluster_params.pop('time_scale_factor', 1)
-        shift_threshold = cluster_params.pop('shift_threshold', 0.8)
+        time_scale_factor = cluster_params.pop("time_scale_factor", 1)
+        shift_threshold = cluster_params.pop("shift_threshold", 0.8)
 
         # Compute shifts if parameters have changed and shifts already present
         if shift_params != old_shift_params or f"{var}_dts" not in td.data:
-            td.compute_shifts(
-                var, method=shifts_method(**shift_params), overwrite=True
-            )
+            td.compute_shifts(var, method=shifts_method(**shift_params), overwrite=True)
             old_shift_params = shift_params.copy()
 
         # Compute clusters
@@ -211,41 +213,68 @@ def optimise(
             return -np.inf if direction == "maximize" else np.inf
 
         cluster_ids = td.get_cluster_ids(var)
-        
+
         # Compute score
         if callable(objective):
-            score = float(objective(td, var)) # type: ignore
+            score = float(objective(td, var))  # type: ignore
         elif objective == "median_heaviside":
-            score = float(np.median([
-                td.cluster_stats(var).general.score_heaviside(cid, aggregation="median")
-                for cid in cluster_ids
-            ]))
+            score = float(
+                np.median(
+                    [
+                        td.cluster_stats(var).general.score_heaviside(
+                            cid, aggregation="median"
+                        )
+                        for cid in cluster_ids
+                    ]
+                )
+            )
         elif objective == "mean_heaviside":
-            score = float(np.mean([
-                td.cluster_stats(var).general.score_heaviside(cid, aggregation="mean")
-                for cid in cluster_ids
-            ]))
+            score = float(
+                np.mean(
+                    [
+                        td.cluster_stats(var).general.score_heaviside(
+                            cid, aggregation="mean"
+                        )
+                        for cid in cluster_ids
+                    ]
+                )
+            )
         elif objective == "mean_consistency":
-            score = float(np.mean([
-                td.cluster_stats(var).general.score_consistency(cid)
-                for cid in cluster_ids
-            ]))
+            score = float(
+                np.mean(
+                    [
+                        td.cluster_stats(var).general.score_consistency(cid)
+                        for cid in cluster_ids
+                    ]
+                )
+            )
         elif objective == "mean_spatial_autocorrelation":
-            score = float(np.mean([
-                td.cluster_stats(var).general.score_spatial_autocorrelation(cid)
-                for cid in cluster_ids
-            ]))
+            score = float(
+                np.mean(
+                    [
+                        td.cluster_stats(var).general.score_spatial_autocorrelation(cid)
+                        for cid in cluster_ids
+                    ]
+                )
+            )
         elif objective == "mean_nonlinearity":
-            score = float(np.mean([
-                td.cluster_stats(var).general.score_nonlinearity(cid, aggregation="mean")
-                for cid in cluster_ids
-            ]))
+            score = float(
+                np.mean(
+                    [
+                        td.cluster_stats(var).general.score_nonlinearity(
+                            cid, aggregation="mean"
+                        )
+                        for cid in cluster_ids
+                    ]
+                )
+            )
         else:
             raise ValueError("Invalid objective")
 
         # Save best results (only the relevant data)
-        if (direction == "maximize" and score > best_score) or \
-            (direction == "minimize" and score < best_score):
+        if (direction == "maximize" and score > best_score) or (
+            direction == "minimize" and score < best_score
+        ):
             best_score = score
             # Only save the shift and cluster data, not the entire dataset
             best_shift_data = td.data[f"{var}_dts"].copy()
@@ -253,7 +282,6 @@ def optimise(
 
         return score
 
-    
     optuna.logging.set_verbosity(log_level)
     t0 = time.time()
     study = optuna.create_study(direction=direction)
@@ -272,4 +300,3 @@ def optimise(
     print(f"Identified {len(td.get_cluster_ids(var))} clusters")
 
     return study.best_params
-

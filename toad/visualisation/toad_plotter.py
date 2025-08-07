@@ -579,11 +579,13 @@ class TOADPlotter:
                     cmap=remaining_clusters_cmap,
                     add_colorbar=True,
                     cbar_kwargs={
-                        'label': 'Remaining clusters ids',
-                        'orientation': 'horizontal',
-                        'location': 'bottom'
+                        "label": "Remaining clusters ids",
+                        "orientation": "horizontal",
+                        "location": "bottom",
                     },
-                    transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
+                    transform=ccrs.PlateCarree()
+                    if "lat" in self.td.space_dims
+                    else None,
                 )
                 # mask = self.td.get_spatial_cluster_mask(var, remaining_cluster_ids)
                 # mask = mask.where(mask > 0, np.nan)
@@ -603,7 +605,7 @@ class TOADPlotter:
                 cmap=ListedColormap([unclustered_color]),
                 add_colorbar=False,
                 ax=ax,
-                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
+                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None,
             )
 
         return fig, ax
@@ -657,7 +659,12 @@ class TOADPlotter:
         for i, cluster_id in enumerate(cluster_ids):
             ax = axs.flat[i]
             self.cluster_map(
-                var, ax=ax, cluster_ids=int(cluster_id), color=color, remaining_clusters_cmap=None, **kwargs
+                var,
+                ax=ax,
+                cluster_ids=int(cluster_id),
+                color=color,
+                remaining_clusters_cmap=None,
+                **kwargs,
             )
             ax.set_title(
                 f"id {cluster_id} with {cluster_counts[cluster_id]} members",
@@ -970,15 +977,18 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-        
 
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
                 cluster_ids = [cluster_ids]
-            selected_cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
+            selected_cluster_ids = self.filter_by_existing_clusters(
+                cluster_ids, cluster_var
+            )
             remaining_cluster_ids = [
-                cid for cid in self.td.get_cluster_ids(cluster_var) if cid not in selected_cluster_ids
+                cid
+                for cid in self.td.get_cluster_ids(cluster_var)
+                if cid not in selected_cluster_ids
             ]
         else:
             selected_cluster_ids = self.td.get_cluster_ids(cluster_var)
@@ -1324,12 +1334,11 @@ class TOADPlotter:
 
         # set title of time series axes
         ts_axes[0].set_title(
-            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}" + \
-            f"clusters{' in ' + y_label if y_label != '' else ''}"
+            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}"
+            + f"clusters{' in ' + y_label if y_label != '' else ''}"
         )
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
-
 
     def shifts_distribution(self, figsize: Optional[tuple] = None):
         """Plot histograms showing the distribution of shifts for each shift variable."""
@@ -1357,13 +1366,19 @@ class TOADPlotter:
             )
         return fig, axs
 
-    def filter_by_existing_clusters(self, cluster_ids: Union[int, List[int], np.ndarray, range], var: str) -> List[int]:
+    def filter_by_existing_clusters(
+        self, cluster_ids: Union[int, List[int], np.ndarray, range], var: str
+    ) -> List[int]:
         """Filter cluster_ids to only include existing clusters."""
 
         if isinstance(cluster_ids, int):
             cluster_ids = [cluster_ids]
 
-        return [id for id in cluster_ids if id in self.td.get_cluster_ids(var, exclude_noise=False)]
+        return [
+            id
+            for id in cluster_ids
+            if id in self.td.get_cluster_ids(var, exclude_noise=False)
+        ]
 
 
 # end of TOADPlotter
@@ -1377,7 +1392,6 @@ class TOADPlotter:
 #             return pos.stop
 #         return (n_rows - 1) if n_rows is not None else 0
 #     return pos
-
 
 
 def get_high_constrast_text_color(color: Union[tuple, str]) -> str:

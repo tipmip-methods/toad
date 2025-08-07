@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, to_hex, to_rgba, to_rgb
-import matplotlib as mpl
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.figure
@@ -398,7 +397,9 @@ class TOADPlotter:
         only_contour: bool = False,
         add_labels: bool = True,
         unclustered_color: Optional[str] = None,
-        remaining_clusters_cmap: Optional[Union[str, matplotlib.colors.Colormap]] = "jet",
+        remaining_clusters_cmap: Optional[
+            Union[str, matplotlib.colors.Colormap]
+        ] = "jet",
         remaining_clusters_legend_pos: Optional[Tuple[float, float]] = None,
         **kwargs: Any,
     ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
@@ -558,7 +559,7 @@ class TOADPlotter:
                 if np.isnan(x) or np.isnan(y):
                     # Get median coordinates as fallback
                     y, x = self.td.cluster_stats(var).space.footprint_median(id)
-                
+
                 if not (np.isnan(x) or np.isnan(y)):
                     self._cluster_annotate(ax, x, y, id, cluster_cmap.colors[0])
                 else:
@@ -582,17 +583,21 @@ class TOADPlotter:
                     ax=ax,
                     cmap=remaining_clusters_cmap,
                     add_colorbar=False,
-                    transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
-                ) # type: ignore
+                    transform=ccrs.PlateCarree()
+                    if "lat" in self.td.space_dims
+                    else None,
+                )  # type: ignore
 
                 # Pass the colormap to the legend function
                 self.add_gradient_legend(
-                    ax, 
-                    remaining_cluster_ids[0], 
-                    remaining_cluster_ids[-1], 
-                    var=var, 
+                    ax,
+                    remaining_cluster_ids[0],
+                    remaining_cluster_ids[-1],
+                    var=var,
                     legend_pos=remaining_clusters_legend_pos,
-                    cmap=plt.get_cmap(remaining_clusters_cmap) if isinstance(remaining_clusters_cmap, str) else remaining_clusters_cmap
+                    cmap=plt.get_cmap(remaining_clusters_cmap)
+                    if isinstance(remaining_clusters_cmap, str)
+                    else remaining_clusters_cmap,
                 )
 
         # Plot unclustered cells
@@ -605,8 +610,8 @@ class TOADPlotter:
                 cmap=ListedColormap([unclustered_color]),
                 add_colorbar=False,
                 ax=ax,
-                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None
-            ) # type: ignore
+                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None,
+            )  # type: ignore
 
         return fig, ax
 
@@ -659,7 +664,12 @@ class TOADPlotter:
         for i, cluster_id in enumerate(cluster_ids):
             ax = axs.flat[i]
             self.cluster_map(
-                var, ax=ax, cluster_ids=int(cluster_id), color=color, remaining_clusters_cmap=None, **kwargs
+                var,
+                ax=ax,
+                cluster_ids=int(cluster_id),
+                color=color,
+                remaining_clusters_cmap=None,
+                **kwargs,
             )
             ax.set_title(
                 f"id {cluster_id} with {cluster_counts[cluster_id]} members",
@@ -972,15 +982,18 @@ class TOADPlotter:
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-        
 
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
                 cluster_ids = [cluster_ids]
-            selected_cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
+            selected_cluster_ids = self.filter_by_existing_clusters(
+                cluster_ids, cluster_var
+            )
             remaining_cluster_ids = [
-                cid for cid in self.td.get_cluster_ids(cluster_var) if cid not in selected_cluster_ids
+                cid
+                for cid in self.td.get_cluster_ids(cluster_var)
+                if cid not in selected_cluster_ids
             ]
         else:
             selected_cluster_ids = self.td.get_cluster_ids(cluster_var)
@@ -1326,12 +1339,11 @@ class TOADPlotter:
 
         # set title of time series axes
         ts_axes[0].set_title(
-            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}" + \
-            f"clusters{' in ' + y_label if y_label != '' else ''}"
+            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}"
+            + f"clusters{' in ' + y_label if y_label != '' else ''}"
         )
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
-
 
     def shifts_distribution(self, figsize: Optional[tuple] = None):
         """Plot histograms showing the distribution of shifts for each shift variable."""
@@ -1359,26 +1371,42 @@ class TOADPlotter:
             )
         return fig, axs
 
-    def filter_by_existing_clusters(self, cluster_ids: Union[int, List[int], np.ndarray, range], var: str) -> List[int]:
+    def filter_by_existing_clusters(
+        self, cluster_ids: Union[int, List[int], np.ndarray, range], var: str
+    ) -> List[int]:
         """Filter cluster_ids to only include existing clusters."""
 
         if isinstance(cluster_ids, int):
             cluster_ids = [cluster_ids]
 
-        return [id for id in cluster_ids if id in self.td.get_cluster_ids(var, exclude_noise=False)]
+        return [
+            id
+            for id in cluster_ids
+            if id in self.td.get_cluster_ids(var, exclude_noise=False)
+        ]
 
-    def add_gradient_legend(self, ax, start, end, legend_pos=None, legend_size=(0.05, 0.02), 
-                       label_text=None, fontsize=7, cmap=None, var=None):
+    def add_gradient_legend(
+        self,
+        ax,
+        start,
+        end,
+        legend_pos=None,
+        legend_size=(0.05, 0.02),
+        label_text=None,
+        fontsize=7,
+        cmap=None,
+        var=None,
+    ):
         """
         Add a custom gradient legend to a plot.
-        
+
         Parameters:
         -----------
         var : str, optional
-            Variable name to use for optimal positioning. If None and legend_pos="auto", 
+            Variable name to use for optimal positioning. If None and legend_pos="auto",
             uses projection-based defaults.
         """
-        
+
         # Handle automatic positioning
         if legend_pos is None:
             if var is not None:
@@ -1386,101 +1414,106 @@ class TOADPlotter:
             else:
                 # Fallback to projection-based positioning
                 import cartopy.crs as ccrs
-                if hasattr(ax, 'projection') and isinstance(ax.projection, ccrs.Projection):
+
+                if hasattr(ax, "projection") and isinstance(
+                    ax.projection, ccrs.Projection
+                ):
                     if isinstance(ax.projection, ccrs.PlateCarree):
                         legend_pos = (0.75, 0.95)  # top-right
                     else:
                         legend_pos = (0.02, 0.95)  # top-left
                 else:
                     legend_pos = (0.02, 0.95)
-        
+
         # Get colormap
         if cmap is None:
             # Try to get colormap from the last image in the axes
-            images = [child for child in ax.get_children() 
-                    if hasattr(child, 'get_cmap')]
+            images = [
+                child for child in ax.get_children() if hasattr(child, "get_cmap")
+            ]
             if images:
                 cmap = images[-1].get_cmap()
             else:
                 cmap = plt.cm.viridis  # fallback
-        
+
         legend_x, legend_y = legend_pos
         legend_width, legend_height = legend_size
-        
+
         # Check if we have a single cluster (start == end)
-        is_single_cluster = (start == end)
-        
+        is_single_cluster = start == end
+
         if is_single_cluster:
             # For single cluster, use a solid color square (middle of the colormap)
             single_color = cmap(0.5)  # Use middle color of the colormap
-            
+
             rect = Rectangle(
-                (legend_x, legend_y), 
-                legend_width, 
+                (legend_x, legend_y),
+                legend_width,
                 legend_height,
                 facecolor=single_color,
-                edgecolor='black',
+                edgecolor="black",
                 linewidth=0.5,
                 clip_on=False,
                 transform=ax.transAxes,
-                zorder=1000
+                zorder=1000,
             )
             ax.add_patch(rect)
-            
+
             # Label for single cluster
             if label_text is None:
-                label_text = f'{start}'
+                label_text = f"{start}"
         else:
             # Create the gradient effect using multiple thin rectangles
             n_segments = 50
             segment_width = legend_width / n_segments
-            
+
             for i in range(n_segments):
                 color_val = i / (n_segments - 1)
                 color = cmap(color_val)
                 rect = Rectangle(
-                    (legend_x + i * segment_width, legend_y), 
-                    segment_width, 
+                    (legend_x + i * segment_width, legend_y),
+                    segment_width,
                     legend_height,
                     facecolor=color,
-                    edgecolor='none',
+                    edgecolor="none",
                     clip_on=False,
                     transform=ax.transAxes,
-                    zorder=1000
+                    zorder=1000,
                 )
                 ax.add_patch(rect)
-            
+
             # Add border around the gradient
             border_rect = Rectangle(
-                (legend_x, legend_y), 
-                legend_width, 
+                (legend_x, legend_y),
+                legend_width,
                 legend_height,
-                facecolor='none',
-                edgecolor='black',
+                facecolor="none",
+                edgecolor="black",
                 linewidth=0.5,
                 clip_on=False,
                 transform=ax.transAxes,
-                zorder=1000
+                zorder=1000,
             )
             ax.add_patch(border_rect)
-            
+
             # Label for multiple clusters
             if label_text is None:
-                label_text = f'{start}-{end}'
-        
+                label_text = f"{start}-{end}"
+
         # Add text label
         ax.text(
-            legend_x + legend_width + 0.01, 
-            legend_y + legend_height/2,
+            legend_x + legend_width + 0.01,
+            legend_y + legend_height / 2,
             label_text,
             transform=ax.transAxes,
-            verticalalignment='center',
+            verticalalignment="center",
             fontsize=fontsize,
-            clip_on=False
+            clip_on=False,
         )
 
-    
-    def find_optimal_legend_position(self, ax, var, legend_size=(0.05, 0.02), margin=0.02):
+    def find_optimal_legend_position(
+        self, ax, var, legend_size=(0.05, 0.02), margin=0.02
+    ):
         """
         Simple approach: find the corner with the least cluster coverage.
         """
@@ -1488,10 +1521,10 @@ class TOADPlotter:
             # Get all cluster IDs and create a combined mask
             cluster_ids = self.td.get_cluster_ids(var)
             valid_clusters = cluster_ids[cluster_ids != -1]
-            
+
             if len(valid_clusters) == 0:
                 return (margin, 1.0 - margin - legend_size[1])  # default top-left
-            
+
             # Get combined spatial mask for all clusters
             combined_mask = None
             for cluster_id in valid_clusters:
@@ -1500,40 +1533,57 @@ class TOADPlotter:
                     combined_mask = mask
                 else:
                     combined_mask = combined_mask | mask
-            
+
             # Define corner regions (each corner gets 25% of the space)
             y_coords = combined_mask[self.td.space_dims[0]]
             x_coords = combined_mask[self.td.space_dims[1]]
-            
+
             y_mid = (y_coords.max() + y_coords.min()) / 2
             x_mid = (x_coords.max() + x_coords.min()) / 2
-            
+
             # Count cluster pixels in each corner
             corners = {}
-            corners['top-left'] = combined_mask.where((y_coords >= y_mid) & (x_coords <= x_mid)).sum()
-            corners['top-right'] = combined_mask.where((y_coords >= y_mid) & (x_coords >= x_mid)).sum()
-            corners['bottom-left'] = combined_mask.where((y_coords <= y_mid) & (x_coords <= x_mid)).sum()
-            corners['bottom-right'] = combined_mask.where((y_coords <= y_mid) & (x_coords >= x_mid)).sum()
-            
+            corners["top-left"] = combined_mask.where(
+                (y_coords >= y_mid) & (x_coords <= x_mid)
+            ).sum()
+            corners["top-right"] = combined_mask.where(
+                (y_coords >= y_mid) & (x_coords >= x_mid)
+            ).sum()
+            corners["bottom-left"] = combined_mask.where(
+                (y_coords <= y_mid) & (x_coords <= x_mid)
+            ).sum()
+            corners["bottom-right"] = combined_mask.where(
+                (y_coords <= y_mid) & (x_coords >= x_mid)
+            ).sum()
+
             # Find corner with minimum clusters
             best_corner = min(corners, key=lambda k: float(corners[k]))
-            
+
             # Convert to legend positions
             legend_width, legend_height = legend_size
             positions = {
-                'top-left': (margin, 1.0 - margin - legend_height),
-                'top-right': (1.0 - margin - legend_width, 1.0 - margin - legend_height),
-                'bottom-left': (margin, margin),
-                'bottom-right': (1.0 - margin - legend_width, margin)
+                "top-left": (margin, 1.0 - margin - legend_height),
+                "top-right": (
+                    1.0 - margin - legend_width,
+                    1.0 - margin - legend_height,
+                ),
+                "bottom-left": (margin, margin),
+                "bottom-right": (1.0 - margin - legend_width, margin),
             }
-            
+
             return positions[best_corner]
-            
+
         except Exception:
             # Fallback to projection-based default
             import cartopy.crs as ccrs
-            if hasattr(ax, 'projection') and isinstance(ax.projection, ccrs.PlateCarree):
-                return (1.0 - margin - legend_size[0], 1.0 - margin - legend_size[1])  # top-right
+
+            if hasattr(ax, "projection") and isinstance(
+                ax.projection, ccrs.PlateCarree
+            ):
+                return (
+                    1.0 - margin - legend_size[0],
+                    1.0 - margin - legend_size[1],
+                )  # top-right
             else:
                 return (margin, 1.0 - margin - legend_size[1])  # top-left
 
@@ -1549,7 +1599,6 @@ class TOADPlotter:
 #             return pos.stop
 #         return (n_rows - 1) if n_rows is not None else 0
 #     return pos
-
 
 
 def get_high_constrast_text_color(color: Union[tuple, str]) -> str:

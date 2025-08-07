@@ -102,7 +102,6 @@ class TOAD:
         """Access plotting methods."""
         return visualisation.TOADPlotter(self, config=config)
 
-
     # # ======================================================================
     # #               SET functions
     # # ======================================================================
@@ -274,7 +273,6 @@ class TOAD:
             self.data = results
             return None
 
-
     # # ======================================================================
     # #               OPTIMISE functions
     # # ======================================================================
@@ -290,7 +288,7 @@ class TOAD:
         n_trials=50,
         direction="maximize",
         log_level="WARNING",
-        show_progress_bar=True
+        show_progress_bar=True,
     ):
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
@@ -310,7 +308,7 @@ class TOAD:
                 Can be one of:
                 - callable: Custom objective function taking (td, cluster_ids, var) as arguments
                 - "median_abruptness": Median heaviside score across clusters
-                - "mean_abruptness": Mean heaviside score across clusters  
+                - "mean_abruptness": Mean heaviside score across clusters
                 - "mean_consistency": Mean consistency score across clusters
                 - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
                 - "mean_nonlinearity": Mean nonlinearity score across clusters
@@ -342,7 +340,7 @@ class TOAD:
             log_level=log_level,
             show_progress_bar=show_progress_bar,
         )
-    
+
     # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
@@ -406,12 +404,11 @@ class TOAD:
                 for data_var in self.data.data_vars
                 if "_dts" in str(data_var)
             ]
-                
-            message = f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."    
+
+            message = f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."
             if alt_shift_vars:
                 message += f" Or did you mean to use any of these?: {', '.join(alt_shift_vars)}"
             raise ValueError(message)
-            
 
     def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
         """
@@ -448,13 +445,12 @@ class TOAD:
                 for data_var in self.data.data_vars
                 if "_cluster" in str(data_var)
             ]
-                
-            message = f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."    
+
+            message = f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."
             if alt_cluster_vars:
                 message += f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
             raise ValueError(message)
 
-        
     def get_cluster_counts(self, var, exclude_noise: bool = True):
         """Returns sorted dictionary with number of cells in both space and time for each cluster.
 

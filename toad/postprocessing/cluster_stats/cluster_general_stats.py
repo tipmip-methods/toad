@@ -208,7 +208,7 @@ class ClusterGeneralStats:
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
             self.var,
-            cluster_id=cluster_id, 
+            cluster_id=cluster_id,
         )
 
         # Convert to array
@@ -218,7 +218,7 @@ class ClusterGeneralStats:
             return 0.0  # Not enough data to assess similarity
 
         # Compute R² similarity matrix # prevent warning about division by zero variance
-        with np.errstate(divide="ignore", invalid="ignore"):  
+        with np.errstate(divide="ignore", invalid="ignore"):
             r_matrix = np.corrcoef(time_series)
         r_squared_matrix = np.nan_to_num(r_matrix**2)
 
@@ -318,18 +318,17 @@ class ClusterGeneralStats:
         # Return normalized nonlinearity
         return float(rmse_cluster / avg_rmse_unclustered)
 
-
     def aggregate_cluster_scores(
         self,
         cluster_ids,
         score_method: str,
         aggregation: Union[str, Callable] = "mean",
         weights: Optional[np.ndarray] = None,
-        **kwargs
+        **kwargs,
     ) -> float:
         """
         Compute a score for multiple clusters and aggregate the results.
-        
+
         Args:
             cluster_ids: List of cluster IDs
             score_method: Name of the scoring method (e.g., "score_nonlinearity")
@@ -339,7 +338,7 @@ class ClusterGeneralStats:
         """
         method = getattr(self, score_method)
         scores = [method(cid, **kwargs) for cid in cluster_ids]
-        
+
         if callable(aggregation):
             return aggregation(scores)
         elif aggregation == "mean":
@@ -350,6 +349,3 @@ class ClusterGeneralStats:
             return float(np.average(scores, weights=weights))
         else:
             return 0
-
-
-    

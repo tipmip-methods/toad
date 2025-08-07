@@ -158,11 +158,13 @@ def compute_clusters(
 
     # apply filter
     filtered_df = df_data["dts"][df_data["dts"][shifts_label].apply(shifts_filter_func)]
-    
+
     # return empty clusters if no data points left
     if filtered_df.empty:
-        logger.warning(f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}")
-            
+        logger.warning(
+            f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
+        )
+
         clusters = data[var].copy().rename(output_label)
         clusters.data[:] = -1
         clusters.attrs = {}
@@ -183,7 +185,7 @@ def compute_clusters(
             xr.merge([data, clusters], combine_attrs="override")
             if merge_input
             else clusters
-        ) 
+        )
 
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
@@ -260,7 +262,9 @@ def compute_clusters(
         cluster_labels = np.array(method.fit_predict(coords, weights))
     except ValueError as e:
         if "min_samples" in str(e) and "must be at most" in str(e):
-            logger.warning(f"HDBSCAN failed due to insufficient data points. Returning no clusters. Error: {e}")
+            logger.warning(
+                f"HDBSCAN failed due to insufficient data points. Returning no clusters. Error: {e}"
+            )
             cluster_labels = np.full(len(coords), -1)
         else:
             raise e

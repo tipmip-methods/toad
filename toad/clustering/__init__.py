@@ -95,6 +95,7 @@ def compute_clusters(
         - Extract spatial and temporal coordinates
         - Apply optional regridding to standardize coordinates
         - Scale coordinates using sklearn preprocessing
+        - Scale time values by time_scale_factor
         - Calculate weights from shift magnitudes
     3. Clustering
         - Store clustering parameters as metadata

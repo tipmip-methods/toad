@@ -30,7 +30,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    time_scale_factor: Optional[float] = None,
+    time_scale_factor: float = 1,
     regridder: Optional[BaseRegridder] = None,
     output_label_suffix: str = "",
     overwrite: bool = False,
@@ -53,7 +53,7 @@ def compute_clusters(
         scaler:
             The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
         time_scale_factor:
-            The factor to scale the time values by. Defaults to None.
+            The factor to scale the time values by. Defaults to 1.
         regridder:
             The regridding method to use from `toad.clustering.regridding`.
             Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
@@ -228,7 +228,7 @@ def compute_clusters(
         coords = scaler.fit_transform(coords)
 
     # Scale time values by scaler value
-    if time_scale_factor:
+    if time_scale_factor != 1:
         coords[:, 0] = coords[:, 0] * time_scale_factor
 
     # Save method params before clustering (because they might change during clustering)
@@ -305,7 +305,7 @@ def compute_clusters(
             "cluster_ids": np.unique(cluster_labels).astype(int),
             "shift_threshold": shift_threshold,
             "shift_sign": shift_sign,
-            "scaler": scaler,
+            "scaler": scaler.__class__.__name__,
             "time_scale_factor": time_scale_factor,
             "n_data_points": len(coords),
             "method_name": method.__class__.__name__,

@@ -66,6 +66,7 @@ class TOAD:
 
         # Save time dim for later
         self.time_dim = time_dim
+        assert self.time_dim in self.data.dims, f"Time dimension {self.time_dim} not found in data."
 
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")
@@ -202,7 +203,7 @@ class TOAD:
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
-        time_scale_factor: Optional[float] = None,
+        time_scale_factor: float = 1,
         regridder: Optional[BaseRegridder] = None,
         output_label_suffix: str = "",
         overwrite: bool = False,
@@ -225,7 +226,7 @@ class TOAD:
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
             time_scale_factor:
-                The factor to scale the time values by. Defaults to None.
+                The factor to scale the time values by. Defaults to 1.
             regridder:
                 The regridding method to use from `toad.clustering.regridding`.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.

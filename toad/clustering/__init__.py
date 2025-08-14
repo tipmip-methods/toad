@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from toad._version import __version__
 from typing import Optional, Union
-from toad.utils import get_space_dims, reorder_space_dims
+from toad.utils import get_space_dims, reorder_space_dims, detect_latlon_names
 
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -190,35 +190,58 @@ def compute_clusters(
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
     space_dims = reorder_space_dims(space_dims)
-    isLatLon = space_dims == ["lat", "lon"]
-    dims = [time_dim] + space_dims
 
-    # Get coordinates and weights
-    coords = (
-        filtered_df[dims].to_numpy()
-    )  # convert to numpy, usually in this order [time, lat, lon] or [time, x, y]
-    weights = np.abs(
-        filtered_df[shifts_label].to_numpy()
-    )  # take absolute value of shifts as weights
+    # Determine latitude/longitude names from dataset
+    lat_name, lon_name = detect_latlon_names(data)
+    has_latlon = lat_name is not None and lon_name is not None
 
-    # Create HealPixRegridder if regridder is None and coordinates are lat/lon
-    if regridder is None and isLatLon:
+    # Names used to index back vs. columns used to build clustering coordinates
+    index_dims = [time_dim] + space_dims
+
+    # Determine if this is a regular 1D lat/lon grid (dims are exactly lat, lon)
+    is_regular_latlon_dims = (
+        has_latlon
+        and data[lat_name].ndim == 1
+        and data[lon_name].ndim == 1
+        and (space_dims == [lat_name, lon_name] or space_dims == [lon_name, lat_name])
+    )
+
+    # Build coordinates array
+    if has_latlon and is_regular_latlon_dims:
+        # lat/lon already present as columns in filtered_df
+        coord_cols = [time_dim, lat_name, lon_name]
+        coords = filtered_df[coord_cols].to_numpy()
+    elif has_latlon:
+        # Irregular i/j grids: join 2D lat/lon onto the filtered rows keyed by spatial dims
+        lat_df = data[lat_name].to_dataframe(name=lat_name).reset_index()
+        lon_df = data[lon_name].to_dataframe(name=lon_name).reset_index()
+        latlon_df = lat_df.merge(lon_df, on=space_dims, how="inner")
+        filtered_df_ext = filtered_df.merge(latlon_df, on=space_dims, how="left")
+        coord_cols = [time_dim, lat_name, lon_name]
+        coords = filtered_df_ext[coord_cols].to_numpy()
+    else:
+        # Fall back to using raw index dimensions (e.g., x/y or i/j)
+        coords = filtered_df[index_dims].to_numpy()
+
+    # take absolute value of shifts as weights
+    weights = np.abs(filtered_df[shifts_label].to_numpy())
+
+    # Create HealPixRegridder only for regular 1D lat/lon grids
+    if regridder is None and is_regular_latlon_dims:
         regridder = HealPixRegridder()
-        logger.info("Created default HealPixRegridder for lat/lon coordinates")
+        logger.info("Created default HealPixRegridder for regular lat/lon coordinates")
 
-    # HealPixRegridder is only supported for lat/lon coordinates
-    if isinstance(regridder, HealPixRegridder) and not isLatLon:
-        logger.info(
-            "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
-        )
+    # HealPixRegridder is not used for irregular (e.g., i/j) grids
+    if isinstance(regridder, HealPixRegridder) and not is_regular_latlon_dims:
+        logger.info("HealPixRegridder ignored for non-regular grids.")
         regridder = None
 
     # Regrid and scale
     if regridder:
         coords, weights = regridder.regrid(coords, weights)
 
-    # If lat/lon, convert to Cartesian (time, x, y, z) coordinates
-    if isLatLon:
+    # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
+    if has_latlon:
         coords = geodetic_to_cartesian(
             time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
         )
@@ -282,22 +305,14 @@ def compute_clusters(
     )
 
     # Convert back to xarray DataArray
-    df_dims = (
-        data[dims].to_dataframe().reset_index()
-    )  # create a pandas df with original dims
-    df_dims[output_label] = -1  # Initialize cluster column with -1
-    df_dims.loc[filtered_df.index, output_label] = (
-        cluster_labels  # Assign cluster labels to the dataframe
-    )
-    clusters = df_dims.set_index(
-        dims
-    ).to_xarray()  # Convert dataframe to xarray (DataSet)
-    clusters = clusters[output_label]
+    df_dims = df_data["dts"][index_dims].copy()
+    df_dims[output_label] = -1
+    df_dims.loc[filtered_df.index, output_label] = cluster_labels
+    clusters = df_dims.set_index(index_dims).to_xarray()[output_label]
 
     # Transpose if dimensions don't match
-    if clusters.sizes.keys() != data[dims].sizes.keys():
-        print("transposing")
-        clusters = clusters.transpose(*data[dims].sizes.keys())
+    if clusters.dims != data[var].dims:
+        clusters = clusters.transpose(*data[var].dims)
 
     # Save details as attributes
     clusters.attrs.update(

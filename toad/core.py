@@ -66,7 +66,9 @@ class TOAD:
 
         # Save time dim for later
         self.time_dim = time_dim
-        assert self.time_dim in self.data.dims, f"Time dimension {self.time_dim} not found in data."
+        assert self.time_dim in self.data.dims, (
+            f"Time dimension {self.time_dim} not found in data."
+        )
 
         # Initialize the logger for the TOAD object
         self.logger = logging.getLogger("TOAD")

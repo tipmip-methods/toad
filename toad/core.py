@@ -99,7 +99,7 @@ class TOAD:
         """Representation of the TOAD object in html.
 
         A brief description on which variables the shift detection and/or clustering has been computed, followed by the conventional html representation of the self.data xarray-Dataset.
-        
+
         TODO: need improvements for when multiple shift or cluster variables have been computed from the same base variable. Use source_variable attribute in _dts vars and shifts_variable attribute in _cluster vars to identify the base variable.
         """
 
@@ -110,10 +110,10 @@ class TOAD:
         # Get all variables that have either shifts or clusters
         shift_vars = set(var.removesuffix("_dts") for var in self.shift_vars)
         cluster_vars = set(var.removesuffix("_cluster") for var in self.cluster_vars)
-        
+
         # Get all variables that have either shifts or clusters
         all_processed_vars = shift_vars | cluster_vars
-        
+
         # Create variable status table if there are any processed variables
         variable_table = ""
         if all_processed_vars:
@@ -121,8 +121,10 @@ class TOAD:
             for var in sorted(all_processed_vars):
                 shifts_status = "✅" if var in shift_vars else "❌"
                 clusters_status = "✅" if var in cluster_vars else "❌"
-                table_rows.append(f"<tr><td style='padding: 8px 15px;text-align: left; border: 1px solid #e9ecef;'><strong>{var}</strong></td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{shifts_status}</td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{clusters_status}</td></tr>")
-            
+                table_rows.append(
+                    f"<tr><td style='padding: 8px 15px;text-align: left; border: 1px solid #e9ecef;'><strong>{var}</strong></td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{shifts_status}</td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{clusters_status}</td></tr>"
+                )
+
             variable_table = f"""
             <div style='margin: 10px 0px;'>
                 <table style='border-collapse: collapse; margin: 8px 0; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
@@ -134,7 +136,7 @@ class TOAD:
                         </tr>
                     </thead>
                     <tbody style='background-color: white;'>
-                        {''.join(table_rows)}
+                        {"".join(table_rows)}
                     </tbody>
                 </table>
             </div>
@@ -145,11 +147,14 @@ class TOAD:
         # try:
         # Get the path to the toad.png file using os.path
         current_dir = os.path.dirname(__file__)
-        logo_path = os.path.join(current_dir, "..", "docs", "source", "resources", "toad.png")
+        logo_path = os.path.join(
+            current_dir, "..", "docs", "source", "resources", "toad.png"
+        )
         logo_path = os.path.abspath(logo_path)
-        
+
         try:
-            import base64 # import needed here
+            import base64  # import needed here
+
             if os.path.exists(logo_path):
                 with open(logo_path, "rb") as img_file:
                     img_data = base64.b64encode(img_file.read()).decode()

@@ -124,7 +124,7 @@ def compute_shifts(
 
     # add git version
     shifts.attrs["toad_version"] = __version__
-    
+
     # store original variable name
     shifts.attrs["source_variable"] = var
 

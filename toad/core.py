@@ -95,6 +95,80 @@ class TOAD:
             f"Time dimension {self.time_dim} not found in data."
         )
 
+    def _repr_html_(self):
+        """Representation of the TOAD object in html.
+
+        A brief description on which variables the shift detection and/or clustering has been computed, followed by the conventional html representation of the self.data xarray-Dataset.
+        
+        TODO: need improvements for when multiple shift or cluster variables have been computed from the same base variable. Use source_variable attribute in _dts vars and shifts_variable attribute in _cluster vars to identify the base variable.
+        """
+
+        # Get the xarray dataset HTML representation
+        ds_repr = self.data._repr_html_()
+
+        # Extract shift and cluster variables
+        # Get all variables that have either shifts or clusters
+        shift_vars = set(var.removesuffix("_dts") for var in self.shift_vars)
+        cluster_vars = set(var.removesuffix("_cluster") for var in self.cluster_vars)
+        
+        # Get all variables that have either shifts or clusters
+        all_processed_vars = shift_vars | cluster_vars
+        
+        # Create variable status table if there are any processed variables
+        variable_table = ""
+        if all_processed_vars:
+            table_rows = []
+            for var in sorted(all_processed_vars):
+                shifts_status = "✅" if var in shift_vars else "❌"
+                clusters_status = "✅" if var in cluster_vars else "❌"
+                table_rows.append(f"<tr><td style='padding: 8px 15px;text-align: left; border: 1px solid #e9ecef;'><strong>{var}</strong></td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{shifts_status}</td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{clusters_status}</td></tr>")
+            
+            variable_table = f"""
+            <div style='margin: 10px 0px;'>
+                <table style='border-collapse: collapse; margin: 8px 0; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                    <thead>
+                        <tr style='background-color: #f8f9fa;'>
+                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: left; color: #495057;'>Variable</th>
+                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: center; color: #495057;'>Shifts</th>
+                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: center; color: #495057;'>Clusters</th>
+                        </tr>
+                    </thead>
+                    <tbody style='background-color: white;'>
+                        {''.join(table_rows)}
+                    </tbody>
+                </table>
+            </div>
+            """
+
+        # Try to load and encode the TOAD logo
+        logo_html = ""
+        # try:
+        # Get the path to the toad.png file using os.path
+        current_dir = os.path.dirname(__file__)
+        logo_path = os.path.join(current_dir, "..", "docs", "source", "resources", "toad.png")
+        logo_path = os.path.abspath(logo_path)
+        
+        try:
+            import base64 # import needed here
+            if os.path.exists(logo_path):
+                with open(logo_path, "rb") as img_file:
+                    img_data = base64.b64encode(img_file.read()).decode()
+                    logo_html = f'<img src="data:image/png;base64,{img_data}" style="height: 40px; margin-right: 10px; vertical-align: middle;">'
+        except Exception:
+            pass
+
+        # Wrap everything in a TOAD container
+        html = f"""
+        <div style='border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; margin: 5px 0; background-color: #fafafa;'>
+            <h2 style='margin-bottom: 0px; display: flex; align-items: center;'>{logo_html}TOAD object</h2>
+            {variable_table}
+            <p style='font-size: 0.9em; color: #666; margin: 16px 0;'>Hint: to access the xr.dataset call <code>td.data</code></p>
+            {ds_repr}
+        </div>
+        """
+
+        return html
+
     # # ======================================================================
     # #               Module functions
     # # ======================================================================

@@ -128,6 +128,9 @@ def compute_shifts(
     # store original variable name
     shifts.attrs["source_variable"] = var
 
+    # store original variable name
+    shifts.attrs["source_variable"] = var
+
     # 6. Merge the detected shifts with the original data
     if merge_input:
         return xr.merge([data, shifts], combine_attrs="override")  # xr.dataset

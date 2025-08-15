@@ -8,6 +8,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.axes import Axes
 from typing import Union, Tuple, Optional, List, Any, overload, Literal
 from dataclasses import dataclass
+from toad.utils import detect_latlon_names, is_regular_grid
 
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
@@ -331,15 +332,8 @@ class TOADPlotter:
         acol: str,
         scale: float = 1,
         relative_coords: bool = False,
+        transform: Optional[ccrs.Projection] = None,
     ):
-        # Handle coordinate transforms for different projections
-        if not relative_coords and not isinstance(
-            ax.projection, (ccrs.SouthPolarStereo, ccrs.NorthPolarStereo)
-        ):
-            transform = ccrs.PlateCarree()
-        else:
-            transform = None
-
         black_or_white = get_high_constrast_text_color(acol)
         t = ax.annotate(
             text=str(cluster_id),
@@ -363,28 +357,6 @@ class TOADPlotter:
             )
         )
 
-    def cluster_map_contour(
-        self,
-        var: str,
-        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
-        projection: Optional[str] = None,
-        ax: Optional[Axes] = None,
-        color: Optional[str] = None,
-        cmap: Union[str, ListedColormap] = default_cmap,
-        add_labels: bool = True,
-        **kwargs: Any,
-    ) -> Tuple[matplotlib.figure.Figure, Axes]:
-        return self.cluster_map(
-            var,
-            cluster_ids,
-            projection,
-            ax,
-            color,
-            cmap,
-            only_contour=True,
-            add_labels=add_labels,
-        )
-
     def cluster_map(
         self,
         var: str,
@@ -396,7 +368,6 @@ class TOADPlotter:
         add_contour: bool = True,
         only_contour: bool = False,
         add_labels: bool = True,
-        unclustered_color: Optional[str] = None,
         remaining_clusters_cmap: Optional[
             Union[str, matplotlib.colors.Colormap]
         ] = "jet",
@@ -419,7 +390,6 @@ class TOADPlotter:
             only_contour: If True, only plot contour lines (no fill).
             add_labels: If True, add cluster ID labels using a geometrically
                         central point (`central_point_for_labeling`).
-            unclustered_color: Optional color to fill unclustered grid cells.
             remaining_clusters_cmap: Colormap for remaining clusters. Can be:
                 - A string (e.g., "jet", "viridis") to use a built-in colormap.
                 - A matplotlib colormap object.
@@ -489,15 +459,13 @@ class TOADPlotter:
                 color_list = [base_cmap(i) for i in np.linspace(0, 1, len(cluster_ids))]
             elif isinstance(cmap, ListedColormap):
                 # Extract colors from the ListedColormap
-                cmap_colors = cmap.colors
+                cmap_colors: list = cmap.colors  # type: ignore
                 # Repeat colors if needed
                 if len(cmap_colors) < len(cluster_ids):
                     cmap_colors = cmap_colors * (
                         len(cluster_ids) // len(cmap_colors) + 1
                     )
                 color_list = cmap_colors[: len(cluster_ids)]
-            else:
-                raise TypeError("cmap must be a string or ListedColormap")
 
         # Create a ListedColormap for each cluster
         cmap_list = [ListedColormap([c]) for c in color_list]
@@ -517,15 +485,24 @@ class TOADPlotter:
                 else self.td.get_spatial_cluster_mask(var, id)
             )
 
+            # prepare common plot parameters
             plot_params = {
                 "ax": ax,
                 "cmap": cluster_cmap,
                 "add_colorbar": False,
-                "transform": ccrs.PlateCarree()
-                if "lat" in self.td.space_dims
-                else None,
+                "alpha": 0.75,
+                "transform": None,
                 **kwargs,
             }
+
+            lat_name, lon_name = detect_latlon_names(self.td.data)
+            has_latlon = lat_name is not None and lon_name is not None
+
+            # plot on lat/lon coordinates if available
+            if has_latlon:
+                plot_params["x"] = lon_name
+                plot_params["y"] = lat_name
+                plot_params["transform"] = ccrs.PlateCarree()
 
             if not only_contour:
                 # Don't plot values outside mask: FALSE -> np.nan
@@ -533,11 +510,12 @@ class TOADPlotter:
                     **plot_params,
                 )
 
-            if only_contour or add_contour:
+            # contour plots don't work for irregular grids
+            if (only_contour or add_contour) and is_regular_grid(self.td.data):
                 if add_contour:
                     # Make contour color darker
-                    contour_color = cluster_cmap.colors[0]
-                    color_rgba = to_rgba(contour_color)
+                    contour_color = cluster_cmap.colors[0]  # type: ignore
+                    color_rgba = to_rgba(contour_color)  # type: ignore
                     darker_color = (
                         color_rgba[0] * 0.8,
                         color_rgba[1] * 0.8,
@@ -561,7 +539,14 @@ class TOADPlotter:
                     y, x = self.td.cluster_stats(var).space.footprint_median(id)
 
                 if not (np.isnan(x) or np.isnan(y)):
-                    self._cluster_annotate(ax, x, y, id, cluster_cmap.colors[0])
+                    self._cluster_annotate(
+                        ax,
+                        x,
+                        y,
+                        id,
+                        cluster_cmap.colors[0],
+                        transform=plot_params["transform"],
+                    )  # type: ignore
                 else:
                     print(
                         f"Warning: Could not find valid label position for cluster {id}"
@@ -579,13 +564,9 @@ class TOADPlotter:
                 mask = self.td.get_cluster_mask(var, remaining_cluster_ids)
                 cl = self.td.get_clusters(var).where(mask)
 
+                plot_params["cmap"] = remaining_clusters_cmap
                 cl.max(dim=self.td.time_dim).plot(
-                    ax=ax,
-                    cmap=remaining_clusters_cmap,
-                    add_colorbar=False,
-                    transform=ccrs.PlateCarree()
-                    if "lat" in self.td.space_dims
-                    else None,
+                    **plot_params,
                 )  # type: ignore
 
                 # Pass the colormap to the legend function
@@ -599,20 +580,6 @@ class TOADPlotter:
                     if isinstance(remaining_clusters_cmap, str)
                     else remaining_clusters_cmap,
                 )
-
-        # Plot unclustered cells
-        if unclustered_color:
-            unclustered_mask = self.td.get_permanent_unclustered_mask(var).where(
-                ~self.td.data[var].isnull().all(dim=self.td.time_dim), 0
-            )  # unclustered cells with data
-            unclustered_mask = unclustered_mask.where(unclustered_mask > 0, np.nan)
-            unclustered_mask.plot(
-                cmap=ListedColormap([unclustered_color]),
-                add_colorbar=False,
-                ax=ax,
-                transform=ccrs.PlateCarree() if "lat" in self.td.space_dims else None,
-            )  # type: ignore
-
         return fig, ax
 
     def cluster_maps(
@@ -1345,7 +1312,9 @@ class TOADPlotter:
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    def shifts_distribution(self, figsize: Optional[tuple] = None):
+    def shifts_distribution(
+        self, figsize: Optional[tuple] = None, yscale: str = "log", bins=20
+    ):
         """Plot histograms showing the distribution of shifts for each shift variable."""
 
         if figsize is None:
@@ -1356,19 +1325,21 @@ class TOADPlotter:
             axs = np.array([axs])
 
         if len(axs) > 1:
-            self._remove_ticks(axs[:-1])
-            self._remove_ticks(axs[-1], keep_x=True)
-            self._remove_spines(axs[:-1])
-            self._remove_spines(axs[-1], spines=["left", "right", "top"])
+            self._remove_ticks(axs[:-1], keep_y=True)
+            self._remove_spines(axs[:-1], spines=["right", "top"])
+
+        self._remove_spines(axs[-1], spines=["right", "top"])
+
         for i in range(self.td.shift_vars.size):
             axs[i].hist(
                 self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
                 range=(-1, 1),
-                bins=20,
+                bins=bins,
             )
             axs[i].set_ylabel(
                 f"#{self.td.shift_vars[i]}", rotation=0, ha="right", va="center"
             )
+            axs[i].set_yscale(yscale)
         return fig, axs
 
     def filter_by_existing_clusters(

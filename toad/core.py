@@ -73,6 +73,10 @@ class TOAD:
         self.set_log_level(log_level)
 
     def _repr_html_(self):
+        """Representation of the TOAD object in html.
+        
+        A brief description on which variables the shift detection and/or clustering has been computed, followed by the conventional html representation of the self.data xarray-Dataset.
+        """
         split_str = "<div class='xr-obj-type'>xarray.Dataset</div>"
         ds_repr = self.data._repr_html_()
         new_repr_pieces = ds_repr.split(split_str)

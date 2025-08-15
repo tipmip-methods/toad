@@ -74,24 +74,48 @@ class TOAD:
 
     def _repr_html_(self):
         """Representation of the TOAD object in html.
-        
+
         A brief description on which variables the shift detection and/or clustering has been computed, followed by the conventional html representation of the self.data xarray-Dataset.
         """
         split_str = "<div class='xr-obj-type'>xarray.Dataset</div>"
         ds_repr = self.data._repr_html_()
         new_repr_pieces = ds_repr.split(split_str)
 
-        shift_vars = f"{[var.removesuffix('_dts') for var in self.data.variables if '_dts' in var]}".replace("\'","").replace("[","").replace("]","")   
-        cluster_vars = f"{[var.removesuffix('_cluster') for var in self.data.variables if '_cluster' in var]}".replace("\'","").replace("[","").replace("]","")
+        shift_vars = (
+            f"{[var.removesuffix('_dts') for var in self.data.variables if '_dts' in var]}".replace(
+                "'", ""
+            )
+            .replace("[", "")
+            .replace("]", "")
+        )
+        cluster_vars = (
+            f"{[var.removesuffix('_cluster') for var in self.data.variables if '_cluster' in var]}".replace(
+                "'", ""
+            )
+            .replace("[", "")
+            .replace("]", "")
+        )
 
-        shift_text = f"&emsp; with shifts computed on <strong>{shift_vars}</strong> " if shift_vars else "&emsp; with no shifts computed "
-        cluster_text = f"and clusters on <strong>{cluster_vars}</strong></div>" if cluster_vars else "and no clustering yet</div>"
+        shift_text = (
+            f"&emsp; with shifts computed on <strong>{shift_vars}</strong> "
+            if shift_vars
+            else "&emsp; with no shifts computed "
+        )
+        cluster_text = (
+            f"and clusters on <strong>{cluster_vars}</strong></div>"
+            if cluster_vars
+            else "and no clustering yet</div>"
+        )
 
-        new_repr = new_repr_pieces[0] + \
-                    "<div class='xr-obj-type'>TOAD object (extends xarray.Dataset)<br>" + \
-                    shift_text + cluster_text + new_repr_pieces[1]
+        new_repr = (
+            new_repr_pieces[0]
+            + "<div class='xr-obj-type'>TOAD object (extends xarray.Dataset)<br>"
+            + shift_text
+            + cluster_text
+            + new_repr_pieces[1]
+        )
 
-        return new_repr 
+        return new_repr
 
     # # ======================================================================
     # #               Module functions

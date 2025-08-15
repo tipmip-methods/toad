@@ -64,7 +64,6 @@ def compute_shifts(
             return data
 
     # 2. Get var from data
-    logger.info(f"extracting variable {var} from Dataset")
     data_array = data.get(var)
 
     # check if var is in data
@@ -94,7 +93,7 @@ def compute_shifts(
     }
 
     # 3. Apply the detector
-    logger.info(f"applying detector {method} to data")
+    logger.info(f"Applying detector {method.__class__.__name__} to {var}")
     shifts = xr.apply_ufunc(
         method.fit_predict,
         data_array,

@@ -20,7 +20,7 @@ from toad import (
     preprocessing,
     optimising,
 )
-from toad.utils import get_space_dims, is_equal_to, contains_value
+from toad.utils import get_space_dims, is_equal_to, contains_value, detect_latlon_names, is_regular_grid
 from toad.regridding.base import BaseRegridder
 
 
@@ -33,13 +33,13 @@ class TOAD:
         data : (xr.Dataset or str)
             The input data. If a string, it is interpreted as a path to a netCDF file.
         log_level : (str)
-            The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'WARNING'.
+            The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'INFO'.
     """
 
     data: xr.Dataset
 
     def __init__(
-        self, data: Union[xr.Dataset, str], time_dim: str = "time", log_level="WARNING"
+        self, data: Union[xr.Dataset, str], time_dim: str = "time", log_level="INFO"
     ):
         # load data from path if string
         if isinstance(data, str):
@@ -52,28 +52,42 @@ class TOAD:
         elif isinstance(data, (xr.Dataset, xr.DataArray)):
             self.data = data  # Original data
 
+        # Initialize the logger for the TOAD object
+        self.logger = logging.getLogger("TOAD")
+        self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
+        self.set_log_level(log_level)
+
+        if len(self.data.dims) != 3:
+            raise ValueError("Data must be 3-dimensional: time/forcing x space x space")
+
         # rename longitude and latitude to lon and lat
         if "longitude" in self.data.dims:
             self.data = self.data.rename({"longitude": "lon"})
-            logging.info("Renamed longitude to lon")
+            self.logger.info("Renamed longitude to lon")
         if "latitude" in self.data.dims:
             self.data = self.data.rename({"latitude": "lat"})
-            logging.info("Renamed latitude to lat")
+            self.logger.info("Renamed latitude to lat")
 
-        # TODO: check that self.space_dims returns two values only, if not, raise eror and tell user to specify space_dims manually (new param in TOAD init)
-        # TODO: Check that the time_dim exists, otherwise raise error and tell user to specify time_dim manually (param in TOAD init)
-        # TODO: warn user if their variables contain _dts or _cluster, as variables with such names have special meaning in TOAD and may be overwritten
+
+        if len(self.shift_vars) > 0:
+            self.logger.warning(
+                f"Interpreting {self.shift_vars} as TOAD-computed shifts variable{'s' if len(self.shift_vars) > 1 else ''}."
+            )
+
+        if len(self.cluster_vars) > 0:
+            self.logger.warning(
+                f"Interpreting {self.cluster_vars} as TOAD-computed cluster variable{'s' if len(self.cluster_vars) > 1 else ''}."
+            )
+
+        lat, lon = detect_latlon_names(self.data)
+        if (lat and lat not in self.data.dims) and (lon and lon not in self.data.dims):
+            self.logger.info("Found lat/lon coordinates (not dimensions). TOAD will use these for clustering and plotting instead of native dimensions. Drop lat/lon variables to use native coordinates.")
 
         # Save time dim for later
         self.time_dim = time_dim
         assert self.time_dim in self.data.dims, (
             f"Time dimension {self.time_dim} not found in data."
         )
-
-        # Initialize the logger for the TOAD object
-        self.logger = logging.getLogger("TOAD")
-        self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
-        self.set_log_level(log_level)
 
     # # ======================================================================
     # #               Module functions
@@ -142,7 +156,7 @@ class TOAD:
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
 
-        self.logger.info(f"Logging level set to {level}")
+        self.logger.debug(f"Logging level set to {level}")
 
     # # ======================================================================
     # #               COMPUTE functions

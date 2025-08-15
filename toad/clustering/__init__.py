@@ -190,24 +190,19 @@ def compute_clusters(
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
     space_dims = reorder_space_dims(space_dims)
-
-    # Determine latitude/longitude names from dataset
-    lat_name, lon_name = detect_latlon_names(data)
-    has_latlon = lat_name is not None and lon_name is not None
-
-    # Names used to index back vs. columns used to build clustering coordinates
     index_dims = [time_dim] + space_dims
 
-    # Determine if this is a regular 1D lat/lon grid (dims are exactly lat, lon)
-    is_regular_latlon_dims = (
-        has_latlon
-        and data[lat_name].ndim == 1
-        and data[lon_name].ndim == 1
-        and (space_dims == [lat_name, lon_name] or space_dims == [lon_name, lat_name])
-    )
+    # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
+    lat_name, lon_name = detect_latlon_names(data)
+    
+    # check if dataset has lat/lon (as dims, or coords, or variables)
+    has_latlon = lat_name is not None and lon_name is not None
+
+    # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
+    is_latlon_dims = space_dims == [lat_name, lon_name]
 
     # Build coordinates array
-    if has_latlon and is_regular_latlon_dims:
+    if is_latlon_dims:
         # lat/lon already present as columns in filtered_df
         coord_cols = [time_dim, lat_name, lon_name]
         coords = filtered_df[coord_cols].to_numpy()
@@ -220,24 +215,19 @@ def compute_clusters(
         coord_cols = [time_dim, lat_name, lon_name]
         coords = filtered_df_ext[coord_cols].to_numpy()
     else:
-        # Fall back to using raw index dimensions (e.g., x/y or i/j)
+        # No lat/lon (as dims or coords or variables) → Fall back to using raw index dimensions (e.g., x/y or i/j)
         coords = filtered_df[index_dims].to_numpy()
 
     # take absolute value of shifts as weights
     weights = np.abs(filtered_df[shifts_label].to_numpy())
 
     # Create HealPixRegridder only for regular 1D lat/lon grids
-    if regridder is None and is_regular_latlon_dims:
+    if regridder is None and is_latlon_dims:
         regridder = HealPixRegridder()
-        logger.info("Created default HealPixRegridder for regular lat/lon coordinates")
-
-    # HealPixRegridder is not used for irregular (e.g., i/j) grids
-    if isinstance(regridder, HealPixRegridder) and not is_regular_latlon_dims:
-        logger.info("HealPixRegridder ignored for non-regular grids.")
-        regridder = None
 
     # Regrid and scale
     if regridder:
+        logger.info(f"Regridding {shifts_label} with {regridder.__class__.__name__}")
         coords, weights = regridder.regrid(coords, weights)
 
     # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
@@ -280,7 +270,7 @@ def compute_clusters(
         )
 
     # Perform clustering
-    logger.info(f"Applying clustering method {method}")
+    logger.info(f"Applying clusterer {method.__class__.__name__} to {shifts_label}")
     try:
         cluster_labels = np.array(method.fit_predict(coords, weights))
     except ValueError as e:
@@ -329,6 +319,8 @@ def compute_clusters(
             **regridder_params,
         }
     )
+
+    logger.info(f"Detected {len(np.unique(cluster_labels)) - 1} clusters")
 
     # Merge the cluster labels back into the original data
     return (

@@ -14,7 +14,6 @@ def test_params():
             - min_cluster_size (int): Minimum size of clusters to be identified.
             - shifts_threshold (float): Threshold for filtering shifts.
             - expected_results (dict): Expected cluster counts for validation.
-            - expected_nside (int): Expected nside value for the regridder.
     """
     return {
         "lat": 6,

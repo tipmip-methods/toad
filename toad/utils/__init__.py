@@ -55,6 +55,67 @@ def reorder_space_dims(space_dims: list[str]) -> list[str]:
     return space_dims
 
 
+def detect_latlon_names(data: xr.Dataset) -> tuple[str | None, str | None]:
+    """Detect latitude and longitude coordinate names in a dataset.
+
+    Searches for common latitude/longitude names in coordinates first,
+    then falls back to data variables.
+
+    Args:
+        data: xarray Dataset to search
+
+    Returns:
+        Tuple of (lat_name, lon_name). Either can be None if not found.
+    """
+    lat_candidates = ["lat", "latitude"]
+    lon_candidates = ["lon", "longitude"]
+
+    # Try coordinates first
+    lat_name = next((n for n in lat_candidates if n in data.coords), None)
+    if lat_name is None:
+        # Fall back to data variables
+        lat_name = next((n for n in lat_candidates if n in data.variables), None)
+
+    lon_name = next((n for n in lon_candidates if n in data.coords), None)
+    if lon_name is None:
+        # Fall back to data variables
+        lon_name = next((n for n in lon_candidates if n in data.variables), None)
+
+    return lat_name, lon_name
+
+
+def is_regular_grid(data: xr.Dataset) -> bool:
+    """Check if a dataset has a regular grid.
+
+    Args:
+        data: xarray Dataset to check
+
+    Returns:
+        True if the grid is regular (1D lat/lon), False otherwise
+    """
+    # Get lat/lon coordinate names
+    lat_name, lon_name = detect_latlon_names(data)
+
+    # Check if lat/lon coordinates are present
+    if lat_name is None or lon_name is None:
+        # No lat/lon coordinates → likely Cartesian/projected → regular
+        return True
+
+    # Check if both lat/lon coordinates are 1D (regular grid)
+    try:
+        lat = data[
+            lat_name
+        ]  # Use data[] instead of coords[] to handle both coords and data vars
+        lon = data[lon_name]
+
+        # Regular grid: both lat and lon must be 1D
+        return lat.ndim == 1 and lon.ndim == 1
+
+    except KeyError:
+        # lat_name or lon_name not found in dataset
+        return False
+
+
 def deprecated(message=None):
     """Mark functions as deprecated with @deprecated decorator"""
 

@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from toad._version import __version__
 from typing import Optional, Union
-from toad.utils import get_space_dims, reorder_space_dims
+from toad.utils import get_space_dims, reorder_space_dims, detect_latlon_names
 
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -30,7 +30,7 @@ def compute_clusters(
     scaler: Optional[
         Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
     ] = StandardScaler(),
-    time_scale_factor: Optional[float] = None,
+    time_scale_factor: float = 1,
     regridder: Optional[BaseRegridder] = None,
     output_label_suffix: str = "",
     overwrite: bool = False,
@@ -53,7 +53,7 @@ def compute_clusters(
         scaler:
             The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
         time_scale_factor:
-            The factor to scale the time values by. Defaults to None.
+            The factor to scale the time values by. Defaults to 1.
         regridder:
             The regridding method to use from `toad.clustering.regridding`.
             Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
@@ -190,35 +190,48 @@ def compute_clusters(
     # Handle dimensions
     space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
     space_dims = reorder_space_dims(space_dims)
-    isLatLon = space_dims == ["lat", "lon"]
-    dims = [time_dim] + space_dims
+    index_dims = [time_dim] + space_dims
 
-    # Get coordinates and weights
-    coords = (
-        filtered_df[dims].to_numpy()
-    )  # convert to numpy, usually in this order [time, lat, lon] or [time, x, y]
-    weights = np.abs(
-        filtered_df[shifts_label].to_numpy()
-    )  # take absolute value of shifts as weights
+    # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
+    lat_name, lon_name = detect_latlon_names(data)
 
-    # Create HealPixRegridder if regridder is None and coordinates are lat/lon
-    if regridder is None and isLatLon:
+    # check if dataset has lat/lon (as dims, or coords, or variables)
+    has_latlon = lat_name is not None and lon_name is not None
+
+    # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
+    is_latlon_dims = space_dims == [lat_name, lon_name]
+
+    # Build coordinates array
+    if is_latlon_dims:
+        # lat/lon already present as columns in filtered_df
+        coord_cols = [time_dim, lat_name, lon_name]
+        coords = filtered_df[coord_cols].to_numpy()
+    elif has_latlon:
+        # Irregular i/j grids: join 2D lat/lon onto the filtered rows keyed by spatial dims
+        lat_df = data[lat_name].to_dataframe(name=lat_name).reset_index()
+        lon_df = data[lon_name].to_dataframe(name=lon_name).reset_index()
+        latlon_df = lat_df.merge(lon_df, on=space_dims, how="inner")
+        filtered_df_ext = filtered_df.merge(latlon_df, on=space_dims, how="left")
+        coord_cols = [time_dim, lat_name, lon_name]
+        coords = filtered_df_ext[coord_cols].to_numpy()
+    else:
+        # No lat/lon (as dims or coords or variables) → Fall back to using raw index dimensions (e.g., x/y or i/j)
+        coords = filtered_df[index_dims].to_numpy()
+
+    # take absolute value of shifts as weights
+    weights = np.abs(filtered_df[shifts_label].to_numpy())
+
+    # Create HealPixRegridder only for regular 1D lat/lon grids
+    if regridder is None and is_latlon_dims:
         regridder = HealPixRegridder()
-        logger.info("Created default HealPixRegridder for lat/lon coordinates")
-
-    # HealPixRegridder is only supported for lat/lon coordinates
-    if isinstance(regridder, HealPixRegridder) and not isLatLon:
-        logger.info(
-            "HealPixRegridder is only supported for lat/lon coordinates. Ignoring regridder."
-        )
-        regridder = None
 
     # Regrid and scale
     if regridder:
+        logger.info(f"Regridding {shifts_label} with {regridder.__class__.__name__}")
         coords, weights = regridder.regrid(coords, weights)
 
-    # If lat/lon, convert to Cartesian (time, x, y, z) coordinates
-    if isLatLon:
+    # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
+    if has_latlon:
         coords = geodetic_to_cartesian(
             time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
         )
@@ -228,7 +241,7 @@ def compute_clusters(
         coords = scaler.fit_transform(coords)
 
     # Scale time values by scaler value
-    if time_scale_factor:
+    if time_scale_factor != 1:
         coords[:, 0] = coords[:, 0] * time_scale_factor
 
     # Save method params before clustering (because they might change during clustering)
@@ -257,7 +270,7 @@ def compute_clusters(
         )
 
     # Perform clustering
-    logger.info(f"Applying clustering method {method}")
+    logger.info(f"Applying clusterer {method.__class__.__name__} to {shifts_label}")
     try:
         cluster_labels = np.array(method.fit_predict(coords, weights))
     except ValueError as e:
@@ -282,22 +295,14 @@ def compute_clusters(
     )
 
     # Convert back to xarray DataArray
-    df_dims = (
-        data[dims].to_dataframe().reset_index()
-    )  # create a pandas df with original dims
-    df_dims[output_label] = -1  # Initialize cluster column with -1
-    df_dims.loc[filtered_df.index, output_label] = (
-        cluster_labels  # Assign cluster labels to the dataframe
-    )
-    clusters = df_dims.set_index(
-        dims
-    ).to_xarray()  # Convert dataframe to xarray (DataSet)
-    clusters = clusters[output_label]
+    df_dims = df_data["dts"][index_dims].copy()
+    df_dims[output_label] = -1
+    df_dims.loc[filtered_df.index, output_label] = cluster_labels
+    clusters = df_dims.set_index(index_dims).to_xarray()[output_label]
 
     # Transpose if dimensions don't match
-    if clusters.sizes.keys() != data[dims].sizes.keys():
-        print("transposing")
-        clusters = clusters.transpose(*data[dims].sizes.keys())
+    if clusters.dims != data[var].dims:
+        clusters = clusters.transpose(*data[var].dims)
 
     # Save details as attributes
     clusters.attrs.update(
@@ -305,7 +310,7 @@ def compute_clusters(
             "cluster_ids": np.unique(cluster_labels).astype(int),
             "shift_threshold": shift_threshold,
             "shift_sign": shift_sign,
-            "scaler": scaler,
+            "scaler": scaler.__class__.__name__,
             "time_scale_factor": time_scale_factor,
             "n_data_points": len(coords),
             "method_name": method.__class__.__name__,
@@ -314,6 +319,8 @@ def compute_clusters(
             **regridder_params,
         }
     )
+
+    logger.info(f"Detected {len(np.unique(cluster_labels)) - 1} clusters")
 
     # Merge the cluster labels back into the original data
     return (

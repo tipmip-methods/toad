@@ -124,6 +124,12 @@ def compute_shifts(
 
     # add git version
     shifts.attrs["toad_version"] = __version__
+    
+    # store original variable name
+    shifts.attrs["source_variable"] = var
+
+    # store original variable name
+    shifts.attrs["source_variable"] = var
 
     # 6. Merge the detected shifts with the original data
     if merge_input:

@@ -1312,7 +1312,7 @@ class TOADPlotter:
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    def shifts_distribution(self, figsize: Optional[tuple] = None):
+    def shifts_distribution(self, figsize: Optional[tuple] = None, yscale:str="log", bins=20):
         """Plot histograms showing the distribution of shifts for each shift variable."""
 
         if figsize is None:
@@ -1323,19 +1323,21 @@ class TOADPlotter:
             axs = np.array([axs])
 
         if len(axs) > 1:
-            self._remove_ticks(axs[:-1])
-            self._remove_ticks(axs[-1], keep_x=True)
-            self._remove_spines(axs[:-1])
-            self._remove_spines(axs[-1], spines=["left", "right", "top"])
+            self._remove_ticks(axs[:-1], keep_y=True)
+            self._remove_spines(axs[:-1], spines=["right", "top"])
+
+        self._remove_spines(axs[-1], spines=["right", "top"])
+
         for i in range(self.td.shift_vars.size):
             axs[i].hist(
                 self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
                 range=(-1, 1),
-                bins=20,
+                bins=bins,
             )
             axs[i].set_ylabel(
                 f"#{self.td.shift_vars[i]}", rotation=0, ha="right", va="center"
             )
+            axs[i].set_yscale(yscale)
         return fig, axs
 
     def filter_by_existing_clusters(

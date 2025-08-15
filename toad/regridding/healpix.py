@@ -62,7 +62,7 @@ class HealPixRegridder(BaseRegridder):
             self.nside = 1 << int(
                 np.ceil(order)
             )  # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
-            logger.info(f"Automatically computed nside: {self.nside}")
+            logger.debug(f"HealPixRegridder: Automatically computed nside: {self.nside}")
 
         # Get unique lat/lon pairs and compute healpix indices once
         unique_coords = np.unique(coords[:, 1:], axis=0)  # unique lat/lon pairs

@@ -20,7 +20,12 @@ from toad import (
     preprocessing,
     optimising,
 )
-from toad.utils import get_space_dims, is_equal_to, contains_value, detect_latlon_names, is_regular_grid
+from toad.utils import (
+    get_space_dims,
+    is_equal_to,
+    contains_value,
+    detect_latlon_names,
+)
 from toad.regridding.base import BaseRegridder
 
 
@@ -68,7 +73,6 @@ class TOAD:
             self.data = self.data.rename({"latitude": "lat"})
             self.logger.info("Renamed latitude to lat")
 
-
         if len(self.shift_vars) > 0:
             self.logger.warning(
                 f"Interpreting {self.shift_vars} as TOAD-computed shifts variable{'s' if len(self.shift_vars) > 1 else ''}."
@@ -81,7 +85,9 @@ class TOAD:
 
         lat, lon = detect_latlon_names(self.data)
         if (lat and lat not in self.data.dims) and (lon and lon not in self.data.dims):
-            self.logger.info("Found lat/lon coordinates (not dimensions). TOAD will use these for clustering and plotting instead of native dimensions. Drop lat/lon variables to use native coordinates.")
+            self.logger.info(
+                "Found lat/lon coordinates (not dimensions). TOAD will use these for clustering and plotting instead of native dimensions. Drop lat/lon variables to use native coordinates."
+            )
 
         # Save time dim for later
         self.time_dim = time_dim

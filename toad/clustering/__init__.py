@@ -194,7 +194,7 @@ def compute_clusters(
 
     # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
     lat_name, lon_name = detect_latlon_names(data)
-    
+
     # check if dataset has lat/lon (as dims, or coords, or variables)
     has_latlon = lat_name is not None and lon_name is not None
 

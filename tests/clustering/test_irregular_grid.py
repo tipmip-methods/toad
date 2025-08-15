@@ -17,7 +17,7 @@ def test_params():
     return {
         "min_cluster_size": 20,
         "shifts_threshold": 0.9,
-        "expected_results": {-1: 86984, 0: 655, 1: 141}
+        "expected_results": {-1: 86984, 0: 655, 1: 141},
     }
 
 
@@ -41,9 +41,11 @@ def test_irregular_grid(test_params, toad_instance):
     # Setup
     td = toad_instance
     var = "siconc"
-    
+
     # For irregular grids, use resampling instead of coarsening
-    td.data = td.data.isel(i=slice(None, None, 4), j=slice(None, None, 4), time=slice(None, None, 2))
+    td.data = td.data.isel(
+        i=slice(None, None, 4), j=slice(None, None, 4), time=slice(None, None, 2)
+    )
 
     td.compute_shifts(var, method=ASDETECT())
 

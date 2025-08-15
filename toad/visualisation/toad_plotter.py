@@ -1312,7 +1312,9 @@ class TOADPlotter:
 
         return fig, {"map": map_ax, "timeseries": ts_axes}
 
-    def shifts_distribution(self, figsize: Optional[tuple] = None, yscale:str="log", bins=20):
+    def shifts_distribution(
+        self, figsize: Optional[tuple] = None, yscale: str = "log", bins=20
+    ):
         """Plot histograms showing the distribution of shifts for each shift variable."""
 
         if figsize is None:

@@ -32,11 +32,65 @@ class ASDETECT(ShiftsMethod):
         lmin: (Optional) The minimum segment length for detection. Defaults to 5.
         lmax: (Optional) The maximum segment length for detection. If not
             specified, it defaults to one-third of the size of the time dimension.
+        timescale: (Optional) The time scale to use for detection. It is assumed to have the same time units as the time axis of the data set the detector is used on. Exclusive argument; when used, the other args need to be None.
     """
 
-    def __init__(self, lmin=5, lmax=None):
+    def __init__(self, lmin=5, lmax=None, timescale=None):
+        assert (
+            (lmin is None and lmax is None and timescale is not None) or
+            (lmin is not None and timescale is None)),  "Define either lmin (lmax optional) OR the timescale, but not both."
         self.lmin = lmin
         self.lmax = lmax
+        self.timescale = timescale
+
+    @classmethod
+    def on_timescale(cls, timescale: float | tuple[float, float]):
+        """Create an ASDETECT instance on a specific time scale.
+
+        Args:
+            timescale: The time scale to use for detection, either a float or a tuple indicating the range of time scales. It is assumed to have the same time units as the time axis of the data set the detector is used on. 
+
+        Returns:
+            - An ASDETECT(ShiftsMethod) instance
+        """
+
+        if type(timescale) is not tuple:
+            # range the timescales to stay roughly within the same order of magnitude 
+            print(f'timescale {timescale} ->  {(timescale/2, timescale*2)};', end=' ')
+            timescale = (timescale/2, timescale*2)
+        else:
+            print(f'timescale {timescale};', end=' ')
+
+
+        return cls(lmin=None, lmax=None, timescale=timescale)
+
+    def _infer_params_from_timescale(self, times_1d):
+        """Infer the segment length parameters from the timescale.
+        
+        Args:
+            times_1d: 1D array of times
+
+        Returns:
+            lmin, lmax
+        """
+        if self.timescale:
+            dt = np.diff(times_1d)[0]
+            if (self.timescale[0] is None) or (self.timescale[1] is None):
+                # if lower/upper bound for timescale is undefined, take the minimum/maximum possible value
+                lmin = 3 if self.timescale[0] is None else int(self.timescale[0] / dt)
+                lmax = int(len(times_1d) / 3) if self.timescale[1] is None else int(self.timescale[1] / dt)
+            else:
+                lmin, lmax = int(self.timescale[0] / dt), int(self.timescale[1] / dt)
+
+            # make sure the derived limits are within the overall bounds
+            lmin = max(lmin, 3)
+            lmax = min(lmax, len(times_1d) / 3) 
+            print(f'for dt={dt:.2f} -> (lmin={lmin}, lmax={lmax})')
+        
+        else:
+            lmin, lmax = self.lmin, self.lmax
+        
+        return lmin, lmax
 
     def fit_predict(
         self,
@@ -57,15 +111,16 @@ class ASDETECT(ShiftsMethod):
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
         """
 
+        lmin, lmax = self._infer_params_from_timescale(times_1d)
+
         shifts = construct_detection_ts(
             values_1d=values_1d,
             times_1d=times_1d,
-            lmin=self.lmin,
-            lmax=self.lmax,
+            lmin=lmin,
+            lmax=lmax,
         )
 
         return shifts
-
 
 # 1D time series analysis of abrupt shifts =====================================
 @njit

@@ -50,23 +50,19 @@ def compute_shifts(
             If data is invalid or required parameters are missing
     """
 
-    # 1. Set output label
-    output_label = f"{var}_dts{output_label_suffix}"
+    """
+    Overview of the shifts detection process:
+    1. Input validation
+    2. Apply the detector
+    3. Rename the output variable
+    4. Save details as attributes
+    5. Merge the detected shifts with the original data or return the detected shifts
 
-    # Check if the output_label is already in the data
-    if output_label in data and merge_input:
-        if overwrite:
-            data = data.drop_vars(output_label)
-        else:
-            logger.warning(
-                f"{output_label} already exists. Please pass overwrite=True to overwrite it."
-            )
-            return data
-
-    # 2. Get var from data
-    data_array = data.get(var)
+    The input data is not modified.
+    """
 
     # check if var is in data
+    data_array = data.get(var)
     if data_array is None:
         raise ValueError(f"variable {var} not found in dataset!")
 
@@ -85,6 +81,19 @@ def compute_shifts(
     ):
         raise ValueError("time dimension must consist of integers or floats.")
 
+    # Set output label
+    output_label = f"{var}_dts{output_label_suffix}"
+
+    # Check if the output_label is already in the data
+    if output_label in data and merge_input:
+        if overwrite:
+            data = data.drop_vars(output_label)
+        else:
+            logger.warning(
+                f"{output_label} already exists. Please pass overwrite=True to overwrite it."
+            )
+            return data
+
     # Save method params (to be consistent with clustering structure.)
     method_params = {
         f"method_{param}": str(value)
@@ -92,7 +101,7 @@ def compute_shifts(
         if value is not None
     }
 
-    # 3. Apply the detector
+    # Apply the detector
     logger.info(f"Applying detector {method.__class__.__name__} to {var}")
     shifts = xr.apply_ufunc(
         method.fit_predict,
@@ -103,10 +112,10 @@ def compute_shifts(
         vectorize=True,
     ).transpose(*data_array.dims)
 
-    # 4. Rename the output variable
+    # Rename the output variable
     shifts = shifts.rename(output_label)
 
-    # 5. Save details as attributes
+    # Save details as attributes
     shifts.attrs.update(
         {
             "time_dim": time_dim,
@@ -125,7 +134,7 @@ def compute_shifts(
     # add git version
     shifts.attrs["toad_version"] = __version__
 
-    # 6. Merge the detected shifts with the original data
+    # Merge the detected shifts with the original data
     if merge_input:
         return xr.merge([data, shifts], combine_attrs="override")  # xr.dataset
     else:

@@ -377,7 +377,8 @@ class TOADPlotter:
         """Plot one or multiple clusters on a map.
 
         Args:
-            var: Variable name for which clusters have been computed.
+            var: Base variable name (e.g. 'temperature', will look for 
+                        'temperature_cluster') or custom cluster variable name.
             cluster_ids: Single cluster ID or list of cluster IDs to plot.
                          Defaults to all clusters (except -1) if None.
             projection: Projection to use for the map. Uses default if None.

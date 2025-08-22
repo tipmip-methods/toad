@@ -36,9 +36,9 @@ class ASDETECT(ShiftsMethod):
     """
 
     def __init__(self, lmin=5, lmax=None, timescale=None):
-        assert (
-            (lmin is None and lmax is None and timescale is not None) or
-            (lmin is not None and timescale is None)),  "Define either lmin (lmax optional) OR the timescale, but not both."
+        assert (lmin is None and lmax is None and timescale is not None) or (
+            lmin is not None and timescale is None
+        ), "Define either lmin (lmax optional) OR the timescale, but not both."
         self.lmin = lmin
         self.lmax = lmax
         self.timescale = timescale
@@ -48,25 +48,26 @@ class ASDETECT(ShiftsMethod):
         """Create an ASDETECT instance on a specific time scale.
 
         Args:
-            timescale: The time scale to use for detection, either a float or a tuple indicating the range of time scales. It is assumed to have the same time units as the time axis of the data set the detector is used on. 
+            timescale: The time scale to use for detection, either a float or a tuple indicating the range of time scales. It is assumed to have the same time units as the time axis of the data set the detector is used on.
 
         Returns:
             - An ASDETECT(ShiftsMethod) instance
         """
 
         if type(timescale) is not tuple:
-            # range the timescales to stay roughly within the same order of magnitude 
-            print(f'timescale {timescale} ->  {(timescale/2, timescale*2)};', end=' ')
-            timescale = (timescale/2, timescale*2)
+            # range the timescales to stay roughly within the same order of magnitude
+            print(
+                f"timescale {timescale} ->  {(timescale / 2, timescale * 2)};", end=" "
+            )
+            timescale = (timescale / 2, timescale * 2)
         else:
-            print(f'timescale {timescale};', end=' ')
-
+            print(f"timescale {timescale};", end=" ")
 
         return cls(lmin=None, lmax=None, timescale=timescale)
 
     def _infer_params_from_timescale(self, times_1d):
         """Infer the segment length parameters from the timescale.
-        
+
         Args:
             times_1d: 1D array of times
 
@@ -78,18 +79,22 @@ class ASDETECT(ShiftsMethod):
             if (self.timescale[0] is None) or (self.timescale[1] is None):
                 # if lower/upper bound for timescale is undefined, take the minimum/maximum possible value
                 lmin = 3 if self.timescale[0] is None else int(self.timescale[0] / dt)
-                lmax = int(len(times_1d) / 3) if self.timescale[1] is None else int(self.timescale[1] / dt)
+                lmax = (
+                    int(len(times_1d) / 3)
+                    if self.timescale[1] is None
+                    else int(self.timescale[1] / dt)
+                )
             else:
                 lmin, lmax = int(self.timescale[0] / dt), int(self.timescale[1] / dt)
 
             # make sure the derived limits are within the overall bounds
             lmin = max(lmin, 3)
-            lmax = min(lmax, len(times_1d) / 3) 
-            print(f'for dt={dt:.2f} -> (lmin={lmin}, lmax={lmax})')
-        
+            lmax = min(lmax, len(times_1d) / 3)
+            print(f"for dt={dt:.2f} -> (lmin={lmin}, lmax={lmax})")
+
         else:
             lmin, lmax = self.lmin, self.lmax
-        
+
         return lmin, lmax
 
     def fit_predict(
@@ -121,6 +126,7 @@ class ASDETECT(ShiftsMethod):
         )
 
         return shifts
+
 
 # 1D time series analysis of abrupt shifts =====================================
 @njit

@@ -54,7 +54,9 @@ class TOAD:
             self.data.attrs["title"] = os.path.basename(data).split(".")[
                 0
             ]  # store path as title for saving toad file later
-        elif isinstance(data, (xr.Dataset, xr.DataArray)):
+        elif isinstance(data, (xr.DataArray)):
+            self.data = data.to_dataset()  # convert to dataset if data is a DataArray
+        elif isinstance(data, (xr.Dataset)):
             self.data = data  # Original data
 
         # Initialize the logger for the TOAD object
@@ -996,8 +998,12 @@ class TOADAccessor:
     def __init__(self, xarray_obj):
         self._obj = xarray_obj
 
-    def to_timeseries(self):
+    def to_timeseries(self, time_dim: str = "time"):
         """Convert spatial data to timeseries format by stacking spatial dimensions.
+
+        >> Args:
+            time_dim:
+                Name of the time dimension. Defaults to "time".
 
         Returns:
             DataArray with dimensions [time, cell_xy] suitable for timeseries plotting.
@@ -1005,12 +1011,16 @@ class TOADAccessor:
         Example:
             >>> data.toad.to_timeseries().plot.line(x="time", add_legend=False, color='k', alpha=0.1);
         """
-        td = TOAD(self._obj)
+
+        # Check if time_dim is in dims
+        if time_dim not in self._obj.dims:
+            raise ValueError(f"Time dimension '{time_dim}' not found in data. Please specify a time dimension using the time_dim argument.")
+
         # Get all dims except time dim
-        non_time_dims = [d for d in self._obj.dims if d != td.time_dim]
+        non_time_dims = [d for d in self._obj.dims if d != time_dim]
 
         return (
             self._obj.stack(cell_xy=non_time_dims)
-            .transpose("cell_xy", td.time_dim)
+            .transpose("cell_xy", time_dim)
             .dropna(dim="cell_xy", how="all")
         )

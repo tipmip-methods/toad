@@ -377,7 +377,8 @@ class TOADPlotter:
         """Plot one or multiple clusters on a map.
 
         Args:
-            var: Variable name for which clusters have been computed.
+            var: Base variable name (e.g. 'temperature', will look for 
+                        'temperature_cluster') or custom cluster variable name.
             cluster_ids: Single cluster ID or list of cluster IDs to plot.
                          Defaults to all clusters (except -1) if None.
             projection: Projection to use for the map. Uses default if None.
@@ -1137,9 +1138,10 @@ class TOADPlotter:
 
     def cluster_overview(
         self,
-        cluster_var: str,
+        var: str,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = range(5),
-        plot_var: Optional[str] = None,
+        map_var: Optional[str] = None,
+        timeseries_var: Optional[str] = None,
         projection: Optional[str] = None,
         figsize: tuple = (12, 6),
         width_ratios: List[float] = [1, 1],
@@ -1158,11 +1160,13 @@ class TOADPlotter:
         Combination of a `cluster_map` and `cluster_aggregate`.
 
         Args:
-            cluster_var: Variable name used for clustering.
+            var: Variable name used for clustering.
             cluster_ids: ID or list of IDs of clusters to plot. Defaults to all
-                         clusters found for `cluster_var`.
-            plot_var: Variable name whose data to plot in the timeseries.
-                      Defaults to `cluster_var` if None.
+                         clusters found for `var`.
+            map_var: Variable name whose data to plot in the map.
+                     Defaults to `var` if None.
+            timeseries_var: Variable name whose data to plot in the timeseries.
+                            Defaults to `var` if None.
             projection: Map projection for the cluster map. Uses default if None.
             figsize: Overall figure size (width, height) in inches.
             width_ratios: List of relative widths for map vs. timeseries section
@@ -1189,15 +1193,18 @@ class TOADPlotter:
         """
 
         if not cluster_ids:
-            cluster_ids = self.td.get_cluster_ids(cluster_var)
+            cluster_ids = self.td.get_cluster_ids(var)
         elif isinstance(cluster_ids, int):
             cluster_ids = [cluster_ids]  # Convert single int to list
 
         # Filter cluster_ids to only include existing clusters
-        cluster_ids = self.filter_by_existing_clusters(cluster_ids, cluster_var)
+        cluster_ids = self.filter_by_existing_clusters(cluster_ids, var)
+
+        if map_var is None: 
+            map_var = var
 
         if len(cluster_ids) == 0:
-            raise ValueError("No clusters found for variable", cluster_var)
+            raise ValueError("No clusters found for variable", var)
 
         # Calculate layout dimensions
         n_ts = len(cluster_ids)
@@ -1251,7 +1258,7 @@ class TOADPlotter:
         # Plot map
         colors = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)
         self.cluster_map(
-            cluster_var,
+            map_var,
             cluster_ids=cluster_ids,
             color=colors[0] if len(colors) == 1 else colors,
             ax=map_ax,
@@ -1269,8 +1276,8 @@ class TOADPlotter:
 
             # Plot timeseries
             self.cluster_aggregate(
-                cluster_var=cluster_var,
-                plot_var=plot_var,
+                cluster_var=var,
+                plot_var=timeseries_var,
                 cluster_ids=[cluster_ids[i]],
                 color=colors[i],
                 ax=ax,
@@ -1306,7 +1313,7 @@ class TOADPlotter:
 
         # set title of time series axes
         ts_axes[0].set_title(
-            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(cluster_var)) else ''}"
+            f"{len(cluster_ids)} {'largest ' if len(cluster_ids) < len(self.td.get_cluster_ids(var)) else ''}"
             + f"clusters{' in ' + y_label if y_label != '' else ''}"
         )
 

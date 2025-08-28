@@ -23,7 +23,7 @@ def compute_clusters(
     var: str,
     method: ClusterMixin,
     shift_threshold: float = 0.8,
-    shift_sign: str = "absolute",
+    shift_sign: str = "absolute", # TODO: rename to shift_direction
     shifts_label: Optional[str] = None,
     time_dim: str = "time",
     space_dims: Optional[list[str]] = None,
@@ -138,10 +138,7 @@ def compute_clusters(
             return data
 
     # Extract and filter data for clustering
-    df_data = {
-        "var": data[var].to_dataframe().reset_index(),
-        "dts": data[shifts_label].to_dataframe().reset_index(),
-    }
+    df_dts = data[shifts_label].to_dataframe().reset_index()
 
     def shifts_filter_func(x):
         """Filter shifts based on sign and threshold."""
@@ -157,7 +154,7 @@ def compute_clusters(
             )
 
     # apply filter
-    filtered_df = df_data["dts"][df_data["dts"][shifts_label].apply(shifts_filter_func)]
+    filtered_df = df_dts[df_dts[shifts_label].apply(shifts_filter_func)]
 
     # return empty clusters if no data points left
     if filtered_df.empty:
@@ -276,7 +273,7 @@ def compute_clusters(
     except ValueError as e:
         if "min_samples" in str(e) and "must be at most" in str(e):
             logger.warning(
-                f"HDBSCAN failed due to insufficient data points. Returning no clusters. Error: {e}"
+                f"Clustering failed due to insufficient data points. Returning no clusters. Error: {e}"
             )
             cluster_labels = np.full(len(coords), -1)
         else:
@@ -295,7 +292,7 @@ def compute_clusters(
     )
 
     # Convert back to xarray DataArray
-    df_dims = df_data["dts"][index_dims].copy()
+    df_dims = df_dts[index_dims].copy()
     df_dims[output_label] = -1
     df_dims.loc[filtered_df.index, output_label] = cluster_labels
     clusters = df_dims.set_index(index_dims).to_xarray()[output_label]

@@ -24,8 +24,3 @@ class ShiftsMethod(ABC):
                 where each value indicates the presence or magnitude of a detected shift.
         """
         pass
-
-    @classmethod
-    @abstractmethod
-    def on_timescale(self, time_scale: float):
-        pass

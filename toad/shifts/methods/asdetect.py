@@ -10,6 +10,7 @@ Refactored: Nov, 2024 (Jakob)
 import numpy as np
 from typing import Optional
 from numba import njit
+import logging
 
 from numpy.linalg import lstsq
 
@@ -29,72 +30,104 @@ class ASDETECT(ShiftsMethod):
     6. Normalize the detection array by dividing by the number of window sizes used.
 
     Args:
-        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
-        lmax: (Optional) The maximum segment length for detection. If not
-            specified, it defaults to one-third of the size of the time dimension.
-        timescale: (Optional) The time scale to use for detection. It is assumed to have the same time units as the time axis of the data set the detector is used on. Exclusive argument; when used, the other args need to be None.
+        lmin: The minimum segment length for detection. Defaults to 5.
+        lmax: (Optional) The maximum segment length for detection. If not specified, it defaults to one-third of the size of the time dimension.
+        timescale: (Optional) A tuple specifying the minimum and maximum time window sizes for shift detection, in the same units as the input time axis (e.g. years, days etc). If provided, this will be used instead of lmin/lmax to determine the window sizes. The tuple values can be None to use the default bounds (5 timesteps for minimum, 1/3 of series length for maximum).
+        ignore_nan: (Optional) If True, timeseries containing NaN values will be ignored, i.e. a detection time series of all zeros will be returned. If False, an error will be raised.
     """
 
-    def __init__(self, lmin=5, lmax=None, timescale=None):
-        assert (lmin is None and lmax is None and timescale is not None) or (
-            lmin is not None and timescale is None
-        ), "Define either lmin (lmax optional) OR the timescale, but not both."
+    # minimum allowed segment length
+    LMIN_MIN = 5
+
+    def __init__(
+        self,
+        lmin: int = LMIN_MIN,
+        lmax: Optional[int] = None,
+        timescale: Optional[tuple[Optional[float], Optional[float]]] = None,
+        ignore_nan: bool = False,
+    ):
         self.lmin = lmin
         self.lmax = lmax
         self.timescale = timescale
+        self.ignore_nan = ignore_nan
+        self._converted_timescale = False
 
-    @classmethod
-    def on_timescale(cls, timescale: float | tuple[float, float]):
-        """Create an ASDETECT instance on a specific time scale.
-
-        Args:
-            timescale: The time scale to use for detection, either a float or a tuple indicating the range of time scales. It is assumed to have the same time units as the time axis of the data set the detector is used on.
-
-        Returns:
-            - An ASDETECT(ShiftsMethod) instance
-        """
-
-        if type(timescale) is not tuple:
-            # range the timescales to stay roughly within the same order of magnitude
-            print(
-                f"timescale {timescale} ->  {(timescale / 2, timescale * 2)};", end=" "
+        assert timescale is None or (
+            isinstance(timescale, tuple)
+            and len(timescale) == 2
+            and (timescale[0] is not None or timescale[1] is not None)
+            and (timescale[0] is None or isinstance(timescale[0], (float, int)))
+            and (timescale[1] is None or isinstance(timescale[1], (float, int)))
+            and (
+                timescale[0] is None
+                or timescale[1] is None
+                or timescale[1] > timescale[0]
             )
-            timescale = (timescale / 2, timescale * 2)
-        else:
-            print(f"timescale {timescale};", end=" ")
+        ), (
+            f"Timescale must be a tuple of two numbers with the second number larger than the first, e.g. (20, 30). One of the numbers can be None. If the first is None, e.g. (None, 30), {self.LMIN_MIN} is used as default. If the second is None, e.g., (20, None), 1/3 the length of the time series is used as default."
+        )
 
-        return cls(lmin=None, lmax=None, timescale=timescale)
-
-    def _infer_params_from_timescale(self, times_1d):
-        """Infer the segment length parameters from the timescale.
+    def _get_segment_lengths(self, times_1d: np.ndarray) -> tuple[int, int]:
+        """Get the final lmin and lmax values, handling timescale conversion if needed.
 
         Args:
             times_1d: 1D array of times
 
         Returns:
-            lmin, lmax
+            tuple: (lmin, lmax) as integers
         """
-        if self.timescale:
+
+        # compute max lmax
+        lmax_max = len(times_1d) // 3
+
+        # Start with direct parameters
+        lmin = self.lmin
+        lmax = self.lmax if self.lmax is not None else lmax_max
+
+        # Override with timescale if provided
+        if self.timescale is not None:
             dt = np.diff(times_1d)[0]
-            if (self.timescale[0] is None) or (self.timescale[1] is None):
-                # if lower/upper bound for timescale is undefined, take the minimum/maximum possible value
-                lmin = 3 if self.timescale[0] is None else int(self.timescale[0] / dt)
-                lmax = (
-                    int(len(times_1d) / 3)
-                    if self.timescale[1] is None
-                    else int(self.timescale[1] / dt)
-                )
-            else:
-                lmin, lmax = int(self.timescale[0] / dt), int(self.timescale[1] / dt)
 
-            # make sure the derived limits are within the overall bounds
-            lmin = max(lmin, 3)
-            lmax = min(lmax, len(times_1d) / 3)
-            print(f"for dt={dt:.2f} -> (lmin={lmin}, lmax={lmax})")
+            # Convert timescale to timesteps
+            if self.timescale[0] is not None:
+                lmin = int(self.timescale[0] / dt)
 
-        else:
-            lmin, lmax = self.lmin, self.lmax
+            if self.timescale[1] is not None:
+                lmax = int(self.timescale[1] / dt)
 
+            logging.getLogger("TOAD").debug(
+                f"for dt={dt:.2f} -> (lmin={lmin}, lmax={lmax})"
+            )
+
+        # If the inferred lmin is too small, throw error [Boulton+Lenton2019 do not set strict lower bound]
+        if (
+            lmin < self.LMIN_MIN
+            and self.timescale is not None
+            and self.timescale[0] is not None
+        ):
+            raise ValueError(
+                f"The temporal resolution is too low to detect shifts at timescales of {self.timescale[0]} (units of time). We recommend using a minimum timescale of {(self.LMIN_MIN * dt)} (units of time)."
+            )
+
+        # If the inferred lmax is too large, warn the user and overwrite it [Boulton+Lenton2019 sets a strict upper bound]
+        if (
+            lmax > lmax_max
+            and self.timescale is not None
+            and self.timescale[1] is not None
+        ):
+            logging.getLogger("TOAD").warning(
+                f"The time series is not long enough for detecting shifts at timescales of {self.timescale[1]} (units of time). A maximum upper bound of {((lmax_max) * dt)} (units of time) has been imposed. This corresponds to 1/3 the length of the time series."
+            )
+            lmax = lmax_max
+
+        # if user manually set lmax too high
+        if lmax > lmax_max:
+            logging.getLogger("TOAD").warning(
+                f"lmax cannot be larger than 1/3 the length of the time series. Setting lmax to {lmax_max}."
+            )
+            lmax = lmax_max
+
+        self._converted_timescale = True
         return lmin, lmax
 
     def fit_predict(
@@ -116,13 +149,17 @@ class ASDETECT(ShiftsMethod):
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
         """
 
-        lmin, lmax = self._infer_params_from_timescale(times_1d)
+        # infer lmin/lmax from timescale, if provided,
+        if self.timescale is not None and not self._converted_timescale:
+            # overwrite self.lmin/self.lmax because they are saved to attrs in TOAD.
+            self.lmin, self.lmax = self._get_segment_lengths(times_1d)
 
         shifts = construct_detection_ts(
             values_1d=values_1d,
             times_1d=times_1d,
-            lmin=lmin,
-            lmax=lmax,
+            lmin=self.lmin,
+            lmax=self.lmax,
+            ignore_nan=self.ignore_nan,
         )
 
         return shifts
@@ -135,6 +172,7 @@ def construct_detection_ts(
     times_1d: np.ndarray,
     lmin: int = 5,
     lmax: Optional[int] = None,
+    ignore_nan: bool = False,
 ) -> np.ndarray:
     """Construct a detection time series (asdetect algorithm).
 
@@ -153,22 +191,30 @@ def construct_detection_ts(
             Smallest segment length, default = 5
         lmax:
             Largest segment length, default = n/3
+        ignore_nan:
+            If True, timeseries containing NaN values will be ignored, i.e. a detection time series of all zeros will be returned. If False, an error will be raised.
 
     >> Returns:
         - Abrupt shift score time series, shape (n,)
     """
 
     n_tot = len(values_1d)
-
     detection_ts = np.zeros_like(values_1d)
-
-    if np.isnan(values_1d).any():
-        # print("you tried evaluating a ts with nan entries")
-        return detection_ts
 
     # default to have at least three gradients (needed for grad distribution)
     if lmax is None:
         lmax = int(n_tot / 3)
+
+    assert lmin < lmax, "lmin must be smaller than lmax"
+
+    if not ignore_nan:
+        assert not np.isnan(values_1d).any(), (
+            "Input time series contains NaN values. Please remove them before running the detector."
+        )
+    else:
+        # return zeros if timeseries contains nan values
+        if np.isnan(values_1d).any():
+            return detection_ts
 
     for length in range(lmin, lmax + 1):
         # Note: numba-compatible version of centered_segmentation (deprecated)

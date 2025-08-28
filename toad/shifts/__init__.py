@@ -85,13 +85,6 @@ def compute_shifts(
     ):
         raise ValueError("time dimension must consist of integers or floats.")
 
-    # Save method params (to be consistent with clustering structure.)
-    method_params = {
-        f"method_{param}": str(value)
-        for param, value in dict(sorted(vars(method).items())).items()
-        if value is not None
-    }
-
     # 3. Apply the detector
     logger.info(f"Applying detector {method.__class__.__name__} to {var}")
     shifts = xr.apply_ufunc(
@@ -116,11 +109,13 @@ def compute_shifts(
 
     # Add method params as separate attributes
     for param, value in dict(sorted(vars(method).items())).items():
-        if value is not None:
+        if value is not None and not param.startswith(
+            "_"
+        ):  # exclude private attributes
             shifts.attrs[f"method_{param}"] = str(value)
 
     # Add saved params as attributes
-    shifts.attrs.update(method_params)
+    # shifts.attrs.update(method_params)
 
     # add git version
     shifts.attrs["toad_version"] = __version__

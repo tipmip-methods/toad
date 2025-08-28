@@ -47,7 +47,7 @@ def test_irregular_grid(test_params, toad_instance):
         i=slice(None, None, 4), j=slice(None, None, 4), time=slice(None, None, 2)
     )
 
-    td.compute_shifts(var, method=ASDETECT())
+    td.compute_shifts(var, method=ASDETECT(ignore_nan=True))
 
     td.compute_clusters(
         var=var,

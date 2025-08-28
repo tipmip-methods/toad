@@ -248,7 +248,7 @@ def compute_clusters(
     method_params = {
         f"method_{param}": str(value)
         for param, value in dict(sorted(vars(method).items())).items()
-        if value is not None
+        if value is not None and not param.startswith("_")
     }
 
     # Save regridder params

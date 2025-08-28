@@ -1,6 +1,9 @@
 import numpy as np
 from toad.utils import all_functions
 import inspect
+from scipy.optimize import minimize_scalar
+from scipy.signal import savgol_filter
+import xarray as xr
 
 
 class ClusterTimeStats:
@@ -238,3 +241,226 @@ class ClusterTimeStats:
     #             attr = getattr(self, method_name)
     #             dict[method_name] = attr() if callable(attr) else attr
     #     return dict
+
+    def compute_transition_time(self, shifts=None, direction="absolute"):
+        # get shifts
+        shifts = self.td.get_shifts(self.var) if shifts is None else shifts
+
+        if direction == "absolute":
+            shifts = np.abs(shifts)
+        elif direction == "negative":
+            shifts = np.abs(shifts.where(shifts < 0))
+        elif direction == "positive":
+            shifts = shifts.where(shifts > 0)
+        else:
+            ValueError(
+                f"{direction} is not a valid inpout for direction. Use absolute, negative or positive."
+            )
+
+        def compute_transition_time(shifts, t):
+            m = np.isfinite(shifts) & np.isfinite(t)
+            if m.sum() == 0:
+                return np.nan
+            return fit_gaussian_transition(t[m], shifts[m])["transition_time"]
+
+        return xr.apply_ufunc(
+            compute_transition_time,
+            shifts,
+            shifts[self.td.time_dim],
+            input_core_dims=[[self.td.time_dim], [self.td.time_dim]],
+            output_core_dims=[[]],
+            vectorize=True,
+            output_dtypes=[np.float64],
+        )
+
+    def compute_cluster_transition_time(self, cluster_ids, direction="absolute"):
+        # get shifts and spatial cluster mask
+        dts = self.td.get_shifts(self.var)
+        cluster_mask = self.td.get_spatial_cluster_mask(
+            self.var, cluster_id=cluster_ids
+        )
+        dts = dts.where(cluster_mask, drop=True)
+
+        return self.compute_transition_time(dts, direction)
+
+
+def fit_gaussian_transition(
+    time: np.ndarray,
+    values: np.ndarray,
+    # preprocessing
+    smooth_frac: float = 0.03,  # 0 disables smoothing; else Savitzky–Golay fraction of N
+    # windowing
+    baseline_frac: float = 0.05,  # define window by values >= baseline_frac * max
+    margin_frac: float = 0.02,  # extend window on both sides (fraction of full series)
+    # width (sigma) search
+    min_sigma: float = 0.01,  # in normalized time [0,1]
+    max_sigma: float = 0.20,
+    k_sigma_bound: float = 2.0,  # center bounds depend on σ: [σ*k, 1-σ*k]
+    # correlation target
+    use_abs: bool = True,  # use |values| (ASDETECT is hump-like)
+):
+    """
+    Returns:
+    dict with keys:
+        - transition_time (Gaussian peak position in original time units)
+        - center_norm, sigma, amplitude
+        - best_correlation (weighted)
+        - window_indices (start, end), used_time, used_values
+        - best_gaussian (array on original time grid; None if failure)
+        - warnings (list[str])
+    """
+
+    """
+    !! TODO: THIS IS WORKING VIBE CODE THAT NEEDS TO BE VALIDATED AND CHECKED FOR CORRECTNESS...  !!
+    """
+
+    warnings = []
+    t = np.asarray(time)
+    y = np.asarray(values)
+    if use_abs:
+        y = np.abs(y)
+
+    # guard rails
+    if len(t) != len(y) or len(t) < 5:
+        return {
+            "transition_time": None,
+            "warnings": ["insufficient data"],
+            "best_gaussian": None,
+        }
+
+    # optional light smoothing (preserves onset)
+    if smooth_frac and smooth_frac > 0:
+        win = max(5, int(round(smooth_frac * len(y))))
+        if win % 2 == 0:
+            win += 1
+        win = min(win, len(y) - (1 - len(y) % 2))  # ensure valid odd size
+        if win >= 5 and win % 2 == 1:
+            y = savgol_filter(y, window_length=win, polyorder=2, mode="interp")
+
+    # define analysis window from baseline crossings
+    ymax = np.max(y)
+    if ymax <= 0:
+        return {
+            "transition_time": None,
+            "warnings": ["non-positive signal"],
+            "best_gaussian": None,
+        }
+
+    baseline = baseline_frac * ymax
+    above = y >= baseline
+    if not np.any(above):
+        return {
+            "transition_time": None,
+            "warnings": [f"no points ≥ baseline ({baseline:.3g})"],
+            "best_gaussian": None,
+        }
+
+    i0 = np.argmax(above)  # first crossing
+    i1 = len(y) - 1 - np.argmax(above[::-1])  # last crossing
+
+    # add margins in absolute indices
+    m = max(1, int(round(margin_frac * len(y))))
+    i0 = max(0, i0 - m)  # type: ignore
+    i1 = min(len(y) - 1, i1 + m)  # type: ignore
+
+    t_win = t[i0 : i1 + 1]
+    y_win = y[i0 : i1 + 1]
+    if len(t_win) < 5:
+        return {
+            "transition_time": None,
+            "warnings": ["window too small"],
+            "best_gaussian": None,
+        }
+
+    # normalize time to [0,1] over window
+    t0, t1 = t_win[0], t_win[-1]
+    T = (t1 - t0) if (t1 > t0) else 1.0
+    tn = (t_win - t0) / T
+
+    # time-spacing weights (handle irregular grids)
+    w_time = np.abs(np.gradient(tn))  # ~ dt normalized
+    w_time /= np.mean(w_time)
+
+    # initial sigma from half-width (if possible)
+    try:
+        half = 0.5 * np.max(y_win)
+        mask_h = y_win >= half
+        j0 = np.argmax(mask_h)
+        j1 = len(y_win) - 1 - np.argmax(mask_h[::-1])
+        fwhm_norm = (t_win[j1] - t_win[j0]) / T if j1 > j0 else None
+        sigma0 = (
+            (fwhm_norm / (2 * np.sqrt(2 * np.log(2))))
+            if fwhm_norm and fwhm_norm > 0
+            else 0.05
+        )
+    except Exception:
+        sigma0 = 0.05
+    sigma0 = float(np.clip(sigma0, min_sigma, max_sigma))
+
+    # width set to try (tighter grid around sigma0)
+    widths = np.unique(
+        np.clip(sigma0 * np.array([0.5, 0.75, 1.0, 1.5, 2.0]), min_sigma, max_sigma)
+    )
+
+    def weighted_corr(v, g, w):
+        # weighted Pearson correlation
+        w = np.asarray(w)
+        vw = np.average(v, weights=w)
+        gw = np.average(g, weights=w)
+        num = np.sum(w * (v - vw) * (g - gw))
+        den = np.sqrt(np.sum(w * (v - vw) ** 2) * np.sum(w * (g - gw) ** 2))
+        return 0.0 if den == 0 else num / den
+
+    def best_for_sigma(sig):
+        # constrain center away from edges proportional to sigma
+        lo, hi = k_sigma_bound * sig, 1.0 - k_sigma_bound * sig
+        if lo >= hi:
+            return (-np.inf, 0.5, 0.0)  # invalid sigma for this window
+
+        def objective(center):
+            g = np.exp(-0.5 * ((tn - center) / sig) ** 2)
+            # LS amplitude with time weights
+            a = np.sum(w_time * y_win * g) / np.sum(w_time * g * g)
+            a = max(0.0, a)
+            corr = weighted_corr(y_win, a * g, w_time)
+            return -corr  # maximize corr
+
+        res = minimize_scalar(objective, bounds=(lo, hi), method="bounded")  # type: ignore
+        return (-res.fun, float(res.x), float(sig))  # (corr, center, sigma)
+
+    # search widths
+    best_corr, best_center, best_sigma = -np.inf, 0.5, sigma0
+    for sig in widths:
+        corr, center, sig_used = best_for_sigma(sig)
+        if corr > best_corr:
+            best_corr, best_center, best_sigma = corr, center, sig_used
+
+    if not np.isfinite(best_corr) or best_corr <= -1:
+        warnings.append("optimization failed")
+        return {"transition_time": None, "warnings": warnings, "best_gaussian": None}
+
+    # final model on window
+    g_win = np.exp(-0.5 * ((tn - best_center) / best_sigma) ** 2)
+    amp = np.sum(w_time * y_win * g_win) / np.sum(w_time * g_win * g_win)
+    amp = max(0.0, amp)
+
+    # peak time (transition time) = Gaussian center
+    transition_time = best_center * T + t0
+
+    # build best Gaussian on full time grid for plotting
+    tn_full = (t - t0) / T
+    g_full = np.exp(-0.5 * ((tn_full - best_center) / best_sigma) ** 2)
+    best_gaussian = amp * g_full
+
+    return {
+        "transition_time": float(transition_time),
+        "center_norm": float(best_center),
+        "sigma": float(best_sigma),
+        "amplitude": float(amp),
+        "best_correlation": float(best_corr),
+        "window_indices": (int(i0), int(i1)),
+        "used_time": t_win,
+        "used_values": y_win,
+        "best_gaussian": best_gaussian,
+        "warnings": warnings,
+    }

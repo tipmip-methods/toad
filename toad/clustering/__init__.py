@@ -23,7 +23,7 @@ def compute_clusters(
     var: str,
     method: ClusterMixin,
     shift_threshold: float = 0.8,
-    shift_sign: str = "absolute", # TODO: rename to shift_direction
+    shift_sign: str = "absolute",  # TODO: rename to shift_direction
     shifts_label: Optional[str] = None,
     time_dim: str = "time",
     space_dims: Optional[list[str]] = None,

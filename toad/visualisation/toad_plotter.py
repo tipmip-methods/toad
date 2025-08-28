@@ -377,7 +377,7 @@ class TOADPlotter:
         """Plot one or multiple clusters on a map.
 
         Args:
-            var: Base variable name (e.g. 'temperature', will look for 
+            var: Base variable name (e.g. 'temperature', will look for
                         'temperature_cluster') or custom cluster variable name.
             cluster_ids: Single cluster ID or list of cluster IDs to plot.
                          Defaults to all clusters (except -1) if None.
@@ -1200,7 +1200,7 @@ class TOADPlotter:
         # Filter cluster_ids to only include existing clusters
         cluster_ids = self.filter_by_existing_clusters(cluster_ids, var)
 
-        if map_var is None: 
+        if map_var is None:
             map_var = var
 
         if len(cluster_ids) == 0:

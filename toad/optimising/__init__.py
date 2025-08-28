@@ -56,7 +56,7 @@ def optimise(
     objective=combined_spatial_nonlinearity,
     n_trials=50,
     direction="maximize",
-    log_level="WARNING",
+    log_level: int=optuna.logging.WARNING,
     show_progress_bar=True,
 ):
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.

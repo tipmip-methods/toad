@@ -243,18 +243,19 @@ class ClusterTimeStats:
     #     return dict
 
     def compute_transition_time(self, shifts=None, direction="absolute"):
-        
         # get shifts
         shifts = self.td.get_shifts(self.var) if shifts is None else shifts
 
         if direction == "absolute":
             shifts = np.abs(shifts)
-        elif direction =="negative":
+        elif direction == "negative":
             shifts = np.abs(shifts.where(shifts < 0))
-        elif direction=="positive":
+        elif direction == "positive":
             shifts = shifts.where(shifts > 0)
         else:
-            ValueError(f"{direction} is not a valid inpout for direction. Use absolute, negative or positive.")
+            ValueError(
+                f"{direction} is not a valid inpout for direction. Use absolute, negative or positive."
+            )
 
         def compute_transition_time(shifts, t):
             m = np.isfinite(shifts) & np.isfinite(t)
@@ -275,10 +276,13 @@ class ClusterTimeStats:
     def compute_cluster_transition_time(self, cluster_ids, direction="absolute"):
         # get shifts and spatial cluster mask
         dts = self.td.get_shifts(self.var)
-        cluster_mask = self.td.get_spatial_cluster_mask(self.var, cluster_id=cluster_ids)
+        cluster_mask = self.td.get_spatial_cluster_mask(
+            self.var, cluster_id=cluster_ids
+        )
         dts = dts.where(cluster_mask, drop=True)
 
         return self.compute_transition_time(dts, direction)
+
 
 def fit_gaussian_transition(
     time: np.ndarray,

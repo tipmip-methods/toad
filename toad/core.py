@@ -1014,7 +1014,9 @@ class TOADAccessor:
 
         # Check if time_dim is in dims
         if time_dim not in self._obj.dims:
-            raise ValueError(f"Time dimension '{time_dim}' not found in data. Please specify a time dimension using the time_dim argument.")
+            raise ValueError(
+                f"Time dimension '{time_dim}' not found in data. Please specify a time dimension using the time_dim argument."
+            )
 
         # Get all dims except time dim
         non_time_dims = [d for d in self._obj.dims if d != time_dim]

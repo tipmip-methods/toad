@@ -124,20 +124,23 @@ class TOAD:
                 shifts_status = "✅" if var in shift_vars else "❌"
                 clusters_status = "✅" if var in cluster_vars else "❌"
                 table_rows.append(
-                    f"<tr><td style='padding: 8px 15px;text-align: left; border: 1px solid #e9ecef;'><strong>{var}</strong></td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{shifts_status}</td><td style='padding: 2px 8px; text-align: center; border: 1px solid #e9ecef;'>{clusters_status}</td></tr>"
+                    f"<tr><td style='padding: 8px 15px; text-align: left; border: 0.5px solid;'>"
+                    f"<strong>{var}</strong></td>"
+                    f"<td style='padding: 2px 8px; text-align: center; border: 0.5px solid;'>{shifts_status}</td>"
+                    f"<td style='padding: 2px 8px; text-align: center; border: 0.5px solid;'>{clusters_status}</td></tr>"
                 )
 
             variable_table = f"""
             <div style='margin: 10px 0px;'>
-                <table style='border-collapse: collapse; margin: 8px 0; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                <table style='border-collapse: collapse; margin: 8px 0; font-size: 0.9em;'>
                     <thead>
-                        <tr style='background-color: #f8f9fa;'>
-                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: left; color: #495057;'>Variable</th>
-                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: center; color: #495057;'>Shifts</th>
-                            <th style='padding: 12px 15px; border: 1px solid #e9ecef; text-align: center; color: #495057;'>Clusters</th>
+                        <tr>
+                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: left;'>Variable</th>
+                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: center;'>Shifts</th>
+                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: center;'>Clusters</th>
                         </tr>
                     </thead>
-                    <tbody style='background-color: white;'>
+                    <tbody>
                         {"".join(table_rows)}
                     </tbody>
                 </table>
@@ -146,16 +149,12 @@ class TOAD:
 
         # Try to load and encode the TOAD logo
         logo_html = ""
-        # try:
-        # Get the path to the toad.png file using os.path
-        current_dir = os.path.dirname(__file__)
-        logo_path = os.path.join(
-            current_dir, "..", "docs", "source", "resources", "toad.png"
-        )
-        logo_path = os.path.abspath(logo_path)
-
         try:
-            import base64  # import needed here
+            import os
+            import base64
+
+            current_dir = os.path.dirname(__file__)
+            logo_path = os.path.abspath(os.path.join(current_dir, "..", "docs", "source", "resources", "toad.png"))
 
             if os.path.exists(logo_path):
                 with open(logo_path, "rb") as img_file:
@@ -166,10 +165,10 @@ class TOAD:
 
         # Wrap everything in a TOAD container
         html = f"""
-        <div style='border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; margin: 5px 0; background-color: #fafafa;'>
+        <div style='padding: 12px'>
             <h2 style='margin-bottom: 0px; display: flex; align-items: center;'>{logo_html}TOAD Object</h2>
             {variable_table}
-            <p style='font-size: 0.9em; color: #666; margin: 16px 0;'>Hint: to access the xr.dataset call <code>td.data</code></p>
+            <p style='font-size: 0.9em; margin: 16px 0;'>Hint: to access the xr.dataset call <code>td.data</code></p>
             {ds_repr}
         </div>
         """

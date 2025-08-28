@@ -312,6 +312,8 @@ def compute_clusters(
             "n_data_points": len(coords),
             "method_name": method.__class__.__name__,
             "toad_version": __version__,
+            "source_variable": var,
+            "shifts_variable": shifts_label,
             **method_params,
             **regridder_params,
         }

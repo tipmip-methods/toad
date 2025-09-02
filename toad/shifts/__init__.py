@@ -3,6 +3,7 @@ from typing import Union
 import xarray as xr
 from toad._version import __version__
 import numpy as np
+from toad.utils import get_unique_variable_name, attrs
 
 from .methods.base import ShiftsMethod
 from .methods.asdetect import ASDETECT
@@ -81,25 +82,12 @@ def compute_shifts(
     ):
         raise ValueError("time dimension must consist of integers or floats.")
 
-    # Set output label
-    output_label = f"{var}_dts{output_label_suffix}"
-
     # Check if the output_label is already in the data
-    if output_label in data and merge_input:
-        if overwrite:
-            data = data.drop_vars(output_label)
-        else:
-            logger.warning(
-                f"{output_label} already exists. Please pass overwrite=True to overwrite it."
-            )
-            return data
-
-    # Save method params (to be consistent with clustering structure.)
-    method_params = {
-        f"method_{param}": str(value)
-        for param, value in dict(sorted(vars(method).items())).items()
-        if value is not None
-    }
+    output_label = f"{var}_dts{output_label_suffix}"
+    if merge_input and not overwrite:
+        output_label = get_unique_variable_name(output_label, data, logger)
+    elif overwrite and output_label in data:
+        data = data.drop_vars(output_label)
 
     # Apply the detector
     logger.info(f"Applying detector {method.__class__.__name__} to {var}")
@@ -115,30 +103,27 @@ def compute_shifts(
     # Rename the output variable
     shifts = shifts.rename(output_label)
 
+    # Save method params
+    method_params = {
+        f"method_{param}": str(value)
+        for param, value in dict(sorted(vars(method).items())).items()
+        if value is not None and not param.startswith("_")
+    }
+
     # Save details as attributes
     shifts.attrs.update(
         {
-            "time_dim": time_dim,
-            "method_name": method.__class__.__name__,
+            attrs.TIME_DIM: time_dim,
+            attrs.METHOD_NAME: method.__class__.__name__,
+            attrs.TOAD_VERSION: __version__,
+            attrs.BASE_VARIABLE: var,
+            attrs.VARIABLE_TYPE: attrs.TYPE_SHIFT,
+            **method_params,
         }
     )
 
-    # Add method params as separate attributes
-    for param, value in dict(sorted(vars(method).items())).items():
-        if value is not None:
-            shifts.attrs[f"method_{param}"] = str(value)
-
-    # Add saved params as attributes
-    shifts.attrs.update(method_params)
-
-    # add git version
-    shifts.attrs["toad_version"] = __version__
-
-    # store original variable name
-    shifts.attrs["source_variable"] = var
-
     # 6. Merge the detected shifts with the original data
     if merge_input:
-        return xr.merge([data, shifts], combine_attrs="override")  # xr.dataset
+        return xr.merge([data, shifts], combine_attrs="override", compat="override")  # xr.dataset
     else:
         return shifts  # xr.dataarray

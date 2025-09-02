@@ -1,12 +1,26 @@
 import warnings
 import functools
-from typing import Union
+from typing import Union, Tuple, Optional
 import xarray as xr
 import numpy as np
+import re
 
 from .synthetic_data import create_global_dataset
+from .toad_attrs import attrs
 
-__all__ = ["create_global_dataset"]
+__all__ = [
+    "create_global_dataset",
+    "get_space_dims",
+    "reorder_space_dims",
+    "detect_latlon_names",
+    "is_regular_grid",
+    "deprecated",
+    "all_functions",
+    "is_equal_to",
+    "contains_value",
+    "get_unique_variable_name",
+    "attrs",
+]
 
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:
@@ -55,7 +69,7 @@ def reorder_space_dims(space_dims: list[str]) -> list[str]:
     return space_dims
 
 
-def detect_latlon_names(data: xr.Dataset) -> tuple[str | None, str | None]:
+def detect_latlon_names(data: xr.Dataset) -> Tuple[Optional[str], Optional[str]]:
     """Detect latitude and longitude coordinate names in a dataset.
 
     Searches for common latitude/longitude names in coordinates first,
@@ -151,6 +165,52 @@ def contains_value(x, value):
     if np.isscalar(x):
         return x == value
     return value in x
+
+
+def get_unique_variable_name(base_name: str, existing_vars, logger=None) -> str:
+    """Generate a unique variable name by appending sequential numbers if needed.
+
+    Args:
+        base_name: The desired variable name
+        existing_vars: Container with existing variable names (Dataset, dict, list, set, etc.)
+        logger: Optional logger for info messages
+
+    Returns:
+        Unique variable name (either base_name or base_name_N)
+
+    Examples:
+        >>> get_unique_variable_name("tas_cluster", ["tas_cluster"])
+        "tas_cluster_1"
+        >>> get_unique_variable_name("tas_cluster", ["tas_cluster", "tas_cluster_1"])
+        "tas_cluster_2"
+        >>> get_unique_variable_name("tas_cluster_5", ["tas_cluster_5", "tas_cluster_6"])
+        "tas_cluster_7"
+    """
+    if base_name not in existing_vars:
+        return base_name
+
+    # Check if the name already has a number at the end
+    match = re.search(r"_(\d+)$", base_name)
+    if match:
+        # Extract the base name and current number
+        name_without_num = base_name[: match.start()]
+        current_num = int(match.group(1))
+        next_num = current_num + 1
+    else:
+        # No number at the end, start with _1
+        name_without_num = base_name
+        next_num = 1
+
+    # Find the next available number
+    while f"{name_without_num}_{next_num}" in existing_vars:
+        next_num += 1
+
+    new_name = f"{name_without_num}_{next_num}"
+
+    if logger:
+        logger.info(f"Variable {base_name} already exists. Using {new_name} instead.")
+
+    return new_name
 
 
 # Include this once we have a published release to fetch test data

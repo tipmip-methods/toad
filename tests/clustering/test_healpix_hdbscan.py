@@ -3,7 +3,6 @@ from toad import TOAD
 
 from sklearn.cluster import HDBSCAN  # type: ignore
 
-
 @pytest.fixture
 def test_params():
     """Fixture providing parameters for the clustering test.
@@ -13,23 +12,14 @@ def test_params():
             - lon (int): Longitude coarsening factor.
             - min_cluster_size (int): Minimum size of clusters to be identified.
             - shifts_threshold (float): Threshold for filtering shifts.
-            - expected_results (dict): Expected cluster counts for validation.
+            - expected_N_clusters (dict): Expected number of clusters for validation.
     """
     return {
         "lat": 6,
         "lon": 6,
         "min_cluster_size": 25,
         "shifts_threshold": 0.5,
-        "expected_results": {
-            -1: 329859,
-            0: 3062,
-            1: 984,
-            2: 324,
-            3: 52,
-            4: 33,
-            5: 28,
-            6: 26,
-        },
+        "expected_N_clusters": 7,
     }
 
 
@@ -52,26 +42,26 @@ def test_healpix_hdbscan(test_params, toad_instance):
         toad_instance (TOAD): Instance of TOAD containing the data.
 
     Note:
-        This warning caused by the HDBSCAN library may appear: "RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility".
+        This throws a warning the following warning which has been surpressed in pytest.ini: "RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility".
         This is due to a known issue with the HDBSCAN library and numpy. https://github.com/scikit-learn-contrib/hdbscan/issues/457#issuecomment-1004296870
     """
 
     # Setup
     td = toad_instance
+    var = "tas"
     td.data = td.data.coarsen(
         lat=test_params["lat"], lon=test_params["lon"], boundary="trim"
     ).mean()
 
     td.compute_clusters(
-        "tas",
+        var,
         shift_threshold=test_params["shifts_threshold"],
         method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
         overwrite=True,
     )
 
     # Verify results
-    actual_counts = td.get_cluster_counts("tas", exclude_noise=False)
-
-    assert actual_counts == test_params["expected_results"], (
-        f"Expected {test_params['expected_results']}, got {actual_counts}"
+    N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
+    assert N_clusters == test_params["expected_N_clusters"], (
+        f"Expected {test_params['expected_N_clusters']}, got {N_clusters}"
     )

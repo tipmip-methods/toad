@@ -3,6 +3,7 @@ from toad import TOAD
 
 from sklearn.cluster import HDBSCAN  # type: ignore
 
+
 @pytest.fixture
 def test_params():
     """Fixture providing parameters for the clustering test.

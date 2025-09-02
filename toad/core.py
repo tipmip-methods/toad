@@ -4,6 +4,7 @@ import numpy as np
 from typing import List, Union, Optional, Literal
 import os
 from sklearn.base import ClusterMixin
+import optuna
 import sklearn.cluster
 from sklearn.preprocessing import (
     StandardScaler,
@@ -25,6 +26,7 @@ from toad.utils import (
     is_equal_to,
     contains_value,
     detect_latlon_names,
+    attrs,
 )
 from toad.regridding.base import BaseRegridder
 
@@ -54,6 +56,7 @@ class TOAD:
             self.data.attrs["title"] = os.path.basename(data).split(".")[
                 0
             ]  # store path as title for saving toad file later
+            self.path = data  # store path
         elif isinstance(data, (xr.DataArray)):
             self.data = data.to_dataset()  # convert to dataset if data is a DataArray
         elif isinstance(data, (xr.Dataset)):
@@ -75,16 +78,6 @@ class TOAD:
             self.data = self.data.rename({"latitude": "lat"})
             self.logger.info("Renamed latitude to lat")
 
-        if len(self.shift_vars) > 0:
-            self.logger.warning(
-                f"Interpreting {self.shift_vars} as TOAD-computed shifts variable{'s' if len(self.shift_vars) > 1 else ''}."
-            )
-
-        if len(self.cluster_vars) > 0:
-            self.logger.warning(
-                f"Interpreting {self.cluster_vars} as TOAD-computed cluster variable{'s' if len(self.cluster_vars) > 1 else ''}."
-            )
-
         lat, lon = detect_latlon_names(self.data)
         if (lat and lat not in self.data.dims) and (lon and lon not in self.data.dims):
             self.logger.info(
@@ -98,53 +91,199 @@ class TOAD:
         )
 
     def _repr_html_(self):
-        """Representation of the TOAD object in html.
+        """Representation of the TOAD object in html with collapsible hierarchy."""
+        # TODO: maybe show method params here?
 
-        A brief description on which variables the shift detection and/or clustering has been computed, followed by the conventional html representation of the self.data xarray-Dataset.
+        # Generate a unique instance ID
+        import uuid
 
-        TODO: need improvements for when multiple shift or cluster variables have been computed from the same base variable. Use source_variable attribute in _dts vars and shifts_variable attribute in _cluster vars to identify the base variable.
-        """
+        instance_id = str(uuid.uuid4()).replace("-", "")
 
         # Get the xarray dataset HTML representation
         ds_repr = self.data._repr_html_()
 
-        # Extract shift and cluster variables
-        # Get all variables that have either shifts or clusters
-        shift_vars = set(var.removesuffix("_dts") for var in self.shift_vars)
-        cluster_vars = set(var.removesuffix("_cluster") for var in self.cluster_vars)
+        # Build hierarchy tree
+        hierarchy = {}
 
-        # Get all variables that have either shifts or clusters
-        all_processed_vars = shift_vars | cluster_vars
+        # Start with base variables
+        for base_var in self.base_vars:
+            hierarchy[base_var] = {"shifts": [], "clusters": []}
 
-        # Create variable status table if there are any processed variables
+        # Add shift variables and their relationships
+        for shift_var in self.shift_vars:
+            shift_data = self.data[shift_var]
+            base_var = shift_data.attrs.get(
+                attrs.BASE_VARIABLE, shift_var.split("_dts")[0]
+            )
+
+            if base_var not in hierarchy:
+                hierarchy[base_var] = {"shifts": [], "clusters": []}
+
+            hierarchy[base_var]["shifts"].append({"name": shift_var, "clusters": []})
+
+        # Add cluster variables and their relationships
+        for cluster_var in self.cluster_vars:
+            cluster_data = self.data[cluster_var]
+            base_var = cluster_data.attrs.get(attrs.BASE_VARIABLE)
+            shifts_var = cluster_data.attrs.get(attrs.SHIFTS_VARIABLE)
+
+            if base_var and base_var in hierarchy:
+                if shifts_var:
+                    # Find the specific shift variable and add cluster to it
+                    for shift_info in hierarchy[base_var]["shifts"]:
+                        if shift_info["name"] == shifts_var:
+                            shift_info["clusters"].append(cluster_var)
+                            break
+                else:
+                    # Fallback: add to base variable clusters
+                    hierarchy[base_var]["clusters"].append(cluster_var)
+
+        # Generate HTML for the hierarchy
         variable_table = ""
-        if all_processed_vars:
-            table_rows = []
-            for var in sorted(all_processed_vars):
-                shifts_status = "✅" if var in shift_vars else "❌"
-                clusters_status = "✅" if var in cluster_vars else "❌"
-                table_rows.append(
-                    f"<tr><td style='padding: 8px 15px; text-align: left; border: 0.5px solid;'>"
-                    f"<strong>{var}</strong></td>"
-                    f"<td style='padding: 2px 8px; text-align: center; border: 0.5px solid;'>{shifts_status}</td>"
-                    f"<td style='padding: 2px 8px; text-align: center; border: 0.5px solid;'>{clusters_status}</td></tr>"
+        if any(
+            len(info["shifts"]) > 0 or len(info["clusters"]) > 0
+            for info in hierarchy.values()
+        ):
+            hierarchy_html = []
+            for base_var in sorted(hierarchy.keys()):
+                info = hierarchy[base_var]
+
+                # Count total derived variables
+                shift_count = len(info["shifts"])
+                cluster_count = sum(len(s["clusters"]) for s in info["shifts"]) + len(
+                    info["clusters"]
                 )
+
+                if shift_count == 0 and cluster_count == 0:
+                    continue  # Skip base variables with no derived variables
+
+                # Base variable row
+                base_id = f"{instance_id}_base_{base_var.replace('.', '_')}"
+                hierarchy_html.append(f"""
+                <div style="margin: 2px 0;">
+                    <span onclick="toggleSection_{instance_id}('{base_id}')" style="cursor: pointer; user-select: none;">
+                        <span id="{base_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
+                        <span style="color: black; background-color: #A8D5FF; padding: 2px 4px; border-radius: 4px;">base var</span> {base_var}
+                        <span style="opacity: 0.5; font-size: 0.85em;">
+                            ({shift_count} shifts, {cluster_count} clusterings)
+                        </span>
+                    </span>
+                    <div id="{base_id}_content" style="display: none; margin-left: 20px; margin-top: 5px;">
+                """)
+
+                # Shift variables
+                for shift_info in info["shifts"]:
+                    shift_var = shift_info["name"]
+                    shift_clusters = shift_info["clusters"]
+                    shift_id = f"{instance_id}_shift_{shift_var.replace('.', '_')}"
+
+                    if shift_clusters:
+                        # Shift variable with clusters (expandable)
+                        hierarchy_html.append(f"""
+                        <div style="margin: 4px 0;">
+                            <span onclick="toggleSection_{instance_id}('{shift_id}')" style="cursor: pointer; user-select: none;">
+                                <span id="{shift_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
+                                <span style="background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var} <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
+                            </span>
+                            <div id="{shift_id}_content" style="display: none; margin-left: 20px; margin-top: 3px;">
+                        """)
+
+                        # Cluster variables under this shift
+                        for cluster_var in sorted(shift_clusters):
+                            hierarchy_html.append(f"""
+                            <div style="margin-left: 12px; padding: 2px 0px;">
+                                <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var}
+                            </div>
+                            """)
+
+                        hierarchy_html.append("</div></div>")
+                    else:
+                        # Shift variable without clusters
+                        hierarchy_html.append(f"""
+                        <div style="margin: 2px 0;">
+                            <span style="font-family: monospace; font-weight: bold; opacity: 0;">▶</span>
+                            <span style="background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var}  <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
+                        </div>
+                        """)
+
+                # Direct clusters (not associated with specific shifts)
+                for cluster_var in sorted(info["clusters"]):
+                    hierarchy_html.append(f"""
+                    <div style="margin: 2px 0;">
+                        <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var}</span>
+                    </div>
+                    """)
+                hierarchy_html.append("</div></div>")
 
             variable_table = f"""
             <div style='margin: 10px 0px;'>
-                <table style='border-collapse: collapse; margin: 8px 0; font-size: 0.9em;'>
-                    <thead>
-                        <tr>
-                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: left;'>Variable</th>
-                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: center;'>Shifts</th>
-                            <th style='padding: 12px 15px; border: 0.5px solid; text-align: center;'>Clusters</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join(table_rows)}
-                    </tbody>
-                </table>
+                <h4 style="margin: 5px 0; font-size: 1.1em;">Variable Hierarchy:</h4>
+                <div style="font-family: monospace; font-size: 1.0em; border: 1px solid #ddd; padding: 10px; line-height: 1.4;">
+                    {"".join(hierarchy_html)}
+                </div>
             </div>
+            
+            <script>
+            function toggleSection_{instance_id}(sectionId) {{
+                const content = document.getElementById(sectionId + '_content');
+                const arrow = document.getElementById(sectionId + '_arrow');
+                
+                if (content.style.display === 'none') {{
+                    content.style.display = 'block';
+                    arrow.textContent = '▼';
+                }} else {{
+                    content.style.display = 'none';
+                    arrow.textContent = '▶';
+                }}
+            }}
+
+            // Auto-expand logic
+            function autoExpand_{instance_id}() {{
+                let visibleClusterings = 0;
+                const maxVisible = 10;
+                
+                // First count total clusterings in each base section
+                const baseSections = document.querySelectorAll('[id^="{instance_id}_base_"][id$="_arrow"]');
+                const sectionCounts = [];
+                
+                // Get counts for each base section
+                baseSections.forEach(baseArrow => {{
+                    const baseId = baseArrow.id.replace('_arrow', '');
+                    const baseContent = document.getElementById(baseId + '_content');
+                    const clusterCount = baseContent.querySelectorAll('[style*="background-color: lightgreen"]').length;
+                    sectionCounts.push({{baseId, clusterCount}});
+                }});
+                
+                // Sort sections by cluster count (ascending) to expand smaller sections first
+                sectionCounts.sort((a, b) => a.clusterCount - b.clusterCount);
+                
+                // Expand sections until we hit the limit
+                for (const {{baseId, clusterCount}} of sectionCounts) {{
+                    if (visibleClusterings + clusterCount <= maxVisible) {{
+                        const baseContent = document.getElementById(baseId + '_content');
+                        const baseArrow = document.getElementById(baseId + '_arrow');
+                        
+                        // Expand base section
+                        baseContent.style.display = 'block';
+                        baseArrow.textContent = '▼';
+                        
+                        // Expand all shift sections within
+                        const shiftSections = baseContent.querySelectorAll('[id^="{instance_id}_shift_"][id$="_arrow"]');
+                        shiftSections.forEach(shiftArrow => {{
+                            const shiftId = shiftArrow.id.replace('_arrow', '');
+                            const shiftContent = document.getElementById(shiftId + '_content');
+                            shiftArrow.textContent = '▼';
+                            shiftContent.style.display = 'block';
+                        }});
+                        
+                        visibleClusterings += clusterCount;
+                    }}
+                }}
+            }}
+
+            // Run auto-expand when the notebook cell is rendered
+            autoExpand_{instance_id}();
+            </script>
             """
 
         # Try to load and encode the TOAD logo
@@ -154,7 +293,11 @@ class TOAD:
             import base64
 
             current_dir = os.path.dirname(__file__)
-            logo_path = os.path.abspath(os.path.join(current_dir, "..", "docs", "source", "resources", "toad.png"))
+            logo_path = os.path.abspath(
+                os.path.join(
+                    current_dir, "..", "docs", "source", "resources", "toad.png"
+                )
+            )
 
             if os.path.exists(logo_path):
                 with open(logo_path, "rb") as img_file:
@@ -301,7 +444,6 @@ class TOAD:
         method: ClusterMixin,
         shift_threshold: float = 0.8,
         shift_sign: str = "absolute",
-        shifts_label: Optional[str] = None,
         scaler: Optional[
             Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
         ] = StandardScaler(),
@@ -316,15 +458,13 @@ class TOAD:
 
         >> Args:
             var:
-                Name of the variable in the dataset to cluster.
+                Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is throw, in which case you should specify the shifts variable name.
             method:
                 The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
             shift_threshold:
                 The threshold for the shift magnitude. Defaults to 0.8.
             shift_sign:
                 The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
-            shifts_label:
-                Name of the variable containing precomputed shifts. Defaults to {var}_dts.
             scaler:
                 The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
             time_scale_factor:
@@ -353,12 +493,11 @@ class TOAD:
 
         """
         results = clustering.compute_clusters(
-            data=self.data,
+            td=self,
             var=var,
             method=method,
             shift_threshold=shift_threshold,
             shift_sign=shift_sign,
-            shifts_label=shifts_label,
             time_dim=self.time_dim,
             space_dims=self.space_dims,
             scaler=scaler,
@@ -390,7 +529,7 @@ class TOAD:
         objective=optimising.combined_spatial_nonlinearity,
         n_trials=50,
         direction="maximize",
-        log_level="WARNING",
+        log_level: int = optuna.logging.WARNING,
         show_progress_bar=True,
     ):
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
@@ -445,6 +584,76 @@ class TOAD:
         )
 
     # # ======================================================================
+    # #               netCDF functions
+    # # ======================================================================
+
+    def save(self, suffix: Optional[str] = None, path: Optional[str] = None):
+        """Save the TOAD object to a netCDF file.
+
+        Args:
+            suffix: Optional string to append to filename before extension
+            path: Optional path to save file to. If not provided, uses self.path
+
+        Raises:
+            ValueError: If neither path nor self.path is set
+            ValueError: If using self.path without a suffix (to prevent overwriting)
+        """
+        if path is None and self.path is None:
+            raise ValueError("Path to save TOAD dataset not set. Please provide path.")
+
+        # Prevent overwriting when using self.path
+        if path is None and self.path is not None and suffix is None:
+            raise ValueError(
+                "Please provide either a suffix to append to the original path or specify a new path."
+            )
+
+        # Use user-provided path if specified, otherwise use self.path
+        save_path = path if path is not None else self.path
+
+        if save_path == self.path:
+            # Get original extension if using self.path
+            original_ext = self.path.rsplit(".", 1)[1] if "." in self.path else "nc"
+        else:
+            # For user-provided path without extension, default to .nc
+            original_ext = save_path.rsplit(".", 1)[1] if "." in save_path else "nc"
+
+        if suffix:
+            # Split path into base and add suffix before extension
+            base = save_path.rsplit(".", 1)[0] if "." in save_path else save_path
+            save_path = f"{base}_{suffix}.{original_ext}"
+        elif "." not in save_path:
+            # Add extension if path has none
+            save_path = f"{save_path}.{original_ext}"
+
+        # Apply compression =====
+        try:
+            # First clear any existing encoding
+            for var in self.data.variables:
+                self.data[var].encoding.clear()
+
+            # Define compression settings
+            compression_settings = {
+                "zlib": True,
+                "complevel": 1,
+            }
+
+            # Apply compression to both float and int data variables
+            for var in self.data.data_vars:
+                if np.issubdtype(self.data[var].dtype, np.number):
+                    self.data[var].encoding.update(compression_settings)
+
+                    if np.issubdtype(self.data[var].dtype, np.integer):
+                        self.data[var].encoding.update(
+                            {"_FillValue": None, "dtype": self.data[var].dtype}
+                        )
+        except Exception as e:
+            self.logger.warning(
+                f"Could not apply compression settings: {str(e)}. Proceeding with save without compression."
+            )
+
+        self.data.to_netcdf(save_path)
+
+    # # ======================================================================
     # #               GET functions (postprocessing)
     # # ======================================================================
 
@@ -453,24 +662,91 @@ class TOAD:
         return get_space_dims(self.data, self.time_dim)
 
     @property
-    def base_vars(self) -> np.ndarray:
-        return np.array(
-            [
-                x
-                for x in list(self.data.data_vars.keys())
-                if "_dts" not in x and "_cluster" not in x
-            ]
-        )
+    def base_vars(self) -> list[str]:
+        """Get the list of base variables in the dataset.
+
+        Base variables are those that have not been derived from shift detection or clustering.
+        A variable is considered a base variable if either:
+        1. It has no 'variable_type' attribute, or
+        2. Its 'variable_type' is neither 'shift' nor 'cluster'
+
+        Returns:
+            list[str]: List of base variable names in the dataset
+        """
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(attrs.VARIABLE_TYPE)
+            not in [attrs.TYPE_SHIFT, attrs.TYPE_CLUSTER]
+        ]
 
     @property
-    def shift_vars(self) -> np.ndarray:
-        return np.array([x for x in list(self.data.data_vars.keys()) if "_dts" in x])
+    def shift_vars(self) -> list[str]:
+        """Get the list of shift variables in the dataset.
+
+        Shift variables are those that have been derived from shift detection.
+        A variable is considered a shift variable if it has a 'variable_type=attrs.TYPE_SHIFT' attribute.
+
+        Returns:
+            list[str]: List of shift variable names in the dataset
+        """
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(attrs.VARIABLE_TYPE) == attrs.TYPE_SHIFT
+        ]
 
     @property
-    def cluster_vars(self) -> np.ndarray:
-        return np.array(
-            [x for x in list(self.data.data_vars.keys()) if "_cluster" in x]
-        )
+    def cluster_vars(self) -> list[str]:
+        """Get the list of cluster variables in the dataset.
+
+        Cluster variables are those that have been derived from clustering.
+        A variable is considered a cluster variable if it has a 'variable_type="cluster"' attribute.
+
+        Returns:
+            list[str]: List of cluster variable names in the dataset
+        """
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(attrs.VARIABLE_TYPE) == attrs.TYPE_CLUSTER
+        ]
+
+    def shift_vars_for_var(self, var: str) -> list[str]:
+        """
+        Get the shift variables for a given variable.
+        >> Args:
+            var: (str)
+                The base variable to get the shift variables for.
+
+        >> Returns:
+            list[str]: The shift variables for the given base variable.
+        """
+        return [
+            str(x)
+            for x in self.shift_vars
+            if self.data[x].attrs.get(attrs.BASE_VARIABLE) == var
+        ]
+
+    def cluster_vars_for_var(self, var: str) -> list[str]:
+        """
+        Get the cluster variables for a given variable.
+        >> Args:
+            var: (str)
+                The base variable to get the cluster variables for.
+
+        >> Returns:
+            list[str]: The cluster variables for the given base variable.
+        """
+        return [
+            str(x)
+            for x in self.cluster_vars
+            if self.data[x].attrs.get(attrs.BASE_VARIABLE) == var
+        ]
+
+    def get_base_var(self, var: str) -> Optional[str]:
+        """Get the base variable for a given variable."""
+        return self.data[var].attrs.get(attrs.BASE_VARIABLE)
 
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """
@@ -513,7 +789,7 @@ class TOAD:
                 message += f" Or did you mean to use any of these?: {', '.join(alt_shift_vars)}"
             raise ValueError(message)
 
-    def get_clusters(self, var, label_suffix: str = "") -> xr.DataArray:
+    def get_clusters(self, var) -> xr.DataArray:
         """
         Get cluster xr.DataArray for the specified variable.
 
@@ -533,26 +809,20 @@ class TOAD:
         """
 
         # Check if the variable is a cluster variable
-        v = f"{var}{label_suffix}"
-        if v in self.data and "_cluster" in v:
-            return self.data[v]
+        if self.data[var].attrs.get(attrs.VARIABLE_TYPE) == attrs.TYPE_CLUSTER:
+            return self.data[var]
 
-        # Infer the default cluster variable name
-        cluster_var = f"{var}_cluster{label_suffix}"
-        if cluster_var in self.data:
-            return self.data[cluster_var]
+        cluster_vars = self.cluster_vars_for_var(var)
+        if len(cluster_vars) > 1:
+            raise ValueError(
+                f"Multiple cluster variables exist for {var}: {cluster_vars}. Please specify which one to use"
+            )
+        elif len(cluster_vars) == 0:
+            raise ValueError(
+                f"No cluster variables found for {var}. Please first run compute_clusters()."
+            )
         else:
-            # Tell the user about alternative cluster variables
-            alt_cluster_vars: List[str] = [
-                str(data_var)
-                for data_var in self.data.data_vars
-                if "_cluster" in str(data_var)
-            ]
-
-            message = f"No cluster variable found for {var} or {cluster_var}. Please first run compute_clusters()."
-            if alt_cluster_vars:
-                message += f" Or did you mean to use any of these?: {', '.join(alt_cluster_vars)}"
-            raise ValueError(message)
+            return self.data[cluster_vars[0]]
 
     def get_cluster_counts(self, var, exclude_noise: bool = True):
         """Returns sorted dictionary with number of cells in both space and time for each cluster.

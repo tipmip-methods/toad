@@ -2,8 +2,14 @@ import logging
 import xarray as xr
 import numpy as np
 from toad._version import __version__
-from typing import Optional, Union
-from toad.utils import get_space_dims, reorder_space_dims, detect_latlon_names
+from typing import TYPE_CHECKING, Optional, Union
+from toad.utils import (
+    get_space_dims,
+    reorder_space_dims,
+    detect_latlon_names,
+    get_unique_variable_name,
+    attrs,
+)
 
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -17,14 +23,17 @@ from toad.regridding import HealPixRegridder
 
 logger = logging.getLogger("TOAD")
 
+# to avoid circular import we use TYPE_CHECKING for importing TOAD obj
+if TYPE_CHECKING:
+    from toad.core import TOAD
+
 
 def compute_clusters(
-    data: xr.Dataset,
+    td: "TOAD",
     var: str,
     method: ClusterMixin,
     shift_threshold: float = 0.8,
     shift_sign: str = "absolute",  # TODO: rename to shift_direction
-    shifts_label: Optional[str] = None,
     time_dim: str = "time",
     space_dims: Optional[list[str]] = None,
     scaler: Optional[
@@ -41,7 +50,7 @@ def compute_clusters(
 
     >> Args:
         var:
-            Name of the variable in the dataset to cluster.
+            Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is throw, in which case you should specify the shifts variable name.
         method:
             The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
         shift_threshold:
@@ -60,7 +69,7 @@ def compute_clusters(
         output_label_suffix:
             A suffix to add to the output label. Defaults to "".
         overwrite:
-            Whether to overwrite existing variable. Defaults to False.
+            If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
         merge_input:
             Whether to merge the clustering results with the input dataset. Defaults to True.
         sort_by_size:
@@ -109,36 +118,42 @@ def compute_clusters(
         - Return Dataset or DataArray based on merge_input
     """
 
-    # Check shifts var
-    all_vars = list(data.data_vars.keys())
-    shifts_label = (
-        shifts_label if shifts_label else f"{var}_dts"
-    )  # default to {var}_dts
+    # if supplied variable is a shift variable, use that
+    if td.data[var].attrs.get(attrs.VARIABLE_TYPE) == attrs.TYPE_SHIFT:
+        shifts_variable = var
+    else:
+        # if supplied variable is a base variable, check if multiple shifts variables exist
+        shift_vars = td.shift_vars_for_var(var)
+        if len(shift_vars) > 1:
+            raise ValueError(
+                f"Multiple shifts variables exist for {var}: {shift_vars}. Please specify which one to use"
+            )
+        elif len(shift_vars) == 0:
+            raise ValueError(
+                f"No shifts found for base variable {var}. Please run compute_shifts() for var={var} first."
+            )
 
-    if shifts_label not in all_vars:
+        # use the first/only shift variable
+        shifts_variable = shift_vars[0]
+
+    if td.data[shifts_variable].ndim != 3:
         raise ValueError(
-            f'Shifts not found at {shifts_label}. Please run shifts on {var} first, or provide a custom "shifts_label"'
-        )
-    if data[shifts_label].ndim != 3:
-        raise ValueError("data must be 3-dimensional")  # TODO: make it work for 2D data
+            "Shifts variable must be 3-dimensional"
+        )  # TODO: make it work for 2D data
 
     # we add neg sign manually to detect negative shift
     if shift_threshold < 0:
         raise ValueError(f"shift_threshold must be positive, got {shift_threshold}")
 
-    # Set output label and check if already in data
-    output_label = f"{var}_cluster{output_label_suffix}"
-    if output_label in data and merge_input:
-        if overwrite:
-            data = data.drop_vars(output_label)
-        else:
-            logger.warning(
-                f"{output_label} already exists. Please pass overwrite=True to overwrite it."
-            )
-            return data
+    # Set output label (name of shifts_variable + _cluster + output_label_suffix) and check if already in data
+    output_label = f"{shifts_variable}_cluster{output_label_suffix}"
+    if merge_input and not overwrite:
+        output_label = get_unique_variable_name(output_label, td.data, logger)
+    elif overwrite and output_label in td.data:
+        td.data = td.data.drop_vars(output_label)
 
     # Extract and filter data for clustering
-    df_dts = data[shifts_label].to_dataframe().reset_index()
+    df_dts = td.data[shifts_variable].to_dataframe().reset_index()
 
     def shifts_filter_func(x):
         """Filter shifts based on sign and threshold."""
@@ -154,7 +169,7 @@ def compute_clusters(
             )
 
     # apply filter
-    filtered_df = df_dts[df_dts[shifts_label].apply(shifts_filter_func)]
+    filtered_df = df_dts[df_dts[shifts_variable].apply(shifts_filter_func)]
 
     # return empty clusters if no data points left
     if filtered_df.empty:
@@ -162,35 +177,35 @@ def compute_clusters(
             f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
         )
 
-        clusters = data[var].copy().rename(output_label)
+        clusters = td.data[shifts_variable].copy().rename(output_label)
         clusters.data[:] = -1
         clusters.attrs = {}
 
         # Save details as attributes
         clusters.attrs.update(
             {
-                "cluster_ids": [],
-                "shift_threshold": shift_threshold,
-                "shift_sign": shift_sign,
-                "n_data_points": 0,
-                "toad_version": __version__,
+                attrs.CLUSTER_IDS: [],
+                attrs.SHIFT_THRESHOLD: shift_threshold,
+                attrs.SHIFT_SIGN: shift_sign,
+                attrs.N_DATA_POINTS: 0,
+                attrs.TOAD_VERSION: __version__,
             }
         )
 
         # Merge the cluster labels back into the original data
         return (
-            xr.merge([data, clusters], combine_attrs="override")
+            xr.merge([td.data, clusters], combine_attrs="override")
             if merge_input
             else clusters
         )
 
     # Handle dimensions
-    space_dims = space_dims if space_dims else get_space_dims(data, time_dim)
+    space_dims = space_dims if space_dims else get_space_dims(td.data, time_dim)
     space_dims = reorder_space_dims(space_dims)
     index_dims = [time_dim] + space_dims
 
     # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
-    lat_name, lon_name = detect_latlon_names(data)
+    lat_name, lon_name = detect_latlon_names(td.data)
 
     # check if dataset has lat/lon (as dims, or coords, or variables)
     has_latlon = lat_name is not None and lon_name is not None
@@ -205,8 +220,8 @@ def compute_clusters(
         coords = filtered_df[coord_cols].to_numpy()
     elif has_latlon:
         # Irregular i/j grids: join 2D lat/lon onto the filtered rows keyed by spatial dims
-        lat_df = data[lat_name].to_dataframe(name=lat_name).reset_index()
-        lon_df = data[lon_name].to_dataframe(name=lon_name).reset_index()
+        lat_df = td.data[lat_name].to_dataframe(name=lat_name).reset_index()
+        lon_df = td.data[lon_name].to_dataframe(name=lon_name).reset_index()
         latlon_df = lat_df.merge(lon_df, on=space_dims, how="inner")
         filtered_df_ext = filtered_df.merge(latlon_df, on=space_dims, how="left")
         coord_cols = [time_dim, lat_name, lon_name]
@@ -216,7 +231,7 @@ def compute_clusters(
         coords = filtered_df[index_dims].to_numpy()
 
     # take absolute value of shifts as weights
-    weights = np.abs(filtered_df[shifts_label].to_numpy())
+    weights = np.abs(filtered_df[shifts_variable].to_numpy())
 
     # Create HealPixRegridder only for regular 1D lat/lon grids
     if regridder is None and is_latlon_dims:
@@ -224,7 +239,7 @@ def compute_clusters(
 
     # Regrid and scale
     if regridder:
-        logger.info(f"Regridding {shifts_label} with {regridder.__class__.__name__}")
+        logger.info(f"Regridding {shifts_variable} with {regridder.__class__.__name__}")
         coords, weights = regridder.regrid(coords, weights)
 
     # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
@@ -245,7 +260,7 @@ def compute_clusters(
     method_params = {
         f"method_{param}": str(value)
         for param, value in dict(sorted(vars(method).items())).items()
-        if value is not None
+        if value is not None and not param.startswith("_")
     }
 
     # Save regridder params
@@ -267,7 +282,7 @@ def compute_clusters(
         )
 
     # Perform clustering
-    logger.info(f"Applying clusterer {method.__class__.__name__} to {shifts_label}")
+    logger.info(f"Applying clusterer {method.__class__.__name__} to {shifts_variable}")
     try:
         cluster_labels = np.array(method.fit_predict(coords, weights))
     except ValueError as e:
@@ -298,22 +313,27 @@ def compute_clusters(
     clusters = df_dims.set_index(index_dims).to_xarray()[output_label]
 
     # Transpose if dimensions don't match
-    if clusters.dims != data[var].dims:
-        clusters = clusters.transpose(*data[var].dims)
+    if clusters.dims != td.data[shifts_variable].dims:
+        clusters = clusters.transpose(*td.data[shifts_variable].dims)
+
+    # Get base variable from shifts attrs
+    base_variable = td.data[shifts_variable].attrs.get(attrs.BASE_VARIABLE)
+    base_variable = base_variable if base_variable else "Unknown"
 
     # Save details as attributes
     clusters.attrs.update(
         {
-            "cluster_ids": np.unique(cluster_labels).astype(int),
-            "shift_threshold": shift_threshold,
-            "shift_sign": shift_sign,
-            "scaler": scaler.__class__.__name__,
-            "time_scale_factor": time_scale_factor,
-            "n_data_points": len(coords),
-            "method_name": method.__class__.__name__,
-            "toad_version": __version__,
-            "source_variable": var,
-            "shifts_variable": shifts_label,
+            attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
+            attrs.SHIFT_THRESHOLD: shift_threshold,
+            attrs.SHIFT_SIGN: shift_sign,
+            attrs.SCALER: scaler.__class__.__name__,
+            attrs.TIME_SCALE_FACTOR: time_scale_factor,
+            attrs.N_DATA_POINTS: len(coords),
+            attrs.METHOD_NAME: method.__class__.__name__,
+            attrs.TOAD_VERSION: __version__,
+            attrs.BASE_VARIABLE: base_variable,
+            attrs.SHIFTS_VARIABLE: shifts_variable,
+            attrs.VARIABLE_TYPE: attrs.TYPE_CLUSTER,
             **method_params,
             **regridder_params,
         }
@@ -323,7 +343,7 @@ def compute_clusters(
 
     # Merge the cluster labels back into the original data
     return (
-        xr.merge([data, clusters], combine_attrs="override")
+        xr.merge([td.data, clusters], combine_attrs="override")
         if merge_input
         else clusters
     )

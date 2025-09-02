@@ -8,7 +8,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.axes import Axes
 from typing import Union, Tuple, Optional, List, Any, overload, Literal
 from dataclasses import dataclass
-from toad.utils import detect_latlon_names, is_regular_grid
+from toad.utils import detect_latlon_names, is_regular_grid, attrs
 
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
@@ -1154,6 +1154,7 @@ class TOADPlotter:
         hspace: float = 0.1,
         vertical: bool = False,
         n_timeseries_col: int = 1,
+        plot_all_clusters_on_map: bool = True,
     ) -> Tuple[matplotlib.figure.Figure, dict]:
         """Create a combined plot with a cluster map and aggregated time series.
 
@@ -1166,7 +1167,7 @@ class TOADPlotter:
             map_var: Variable name whose data to plot in the map.
                      Defaults to `var` if None.
             timeseries_var: Variable name whose data to plot in the timeseries.
-                            Defaults to `var` if None.
+                            Defaults to base variable of the cluster variable.
             projection: Map projection for the cluster map. Uses default if None.
             figsize: Overall figure size (width, height) in inches.
             width_ratios: List of relative widths for map vs. timeseries section
@@ -1205,6 +1206,10 @@ class TOADPlotter:
 
         if len(cluster_ids) == 0:
             raise ValueError("No clusters found for variable", var)
+
+        # Get base variable from clusters attrs
+        if timeseries_var is None:
+            timeseries_var = self.td.get_clusters(var).attrs[attrs.BASE_VARIABLE]
 
         # Calculate layout dimensions
         n_ts = len(cluster_ids)
@@ -1254,6 +1259,10 @@ class TOADPlotter:
                 hspace=hspace,
                 wspace=wspace if n_timeseries_col > 1 else 0,
             )
+
+        # Don't plot remaining clusters on map if not requested
+        if not plot_all_clusters_on_map:
+            map_kwargs["remaining_clusters_cmap"] = None
 
         # Plot map
         colors = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)
@@ -1325,9 +1334,9 @@ class TOADPlotter:
         """Plot histograms showing the distribution of shifts for each shift variable."""
 
         if figsize is None:
-            figsize = (15, 2 * self.td.shift_vars.size)
+            figsize = (15, 2 * len(self.td.shift_vars))
 
-        fig, axs = plt.subplots(nrows=self.td.shift_vars.size, figsize=figsize)
+        fig, axs = plt.subplots(nrows=len(self.td.shift_vars), figsize=figsize)
         if not isinstance(axs, np.ndarray):
             axs = np.array([axs])
 
@@ -1337,7 +1346,7 @@ class TOADPlotter:
 
         self._remove_spines(axs[-1], spines=["right", "top"])
 
-        for i in range(self.td.shift_vars.size):
+        for i in range(len(self.td.shift_vars)):
             axs[i].hist(
                 self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
                 range=(-1, 1),

@@ -124,6 +124,6 @@ def compute_shifts(
 
     # 6. Merge the detected shifts with the original data
     if merge_input:
-        return xr.merge([data, shifts], combine_attrs="override")  # xr.dataset
+        return xr.merge([data, shifts], combine_attrs="override", compat="override")  # xr.dataset
     else:
         return shifts  # xr.dataarray

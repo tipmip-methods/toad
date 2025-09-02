@@ -194,7 +194,7 @@ def compute_clusters(
 
         # Merge the cluster labels back into the original data
         return (
-            xr.merge([td.data, clusters], combine_attrs="override")
+            xr.merge([td.data, clusters], combine_attrs="override", compat="override")
             if merge_input
             else clusters
         )
@@ -343,7 +343,7 @@ def compute_clusters(
 
     # Merge the cluster labels back into the original data
     return (
-        xr.merge([td.data, clusters], combine_attrs="override")
+        xr.merge([td.data, clusters], combine_attrs="override", compat="override")
         if merge_input
         else clusters
     )

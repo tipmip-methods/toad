@@ -96,6 +96,20 @@ def anti_centered_segmentation(n_tot, length):
 
     return idx0
 
+def picked_centered_segmentation(n_tot, length):
+    """
+    Centered segmentation, but if the gap-index hits
+    the center, a random offset is added.
+    """
+
+    n_seg = int(n_tot / length)  # number of segments
+    rest = n_tot - n_seg * length  # uncovered points
+    idx0 = rest // 2  # first index of the first segment
+
+    if idx0 == int(n_tot/2)%length:             # if the gap-index hits the center
+        idx0 += length//2 #np.random.randint(1, length)
+
+    return idx0
 
 ###################################################################################################
 ########################################### ASDETECT ##############################################

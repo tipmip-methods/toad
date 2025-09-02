@@ -24,21 +24,51 @@ language = "en"
 extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
+    "sphinx.ext.doctest",
     "sphinx.ext.autosummary",
-    "sphinx.ext.linkcode",
+    # "sphinx.ext.linkcode",
+    "sphinx.ext.napoleon",  # Support for NumPy and Google style docstrings
+    "sphinx.ext.autodoc.typehints",  # to pull types from function definitions
     #'sphinx.ext.viewcode',
     "myst_nb",  # allows to include Jupyter Notebooks and Markdowns
 ]
 autodoc_default_options = {
     "members": True,
     "undoc-members": True,
+    "private-members": False,
     "show-inheritance": True,
+    "special-members": False,  # Exclude special methods like __init__, __repr__, etc.
+    "exclude-members": "__weakref__,__dict__,__module__,__doc__,__slots__",  # Exclude problematic attributes
+    "show-signature": True,
+    "show-signature-with-docstring": False,  # Don't show docstring in signature for dataclasses
 }
 autosummary_generate = True
 myst_fence_as_directive = ["mermaid"]
 myst_heading_anchors = 2  # depth of implicit target for cross references -> needed for git_version_control.rst
 
 nb_execution_mode = "off"  # Prevent myst_nb from executing notebooks
+
+# Autodoc type hints settings
+autodoc_typehints = "description"
+autodoc_typehints_format = "short"
+
+# Napoleon settings
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = False
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = False
+napoleon_use_param = True
+napoleon_use_keyword = True
+napoleon_use_rtype = True
+napoleon_preprocess_types = True
+napoleon_type_aliases = None
+napoleon_attr_annotations = True
+napoleon_include_ivar_with_doc = False  # Don't show instance variables for dataclasses
 
 templates_path = ["_templates"]
 exclude_patterns = []
@@ -55,6 +85,11 @@ remove_from_toctrees = [
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinxawesome_theme"
+
+# Other themes to try in the future maybe:
+# html_theme = 'furo' 
+# html_theme = 'sphinx_book_theme'
+
 html_static_path = ["_static", "resources"]
 html_css_files = [
     "custom.css",
@@ -101,6 +136,14 @@ def linkcode_resolve(domain, info):
     # **Skip properties to avoid the error**
     if isinstance(obj, property):
         return None
+    
+    # **Skip dataclass instances to avoid the error**
+    if hasattr(obj, '__class__') and hasattr(obj.__class__, '__dataclass_fields__'):
+        return None
+    
+    # **Skip Numba JIT-compiled functions to avoid CPUDispatcher error**
+    if hasattr(obj, '__class__') and 'CPUDispatcher' in str(type(obj)):
+        return None
 
     try:
         # Get the source file and line numbers
@@ -116,10 +159,21 @@ def linkcode_resolve(domain, info):
     # identify start and end line number of code in source file
     linespec = f"#L{lineno}-L{lineno + len(source) - 1}" if lineno else ""
 
+    # Check if toad module file exists and is not None
+    toad_module = sys.modules.get("toad")
+    if toad_module is None or toad_module.__file__ is None:
+        print("\nWARNING: Could not find toad module or its __file__ attribute")
+        return None
+
+    # Ensure sourcefile is not None before using it
+    if sourcefile is None:
+        print("\nWARNING: No source file found for object")
+        return None
+
     # Adjust for objects imported into __init__.py
     # Use the actual source file instead of relying on the module name
     relpath = os.path.relpath(
-        sourcefile, start=os.path.dirname(sys.modules["toad"].__file__)
+        sourcefile, start=os.path.dirname(toad_module.__file__)
     )
 
     # Build the GitHub URL

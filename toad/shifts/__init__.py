@@ -1,9 +1,20 @@
+"""
+Shifts module for TOAD.
+
+This module provides functionality for detecting abrupt shifts in climate data. The main function
+`compute_shifts` takes a dataset and a method for detecting abrupt shifts and returns the detected
+shifts as an xarray object.
+
+Currently implemented methods:
+- ASDETECT: Implementation of the [Boulton+Lenton2019]_
+"""
+
 import logging
 from typing import Union
 import xarray as xr
 from toad._version import __version__
 import numpy as np
-from toad.utils import get_unique_variable_name, attrs
+from toad.utils import get_unique_variable_name, _attrs
 
 from .methods.base import ShiftsMethod
 from .methods.asdetect import ASDETECT
@@ -28,27 +39,24 @@ def compute_shifts(
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
-    >> Args:
-        var:
-            Name of the variable in the dataset to analyze for abrupt shifts.
-        method:
-            The abrupt shift detection algorithm to use. Choose from predefined method objects in toad.shifts or create your own following the base class in toad.shifts.methods.base
-        time_dim:
-            Name of the dimension along which the time-series analysis is performed. Defaults to "time".
-        output_label_suffix:
-            A suffix to add to the output label. Defaults to "".
-        overwrite:
-            Whether to overwrite existing variable. Defaults to False.
-        merge_input:
-            Whether to merge results into input dataset (True) or return separately (False)
+    Args:
+        data: Dataset containing the variable to analyze
+        var: Name of the variable in the dataset to analyze for abrupt shifts
+        method: The abrupt shift detection algorithm to use. Choose from predefined method objects 
+            in toad.shifts or create your own following the base class in toad.shifts.methods.base
+        time_dim: Name of the dimension along which the time-series analysis is performed. 
+            Defaults to "time".
+        output_label_suffix: A suffix to add to the output label. Defaults to "".
+        overwrite: Whether to overwrite existing variable. Defaults to False.
+        merge_input: Whether to merge results into input dataset (True) or return separately (False)
 
-    >> Returns:
-        - xr.Dataset: If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the detected shifts.
-        - xr.DataArray: If `merge_input` is `False`, returns an `xarray.DataArray` containing the detected shifts.
+    Returns:
+        Union[xr.Dataset, xr.DataArray]: If merge_input is True, returns an xarray.Dataset containing 
+            the original data and the detected shifts. If merge_input is False, returns an 
+            xarray.DataArray containing the detected shifts.
 
-    >> Raises:
-        ValueError:
-            If data is invalid or required parameters are missing
+    Raises:
+        ValueError: If data is invalid or required parameters are missing
     """
 
     """
@@ -113,11 +121,11 @@ def compute_shifts(
     # Save details as attributes
     shifts.attrs.update(
         {
-            attrs.TIME_DIM: time_dim,
-            attrs.METHOD_NAME: method.__class__.__name__,
-            attrs.TOAD_VERSION: __version__,
-            attrs.BASE_VARIABLE: var,
-            attrs.VARIABLE_TYPE: attrs.TYPE_SHIFT,
+            _attrs.TIME_DIM: time_dim,
+            _attrs.METHOD_NAME: method.__class__.__name__,
+            _attrs.TOAD_VERSION: __version__,
+            _attrs.BASE_VARIABLE: var,
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_SHIFT,
             **method_params,
         }
     )

@@ -1,3 +1,23 @@
+"""
+Clustering module for TOAD (Temporal Offset Analysis and Detection).
+
+This module provides functionality for clustering temporal shifts in climate data. The main function
+`compute_clusters` takes temporal shift patterns and groups them into clusters using sklearn-compatible
+clustering algorithms. The clustering is performed in both space and time dimensions, allowing
+identification of regions with similar temporal shift behaviors.
+
+The module supports various clustering methods from scikit-learn (e.g., HDBSCAN, DBSCAN, etc.) and
+includes utilities for:
+- Preprocessing data with different scaling methods
+- Handling geographic coordinates and projections
+- Converting between geodetic and cartesian coordinates
+- Sorting clusters by size
+- Preserving metadata and attributes in xarray objects
+
+The clustering results are returned as xarray objects with appropriate metadata and can be
+visualized using TOAD's plotting utilities.
+"""
+
 import logging
 import xarray as xr
 import numpy as np
@@ -8,7 +28,7 @@ from toad.utils import (
     reorder_space_dims,
     detect_latlon_names,
     get_unique_variable_name,
-    attrs,
+    _attrs,
 )
 
 from sklearn.base import ClusterMixin
@@ -48,46 +68,31 @@ def compute_clusters(
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
-    >> Args:
-        var:
-            Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is throw, in which case you should specify the shifts variable name.
-        method:
-            The clustering method to use. Choose methods from `sklearn.cluster` or create your by inheriting from `sklearn.base.ClusterMixin`.
-        shift_threshold:
-            The threshold for the shift magnitude. Defaults to 0.8.
-        shift_sign:
-            The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
-        shifts_label:
-            Name of the variable containing precomputed shifts. Defaults to {var}_dts.
-        scaler:
-            The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
-        time_scale_factor:
-            The factor to scale the time values by. Defaults to 1.
-        regridder:
-            The regridding method to use from `toad.clustering.regridding`.
-            Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
-        output_label_suffix:
-            A suffix to add to the output label. Defaults to "".
-        overwrite:
-            If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
-        merge_input:
-            Whether to merge the clustering results with the input dataset. Defaults to True.
-        sort_by_size:
-            Whether to reorder clusters by size. Defaults to True.
+    Args:
+        td: TOAD object containing the data to cluster
+        var: Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is thrown, in which case you should specify the shifts variable name.
+        method: The clustering method to use. Choose methods from `sklearn.cluster` or create your own by inheriting from `sklearn.base.ClusterMixin`.
+        shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
+        shift_sign: The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
+        time_dim: Name of the time dimension. Defaults to "time".
+        space_dims: List of spatial dimension names. If None, will be auto-detected.
+        scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
+        time_scale_factor: The factor to scale the time values by. Defaults to 1.
+        regridder: The regridding method to use from `toad.clustering.regridding`. Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
+        output_label_suffix: A suffix to add to the output label. Defaults to "".
+        overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
+        merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
+        sort_by_size: Whether to reorder clusters by size. Defaults to True.
 
-    >> Returns:
-        xr.Dataset:
-            If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
-        xr.DataArray:
-            If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
+    Returns:
+        If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
+        If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
 
-    >> Raises:
-        ValueError:
-            If data is invalid or required parameters are missing
+    Raises:
+        ValueError: If data is invalid or required parameters are missing
 
-    >> Notes:
+    Notes:
         For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
-
     """
 
     """
@@ -119,7 +124,7 @@ def compute_clusters(
     """
 
     # if supplied variable is a shift variable, use that
-    if td.data[var].attrs.get(attrs.VARIABLE_TYPE) == attrs.TYPE_SHIFT:
+    if td.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT:
         shifts_variable = var
     else:
         # if supplied variable is a base variable, check if multiple shifts variables exist
@@ -184,11 +189,11 @@ def compute_clusters(
         # Save details as attributes
         clusters.attrs.update(
             {
-                attrs.CLUSTER_IDS: [],
-                attrs.SHIFT_THRESHOLD: shift_threshold,
-                attrs.SHIFT_SIGN: shift_sign,
-                attrs.N_DATA_POINTS: 0,
-                attrs.TOAD_VERSION: __version__,
+                _attrs.CLUSTER_IDS: [],
+                _attrs.SHIFT_THRESHOLD: shift_threshold,
+                _attrs.SHIFT_SIGN: shift_sign,
+                _attrs.N_DATA_POINTS: 0,
+                _attrs.TOAD_VERSION: __version__,
             }
         )
 
@@ -317,23 +322,23 @@ def compute_clusters(
         clusters = clusters.transpose(*td.data[shifts_variable].dims)
 
     # Get base variable from shifts attrs
-    base_variable = td.data[shifts_variable].attrs.get(attrs.BASE_VARIABLE)
+    base_variable = td.data[shifts_variable].attrs.get(_attrs.BASE_VARIABLE)
     base_variable = base_variable if base_variable else "Unknown"
 
     # Save details as attributes
     clusters.attrs.update(
         {
-            attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
-            attrs.SHIFT_THRESHOLD: shift_threshold,
-            attrs.SHIFT_SIGN: shift_sign,
-            attrs.SCALER: scaler.__class__.__name__,
-            attrs.TIME_SCALE_FACTOR: time_scale_factor,
-            attrs.N_DATA_POINTS: len(coords),
-            attrs.METHOD_NAME: method.__class__.__name__,
-            attrs.TOAD_VERSION: __version__,
-            attrs.BASE_VARIABLE: base_variable,
-            attrs.SHIFTS_VARIABLE: shifts_variable,
-            attrs.VARIABLE_TYPE: attrs.TYPE_CLUSTER,
+            _attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
+            _attrs.SHIFT_THRESHOLD: shift_threshold,
+            _attrs.SHIFT_SIGN: shift_sign,
+            _attrs.SCALER: scaler.__class__.__name__,
+            _attrs.TIME_SCALE_FACTOR: time_scale_factor,
+            _attrs.N_DATA_POINTS: len(coords),
+            _attrs.METHOD_NAME: method.__class__.__name__,
+            _attrs.TOAD_VERSION: __version__,
+            _attrs.BASE_VARIABLE: base_variable,
+            _attrs.SHIFTS_VARIABLE: shifts_variable,
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER,
             **method_params,
             **regridder_params,
         }

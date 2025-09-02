@@ -10,12 +10,12 @@ class ClusterTimeStats:
     """Class containing functions for calculating time-related statistics for clusters, such as start time, peak time, etc."""
 
     def __init__(self, toad, var):
-        """
-        >> Args:
-            toad : (TOAD)
-                TOAD object
-            var : (str)
-                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        """Initialize the ClusterTimeStats object.
+
+        Args:
+            toad (TOAD): TOAD object
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+                or custom cluster variable name.
         """
         self.td = toad
         self.var = var
@@ -97,23 +97,18 @@ class ClusterTimeStats:
 
         grad = ts.diff(self.td.time_dim)
         return float(grad.argmin())
-
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float
     ) -> tuple[float, float]:
         """Get start and end time of the specified interquantile range of the cluster temporal density.
 
-        >> Args:
-            cluster_id:
-                ID of the cluster
-            lower_quantile:
-                Lower bound of the interquantile range (0-1)
-            upper_quantile:
-                Upper bound of the interquantile range (0-1)
+        Args:
+            cluster_id: ID of the cluster
+            lower_quantile: Lower bound of the interquantile range (0-1)
+            upper_quantile: Upper bound of the interquantile range (0-1)
 
-        >> Returns:
-            tuple :
-                (start_time, end_time) of the interquantile range
+        Returns:
+            tuple[float, float]: Start time and end time of the interquantile range
         """
         ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
         cum_dist = ctd.cumsum()
@@ -299,19 +294,45 @@ def fit_gaussian_transition(
     # correlation target
     use_abs: bool = True,  # use |values| (ASDETECT is hump-like)
 ):
-    """
-    Returns:
-    dict with keys:
-        - transition_time (Gaussian peak position in original time units)
-        - center_norm, sigma, amplitude
-        - best_correlation (weighted)
-        - window_indices (start, end), used_time, used_values
-        - best_gaussian (array on original time grid; None if failure)
-        - warnings (list[str])
-    """
+    """Fits a Gaussian transition function to time series data.
 
-    """
-    !! TODO: THIS IS WORKING VIBE CODE THAT NEEDS TO BE VALIDATED AND CHECKED FOR CORRECTNESS...  !!
+    This function attempts to fit a Gaussian curve to a transition in time series data.
+    It includes preprocessing steps like smoothing and windowing to isolate the transition
+    region before fitting.
+
+    Args:
+        time: Array of time values.
+        values: Array of data values corresponding to time points.
+        smooth_frac: Fraction of data length to use as window for Savitzky-Golay smoothing.
+            Set to 0 to disable smoothing. Defaults to 0.03.
+        baseline_frac: Fraction of maximum value to use as baseline threshold for defining
+            the transition window. Defaults to 0.05.
+        margin_frac: Fraction of full series length to extend window on both sides.
+            Defaults to 0.02.
+        min_sigma: Minimum allowed width (sigma) in normalized time units [0,1].
+            Defaults to 0.01.
+        max_sigma: Maximum allowed width (sigma) in normalized time units [0,1].
+            Defaults to 0.20.
+        k_sigma_bound: Factor determining how center position bounds depend on sigma.
+            Center bounds are [σ*k, 1-σ*k]. Defaults to 2.0.
+        use_abs: Whether to use absolute values for fitting. Set True for hump-like
+            transitions. Defaults to True.
+
+    Returns:
+        dict: Dictionary containing fit results with the following keys:
+            - transition_time: Gaussian peak position in original time units
+            - center_norm: Normalized center position of Gaussian
+            - sigma: Width of fitted Gaussian
+            - amplitude: Height of fitted Gaussian
+            - best_correlation: Weighted correlation coefficient of fit
+            - window_indices: Tuple of (start, end) indices of fitting window
+            - used_time: Time values used for fitting
+            - used_values: Data values used for fitting
+            - best_gaussian: Fitted Gaussian on original time grid (None if fit fails)
+            - warnings: List of warning messages from fitting process
+
+    Warnings:
+        !! TODO: THIS IS WORKING VIBE CODE THAT NEEDS TO BE VALIDATED AND CHECKED FOR CORRECTNESS...  !!
     """
 
     warnings = []

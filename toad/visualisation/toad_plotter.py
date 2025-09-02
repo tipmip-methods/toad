@@ -8,7 +8,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.axes import Axes
 from typing import Union, Tuple, Optional, List, Any, overload, Literal
 from dataclasses import dataclass
-from toad.utils import detect_latlon_names, is_regular_grid, attrs
+from toad.utils import detect_latlon_names, is_regular_grid, _attrs
 
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
@@ -23,6 +23,11 @@ default_cmap = "tab20b"
 
 @dataclass
 class PlotConfig:
+    """Configuration for map plotting parameters.
+    
+    This dataclass contains all the configuration options for creating maps
+    with TOADPlotter, including coastline, grid, and projection settings.
+    """
     resolution: str = "110m"
     coastline_linewidth: float = 0.5
     border_linewidth: float = 0.25
@@ -50,6 +55,16 @@ class ToadColors:
 
 
 class TOADPlotter:
+    """Plotting utilities for TOAD objects.
+
+    The TOADPlotter class provides methods for creating publication-ready visualizations
+    of TOAD data, including maps, timeseries, and statistical plots.
+
+    Args:
+        td: TOAD object containing the data to plot
+        config: Optional PlotConfig object with plotting preferences. If None, uses defaults.
+    """
+    
     def __init__(self, td, config: Optional[PlotConfig] = None):
         from toad import TOAD
 
@@ -571,7 +586,7 @@ class TOADPlotter:
                 )  # type: ignore
 
                 # Pass the colormap to the legend function
-                self.add_gradient_legend(
+                self._add_gradient_legend(
                     ax,
                     remaining_cluster_ids[0],
                     remaining_cluster_ids[-1],
@@ -1209,7 +1224,7 @@ class TOADPlotter:
 
         # Get base variable from clusters attrs
         if timeseries_var is None:
-            timeseries_var = self.td.get_clusters(var).attrs[attrs.BASE_VARIABLE]
+            timeseries_var = self.td.get_clusters(var).attrs[_attrs.BASE_VARIABLE]
 
         # Calculate layout dimensions
         n_ts = len(cluster_ids)
@@ -1372,26 +1387,41 @@ class TOADPlotter:
             if id in self.td.get_cluster_ids(var, exclude_noise=False)
         ]
 
-    def add_gradient_legend(
+    def _add_gradient_legend(
         self,
-        ax,
-        start,
-        end,
-        legend_pos=None,
-        legend_size=(0.05, 0.02),
-        label_text=None,
-        fontsize=7,
-        cmap=None,
-        var=None,
+        ax: matplotlib.axes.Axes,
+        start: int,
+        end: int,
+        legend_pos: Optional[Tuple[float, float]] = None,
+        legend_size: Tuple[float, float] = (0.05, 0.02),
+        label_text: Optional[str] = None,
+        fontsize: int = 7,
+        cmap: Optional[Union[str, matplotlib.colors.Colormap]] = None,
+        var: Optional[str] = None,
     ):
-        """
-        Add a custom gradient legend to a plot.
+        """Add a custom gradient legend to a plot.
 
-        Parameters:
-        -----------
-        var : str, optional
-            Variable name to use for optimal positioning. If None and legend_pos="auto",
-            uses projection-based defaults.
+        This method adds a gradient legend to visualize cluster IDs from start to end.
+        The legend can be automatically positioned based on the variable data or
+        manually positioned using legend_pos.
+
+        Args:
+            ax: The matplotlib axes to add the legend to
+            start: Starting cluster ID for the gradient
+            end: Ending cluster ID for the gradient
+            legend_pos: Optional tuple of (x, y) coordinates in axes fraction units
+                for legend placement. If None, position is determined automatically.
+            legend_size: Tuple of (width, height) for the legend size in axes fraction units.
+                Defaults to (0.05, 0.02).
+            label_text: Optional text label for the legend. If None, no label is added.
+            fontsize: Font size for legend text. Defaults to 7.
+            cmap: Optional colormap to use for the gradient. If None, uses the colormap
+                from the last plotted image or defaults to viridis.
+            var: Variable name used for optimal legend positioning when legend_pos is None.
+                If None, uses projection-based default positions.
+
+        Returns:
+            None
         """
 
         # Handle automatic positioning

@@ -1,9 +1,8 @@
-"""
-asdetect method for shifts detection.
+"""ASDETECT method for shifts detection.
 
-Contains the asdetect algorithm with associated helper functions.
+Contains the ASDETECT algorithm with associated helper functions.
 
-Crated: January 22, ? (Sina)
+Created: January 22, ? (Sina)
 Refactored: Nov, 2024 (Jakob)
 """
 
@@ -17,24 +16,22 @@ from .base import ShiftsMethod
 
 
 class ASDETECT(ShiftsMethod):
-    """
-    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+    """Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
 
     Steps:
-    1. Divide the time series into overlapping segments of size `l`.
-    2. Perform linear regression within each segment to calculate gradients.
-    3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
-    4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
-    5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
-    6. Normalize the detection array by dividing by the number of window sizes used.
+        1. Divide the time series into overlapping segments of size `l`.
+        2. Perform linear regression within each segment to calculate gradients.
+        3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
+        4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
+        5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
+        6. Normalize the detection array by dividing by the number of window sizes used.
 
     Args:
-        lmin: (Optional) The minimum segment length for detection. Defaults to 5.
-        lmax: (Optional) The maximum segment length for detection. If not
-            specified, it defaults to one-third of the size of the time dimension.
+        lmin: The minimum segment length for detection. Defaults to 5.
+        lmax: The maximum segment length for detection. If not specified, it defaults to one-third of the size of the time dimension.
     """
 
-    def __init__(self, lmin=5, lmax=None):
+    def __init__(self, lmin:int=5, lmax:Optional[int]=None):
         self.lmin = lmin
         self.lmax = lmax
 
@@ -46,12 +43,11 @@ class ASDETECT(ShiftsMethod):
         """Compute the detection time series for each grid cell in the 3D data array.
 
         Args:
-            - values_1d: 1D array of values
-            - times_1d: 1D array of times
+            values_1d: 1D array of values
+            times_1d: 1D array of times
 
         Returns:
-            - A 1D array of the same length as `values_1d`, where each value represents
-            the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
+            A 1D array of the same length as `values_1d`, where each value represents the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
                 - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
                 - `-1` indicates that all tested segment lengths detected a significant negative gradient.
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
@@ -83,18 +79,14 @@ def construct_detection_ts(
     over many segmentation choices (i.e. values of l) results in a detection
     time series that indicates the points of largest relative gradients.
 
-    >> Args:
-        values_1d:
-            Time series, shape (n,)
-        times_1d:
-            Times, shape (n,), same length as values_1d
-        lmin:
-            Smallest segment length, default = 5
-        lmax:
-            Largest segment length, default = n/3
+    Args:
+        values_1d: Time series, shape (n,)
+        times_1d: Times, shape (n,), same length as values_1d
+        lmin: Smallest segment length, default = 5
+        lmax: Largest segment length, default = n/3
 
-    >> Returns:
-        - Abrupt shift score time series, shape (n,)
+    Returns:
+        Abrupt shift score time series, shape (n,)
     """
 
     n_tot = len(values_1d)
@@ -152,24 +144,19 @@ def compute_gradients(
     times_1d: np.ndarray,
     seg_idces: np.ndarray,
 ) -> np.ndarray:
-    """
-    Compute the gradients of the segments defined by given indices.
+    """Compute the gradients of the segments defined by given indices.
 
     Loops over the segments defined by seg_idces and computes the gradient
     of the values_1d time series using a linear fit (1st degree polynomial).
     The function returns an array of gradients, one for each segment.
 
-    >> Args:
-        values_1d:
-            1D array of values (e.g., temperature, pressure, etc.)
-        times_1d:
-            1D array of time points corresponding to the values
-        seg_idces:
-            1D array of segment indices defining the segments
+    Args:
+        values_1d: 1D array of values (e.g., temperature, pressure, etc.)
+        times_1d: 1D array of time points corresponding to the values
+        seg_idces: 1D array of segment indices defining the segments
 
-    >> Returns:
-        gradients:
-            1D array of gradients for each segment
+    Returns:
+        1D array of gradients for each segment
     """
     n_segs = len(seg_idces) - 1
     gradients = np.empty(n_segs)
@@ -191,25 +178,24 @@ def polyfit(
     y: np.ndarray,
     deg: int,
 ) -> np.ndarray:
-    """
-    Least squares polynomial fit.
+    """Least squares polynomial fit.
 
     This function is a stripped-down version of numpy.polyfit, to make it
     compatible with numba. It computes the least squares polynomial fit for
     the given data points (x, y) of degree deg. The function returns the
     coefficients of the polynomial.
 
-    >> Args:
-        x:
-            1D array of x-coordinates (independent variable)
-        y:
-            1D or 2D array of y-coordinates (dependent variable)
-        deg:
-            Degree of the polynomial to fit
-            (0 <= deg <= 1 for linear fit, 2 for quadratic, etc.)
-    >> Returns:
-        coefficients:
-            array of polynomial coefficients
+    Args:
+        x: 1D array of x-coordinates (independent variable)
+        y: 1D or 2D array of y-coordinates (dependent variable)
+        deg: Degree of the polynomial to fit (0 <= deg <= 1 for linear fit, 2 for quadratic, etc.)
+
+    Returns:
+        Array of polynomial coefficients
+
+    Raises:
+        ValueError: If deg < 0
+        TypeError: If x is not 1D, x is empty, y is not 1D/2D, or x and y have different lengths
     """
 
     order = int(deg) + 1
@@ -248,17 +234,15 @@ def polyfit(
 def mad(
     x: np.ndarray,
 ) -> float:
-    """
-    Numba-compatible median-absolute-deviation function.
+    """Numba-compatible median-absolute-deviation function.
 
     Computes the median absolute deviation of the input array x.
 
-    >> Args:
-        x:
-            1D array of values (e.g., gradients)
+    Args:
+        x: 1D array of values (e.g., gradients)
 
-    >> Returns:
-        The median absolute deviation of the input array x.
+    Returns:
+        The median absolute deviation of the input array x
     """
     med = median(x)
     abs_dev = np.abs(x - med)
@@ -269,17 +253,15 @@ def mad(
 def median(
     x: np.ndarray,
 ) -> float:
-    """
-    Numba-compatible median function.
+    """Numba-compatible median function.
 
     Computes the median of the input array x.
 
-    >> Args:
-        x:
-            1D array of values (e.g., gradients)
+    Args:
+        x: 1D array of values (e.g., gradients)
 
-    >> Returns:
-        The median of the input array x.
+    Returns:
+        The median of the input array x
     """
 
     x_sorted = np.sort(x.copy())

@@ -7,17 +7,17 @@ from scipy.spatial.distance import squareform
 class ClusterGeneralStats:
     """General cluster statistics, such as cluster score."""
 
-    def __init__(self, toad, var):
-        """
-        >> Args:
-            toad : (TOAD)
-                TOAD object
-            var:
-                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+    def __init__(self, toad, var:str):
+        """Initialize ClusterGeneralStats.
+
+        Args:
+            toad: TOAD object
+            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+                or custom cluster variable name.
         """
         self.td = toad
         self.var = var
-        # Initialize other necessary attributes
+
 
     @overload
     def score_heaviside(
@@ -51,38 +51,34 @@ class ClusterGeneralStats:
         percentile=None,
         normalize=None,
     ):
-        """
-        Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
+        """Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
+        
         A score of 1 indicates a perfect step function, while 0 indicates a linear trend.
 
-        >> Args:
-            cluster_id:
-                id of the cluster to score.
-            return_score_fit:
-                If True, returns linear regression fit along with score.
-            aggregation:
-                How to aggregate spatial data:
-                - "mean": Average across space
-                - "median": Median across space
-                - "sum": Sum across space
-                - "std": Standard deviation across space
-                - "percentile": Percentile across space (requires percentile arg)
-                - "max": Maximum across space
-                - "min": Minimum across space
-            percentile:
-                Percentile value between 0-1 when using percentile aggregation
-            normalize:
-                - "first": Normalize by the first non-zero, non-nan timestep
-                - "max": Normalize by the maximum value
-                - "last": Normalize by the last non-zero, non-nan timestep
-                - "none": Do not normalize
+        Args:
+            cluster_id: ID of the cluster to score.
+            return_score_fit: If True, returns linear regression fit along with score.
+            aggregation: How to aggregate spatial data. Options are:
+                - "mean" - Average across space
+                - "median" - Median across space 
+                - "sum" - Sum across space
+                - "std" - Standard deviation across space
+                - "percentile" - Percentile across space (requires percentile arg)
+                - "max" - Maximum across space
+                - "min" - Minimum across space
+            percentile: Percentile value between 0-1 when using percentile aggregation.
+            normalize: How to normalize the data. Options are:
+                - "first" - Normalize by first non-zero, non-nan timestep
+                - "max" - Normalize by maximum value
+                - "last" - Normalize by last non-zero, non-nan timestep
+                - None - Do not normalize
 
-        >> Returns:
-            - score: Cluster score between 0-1.
-            - If return_score_fit is True:
-                - tuple: (score, linear fit)
-        >> References:
-            - Kobe De Maeyer Master Thesis (2025)
+        Returns:
+            float: Cluster score between 0-1 if return_score_fit is False.
+            tuple: (score, linear_fit) if return_score_fit is True, where score is a float between 0-1 and linear_fit is the fitted values.
+
+        References:
+            Kobe De Maeyer Master Thesis (2025)
         """
 
         # Does not work with raw
@@ -118,10 +114,10 @@ class ClusterGeneralStats:
 
     def score_consistency(
         self,
-        cluster_id,
+        cluster_id:int,
     ) -> float:
-        """
-        Measures how internally consistent a cluster is by analyzing the similarity between its time series.
+        """Measures how internally consistent a cluster is by analyzing the similarity between its time series.
+
         Uses hierarchical clustering to group similar time series and computes an inconsistency score.
         The final score is inverted so higher values indicate more consistency.
 
@@ -132,16 +128,17 @@ class ClusterGeneralStats:
         4. Calculating inconsistency coefficients at the highest level
         5. Converting to a consistency score by taking the inverse
 
-        >> Args:
+        Args:
             cluster_id: ID of the cluster to evaluate.
 
-        >> Returns:
-            - consistency score (float): Between 0-1, where:
-                - 1.0: Perfect consistency (all time series are identical)
-                - ~0.5: Moderate consistency
-                - 0.0: No consistency (single point or completely inconsistent)
-        >> References:
-            - Kobe De Maeyer Master Thesis (2025)
+        Returns:
+            float: Consistency score between 0-1, where:
+                1.0: Perfect consistency (all time series are identical)
+                ~0.5: Moderate consistency
+                0.0: No consistency (single point or completely inconsistent)
+
+        References:
+            Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -183,10 +180,10 @@ class ClusterGeneralStats:
 
     def score_spatial_autocorrelation(
         self,
-        cluster_id,
+        cluster_id:int,
     ) -> float:
-        """
-        Computes average pairwise similarity (R²) between all time series in a cluster.
+        """Computes average pairwise similarity (R²) between all time series in a cluster.
+
         This measures how spatially coherent the cluster behavior is.
 
         The score is calculated by:
@@ -194,16 +191,17 @@ class ClusterGeneralStats:
         2. Computing pairwise R² correlations between all time series
         3. Taking the mean of the upper triangle of the correlation matrix
 
-        >> Args:
+        Args:
             cluster_id: ID of the cluster to evaluate.
 
-        >> Returns:
-            - similarity score (float): Between 0-1, where:
-                - 1.0: Perfect similarity (all time series identical)
-                - ~0.5: Moderate spatial coherence
-                - 0.0: No similarity (completely uncorrelated)
-        >> References:
-            - Kobe De Maeyer Master Thesis (2025)
+        Returns:
+            float: Similarity score between 0-1, where:
+                1.0: Perfect similarity (all time series identical)
+                ~0.5: Moderate spatial coherence
+                0.0: No similarity (completely uncorrelated)
+
+        References:
+            Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
         y_vals = self.td.get_cluster_timeseries(
@@ -230,13 +228,13 @@ class ClusterGeneralStats:
 
     def score_nonlinearity(
         self,
-        cluster_id,
+        cluster_id:int,
         aggregation: Literal["mean", "sum", "std", "median", "percentile"] = "mean",
         percentile: Optional[float] = None,
         normalise_against_unclustered: bool = False,
     ) -> float:
-        """
-        Computes nonlinearity of a cluster's aggregated time series using RMSE from a linear fit.
+        """Computes nonlinearity of a cluster's aggregated time series using RMSE from a linear fit.
+
         The score measures how much the time series deviates from a linear trend.
 
         When normalise_against_unclustered=True:
@@ -247,7 +245,7 @@ class ClusterGeneralStats:
             - Returns raw RMSE (0 = perfectly linear, higher = more nonlinear)
             - Useful for comparing clusters to each other
 
-        >> Args:
+        Args:
             cluster_id: Cluster ID to evaluate.
             aggregation: How to aggregate spatial data:
                 - "mean": Average across space
@@ -259,11 +257,12 @@ class ClusterGeneralStats:
             normalize_against_unclustered: If True, normalize score by average RMSE of unclustered points.
                 This helps identify clusters that stand out from background behavior.
 
-        >> Returns:
-            nonlinearity score (float): Higher means more nonlinear behavior.
+        Returns:
+            float: Nonlinearity score. Higher means more nonlinear behavior.
                 Interpretation depends on normalize_against_unclustered parameter.
-        >> References:
-            - Kobe De Maeyer Master Thesis (2025)
+
+        References:
+            Kobe De Maeyer Master Thesis (2025)
         """
         # Get aggregated cluster time series
         yvals = self.td.get_cluster_timeseries(
@@ -320,14 +319,13 @@ class ClusterGeneralStats:
 
     def aggregate_cluster_scores(
         self,
-        cluster_ids,
+        cluster_ids:list[int],
         score_method: str,
         aggregation: Union[str, Callable] = "mean",
         weights: Optional[np.ndarray] = None,
         **kwargs,
     ) -> float:
-        """
-        Compute a score for multiple clusters and aggregate the results.
+        """Compute a score for multiple clusters and aggregate the results.
 
         Args:
             cluster_ids: List of cluster IDs
@@ -335,6 +333,9 @@ class ClusterGeneralStats:
             aggregation: "mean", "median", "weighted", or custom function
             weights: Weights for each cluster (if aggregation="weighted")
             **kwargs: Arguments passed to the scoring method
+
+        Returns:
+            float: Aggregated score across all clusters
         """
         method = getattr(self, score_method)
         scores = [method(cid, **kwargs) for cid in cluster_ids]

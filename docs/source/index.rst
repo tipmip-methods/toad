@@ -23,7 +23,7 @@ Getting Started
 	This project is under active development.
 
 
-``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python module within the *TIPMIP* research
+``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python package within the *TIPMIP* research
 project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). Here are links provided to the `TIPMIP project page <https://tipmip.pik-potsdam.de>`_
 as well as to the `GitHub repository <https://github.com/tipmip-methods/toad>`_ of the project.
 
@@ -31,12 +31,12 @@ Contributors:
 -------------
 
 * Sina Loriani: TOAD science and code development lead
+* Jakob Harteg: PhD Student, TOAD development
+* Lukas Röhrich: Scientist for codebase support
 
 **Developer team and student projects**
 
-* Jakob Harteg: PhD Student, TOAD development
 * Karoline Ramin: Student assistant for codebase support
-* Lukas Röhrich: Student assistant for codebase support
 * Kobe De Maeyer: MSc 2024, Vegetation compatibility
 * Vincent Overbeck: MSc 2023, scoring and optimisation loop
 * Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
@@ -49,3 +49,4 @@ Contributors:
 * Jonathan Donges: Conceptualisation
 * Ann Kristin Klose: Ice Sheets, conceptualisation
 * Ricarda Winkelmann: Ice Sheets, conceptualisation
+* José Licon-Salaiz: Clustering methods

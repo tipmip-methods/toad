@@ -1,6 +1,6 @@
 import warnings
 import functools
-from typing import Union
+from typing import Union, Tuple, Optional
 import xarray as xr
 import numpy as np
 import re
@@ -69,7 +69,7 @@ def reorder_space_dims(space_dims: list[str]) -> list[str]:
     return space_dims
 
 
-def detect_latlon_names(data: xr.Dataset) -> tuple[str | None, str | None]:
+def detect_latlon_names(data: xr.Dataset) -> Tuple[Optional[str], Optional[str]]:
     """Detect latitude and longitude coordinate names in a dataset.
 
     Searches for common latitude/longitude names in coordinates first,

@@ -46,6 +46,15 @@ dependencies = [
         "optuna"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "pytest",
+    "pytest-cov",
+    "deptry",
+]
+
 [tool.setuptools]
 packages = {find = {}}
 
@@ -53,7 +62,7 @@ packages = {find = {}}
 version = {attr = "toad._version.__version__"}
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["netcdf4"]            # ignore unused dependencies
+DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry"]  # ignore unused dependencies and dev tools
 
 # suppress warning about assuming corresponding module name
 [tool.deptry.package_module_name_map]

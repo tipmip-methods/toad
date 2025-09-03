@@ -1,8 +1,8 @@
 /* Custom CSS to fix code block colors at jupyter notebook */
 .highlight {
-    background-color: #2e3440;
-    color: #d8dee9;
-    padding: 10px;
+    background-color: #eee;
+    color: #222;
+    padding: 4px;
     border-radius: 5px;
 }
 
@@ -11,12 +11,19 @@
 .highlight .s { color: #608544; } /* Strings */
 
 /* Adjust inline code */
-/* code {
-    background-color: #cfd0d1;
-    color: #6e6e6e; 
+code {
+    background-color: #eeeeee;
+    color: #222; 
     padding: 2px 4px;
     border-radius: 3px;
-} */
+}
+
+.cell_output .output.stderr {
+    background-color: #eee;
+    color: #222; 
+    padding: 2px 4px;
+    border-radius: 3px;
+}
 
 label {
     font-weight: bold;

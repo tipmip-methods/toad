@@ -14,56 +14,8 @@ on:
   pull_request:
     branches: ["main"]
 
-permissions:
-  contents: write
-
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Use system Python (faster)
-        run: |
-          echo "Using pre-installed Python: $(python --version)"
-
-      - name: Cache Python packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-ruff-${{ hashFiles('.github/workflows/package-test.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-ruff-
-
-      - name: Install Ruff (cached)
-        run: pip install --cache-dir ~/.cache/pip ruff
-
-      - name: Auto-fix formatting issues
-        run: ruff format .
-
-      - name: Auto-fix lint issues
-        run: ruff check --fix --no-cache --output-format=concise
-
-      - name: Commit & push fixes (if any)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add .
-
-          # Check if there are any changes to commit
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git commit -m "Apply Ruff auto-fixes"
-            git push origin HEAD:${GITHUB_HEAD_REF} --force
-          fi
-
-      - name: Run Ruff and fail if issues remain
-        run: ruff check --no-cache --output-format=concise
-
   test:
-    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -74,13 +26,6 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # Need token for pushing to PR
-
-      - name: Pull latest changes
-        run: |
-          git pull origin ${{ github.head_ref }}
-        shell: bash
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v3

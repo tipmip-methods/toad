@@ -46,6 +46,15 @@ dependencies = [
         "optuna"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "pytest",
+    "pytest-cov",
+    "deptry",
+]
+
 [tool.setuptools]
 packages = {find = {}}
 

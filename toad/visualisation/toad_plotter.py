@@ -24,10 +24,11 @@ default_cmap = "tab20b"
 @dataclass
 class PlotConfig:
     """Configuration for map plotting parameters.
-    
+
     This dataclass contains all the configuration options for creating maps
     with TOADPlotter, including coastline, grid, and projection settings.
     """
+
     resolution: str = "110m"
     coastline_linewidth: float = 0.5
     border_linewidth: float = 0.25
@@ -64,7 +65,7 @@ class TOADPlotter:
         td: TOAD object containing the data to plot
         config: Optional PlotConfig object with plotting preferences. If None, uses defaults.
     """
-    
+
     def __init__(self, td, config: Optional[PlotConfig] = None):
         from toad import TOAD
 

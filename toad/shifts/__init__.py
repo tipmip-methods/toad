@@ -42,17 +42,17 @@ def compute_shifts(
     Args:
         data: Dataset containing the variable to analyze
         var: Name of the variable in the dataset to analyze for abrupt shifts
-        method: The abrupt shift detection algorithm to use. Choose from predefined method objects 
+        method: The abrupt shift detection algorithm to use. Choose from predefined method objects
             in toad.shifts or create your own following the base class in toad.shifts.methods.base
-        time_dim: Name of the dimension along which the time-series analysis is performed. 
+        time_dim: Name of the dimension along which the time-series analysis is performed.
             Defaults to "time".
         output_label_suffix: A suffix to add to the output label. Defaults to "".
         overwrite: Whether to overwrite existing variable. Defaults to False.
         merge_input: Whether to merge results into input dataset (True) or return separately (False)
 
     Returns:
-        Union[xr.Dataset, xr.DataArray]: If merge_input is True, returns an xarray.Dataset containing 
-            the original data and the detected shifts. If merge_input is False, returns an 
+        Union[xr.Dataset, xr.DataArray]: If merge_input is True, returns an xarray.Dataset containing
+            the original data and the detected shifts. If merge_input is False, returns an
             xarray.DataArray containing the detected shifts.
 
     Raises:

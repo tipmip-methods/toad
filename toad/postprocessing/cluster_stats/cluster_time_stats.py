@@ -14,7 +14,7 @@ class ClusterTimeStats:
 
         Args:
             toad (TOAD): TOAD object
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
         """
         self.td = toad
@@ -97,6 +97,7 @@ class ClusterTimeStats:
 
         grad = ts.diff(self.td.time_dim)
         return float(grad.argmin())
+
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float
     ) -> tuple[float, float]:

@@ -11,7 +11,7 @@ class ClusterStats:
 
         Args:
             toad (TOAD): TOAD object
-            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
         """
         self.td = toad

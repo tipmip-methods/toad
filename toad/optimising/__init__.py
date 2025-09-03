@@ -1,5 +1,5 @@
 """
-Optimising module for TOAD. 
+Optimising module for TOAD.
 """
 
 from collections.abc import Callable
@@ -54,16 +54,16 @@ default_cluster_param_ranges = dict(
 
 def optimise(
     td,
-    var:str,
-    shifts_method:type[shifts.ShiftsMethod]=shifts.ASDETECT,
-    cluster_method:type[ClusterMixin]=HDBSCAN,
-    shifts_param_ranges:dict=dict({}),
-    cluster_param_ranges:dict=default_cluster_param_ranges,
-    objective:Callable | str=combined_spatial_nonlinearity,
-    n_trials:int=50,
-    direction:str="maximize",
-    log_level:int = optuna.logging.WARNING,
-    show_progress_bar:bool=True,
+    var: str,
+    shifts_method: type[shifts.ShiftsMethod] = shifts.ASDETECT,
+    cluster_method: type[ClusterMixin] = HDBSCAN,
+    shifts_param_ranges: dict = dict({}),
+    cluster_param_ranges: dict = default_cluster_param_ranges,
+    objective: Callable | str = combined_spatial_nonlinearity,
+    n_trials: int = 50,
+    direction: str = "maximize",
+    log_level: int = optuna.logging.WARNING,
+    show_progress_bar: bool = True,
 ):
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 

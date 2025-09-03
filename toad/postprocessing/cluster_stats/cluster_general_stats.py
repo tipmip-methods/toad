@@ -7,17 +7,16 @@ from scipy.spatial.distance import squareform
 class ClusterGeneralStats:
     """General cluster statistics, such as cluster score."""
 
-    def __init__(self, toad, var:str):
+    def __init__(self, toad, var: str):
         """Initialize ClusterGeneralStats.
 
         Args:
             toad: TOAD object
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
         """
         self.td = toad
         self.var = var
-
 
     @overload
     def score_heaviside(
@@ -52,7 +51,7 @@ class ClusterGeneralStats:
         normalize=None,
     ):
         """Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
-        
+
         A score of 1 indicates a perfect step function, while 0 indicates a linear trend.
 
         Args:
@@ -60,7 +59,7 @@ class ClusterGeneralStats:
             return_score_fit: If True, returns linear regression fit along with score.
             aggregation: How to aggregate spatial data. Options are:
                 - "mean" - Average across space
-                - "median" - Median across space 
+                - "median" - Median across space
                 - "sum" - Sum across space
                 - "std" - Standard deviation across space
                 - "percentile" - Percentile across space (requires percentile arg)
@@ -114,7 +113,7 @@ class ClusterGeneralStats:
 
     def score_consistency(
         self,
-        cluster_id:int,
+        cluster_id: int,
     ) -> float:
         """Measures how internally consistent a cluster is by analyzing the similarity between its time series.
 
@@ -180,7 +179,7 @@ class ClusterGeneralStats:
 
     def score_spatial_autocorrelation(
         self,
-        cluster_id:int,
+        cluster_id: int,
     ) -> float:
         """Computes average pairwise similarity (R²) between all time series in a cluster.
 
@@ -228,7 +227,7 @@ class ClusterGeneralStats:
 
     def score_nonlinearity(
         self,
-        cluster_id:int,
+        cluster_id: int,
         aggregation: Literal["mean", "sum", "std", "median", "percentile"] = "mean",
         percentile: Optional[float] = None,
         normalise_against_unclustered: bool = False,
@@ -319,7 +318,7 @@ class ClusterGeneralStats:
 
     def aggregate_cluster_scores(
         self,
-        cluster_ids:list[int],
+        cluster_ids: list[int],
         score_method: str,
         aggregation: Union[str, Callable] = "mean",
         weights: Optional[np.ndarray] = None,

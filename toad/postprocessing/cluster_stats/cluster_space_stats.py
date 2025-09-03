@@ -12,12 +12,11 @@ class ClusterSpaceStats:
 
         Args:
             toad: TOAD object
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
         """
         self.td = toad
         self.var = var
-
 
     def _get_cluster_coordinate_values_spacetime(self, cluster_id):
         """Get coordinate arrays for space-time cluster analysis, preferring lat/lon."""

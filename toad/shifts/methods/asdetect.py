@@ -31,7 +31,7 @@ class ASDETECT(ShiftsMethod):
         lmax: The maximum segment length for detection. If not specified, it defaults to one-third of the size of the time dimension.
     """
 
-    def __init__(self, lmin:int=5, lmax:Optional[int]=None):
+    def __init__(self, lmin: int = 5, lmax: Optional[int] = None):
         self.lmin = lmin
         self.lmax = lmax
 

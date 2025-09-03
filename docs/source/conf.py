@@ -87,7 +87,7 @@ remove_from_toctrees = [
 html_theme = "sphinxawesome_theme"
 
 # Other themes to try in the future maybe:
-# html_theme = 'furo' 
+# html_theme = 'furo'
 # html_theme = 'sphinx_book_theme'
 
 html_static_path = ["_static", "resources"]
@@ -136,13 +136,13 @@ def linkcode_resolve(domain, info):
     # **Skip properties to avoid the error**
     if isinstance(obj, property):
         return None
-    
+
     # **Skip dataclass instances to avoid the error**
-    if hasattr(obj, '__class__') and hasattr(obj.__class__, '__dataclass_fields__'):
+    if hasattr(obj, "__class__") and hasattr(obj.__class__, "__dataclass_fields__"):
         return None
-    
+
     # **Skip Numba JIT-compiled functions to avoid CPUDispatcher error**
-    if hasattr(obj, '__class__') and 'CPUDispatcher' in str(type(obj)):
+    if hasattr(obj, "__class__") and "CPUDispatcher" in str(type(obj)):
         return None
 
     try:
@@ -172,9 +172,7 @@ def linkcode_resolve(domain, info):
 
     # Adjust for objects imported into __init__.py
     # Use the actual source file instead of relying on the module name
-    relpath = os.path.relpath(
-        sourcefile, start=os.path.dirname(toad_module.__file__)
-    )
+    relpath = os.path.relpath(sourcefile, start=os.path.dirname(toad_module.__file__))
 
     # Build the GitHub URL
     return f"https://github.com/tipmip-methods/toad/tree/main/toad/{relpath}{linespec}"

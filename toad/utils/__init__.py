@@ -8,7 +8,6 @@ This module provides helper functions and constants used throughout TOAD, includ
 - Grid validation
 """
 
-
 import warnings
 import functools
 from typing import Union, Tuple, Optional
@@ -34,6 +33,7 @@ __all__ = [
     "_attrs",
 ]
 
+
 @dataclass(frozen=True)
 class _Attrs:
     """Constants for xarray attribute names and values used throughout TOAD."""
@@ -55,6 +55,8 @@ class _Attrs:
     # Attribute values
     TYPE_SHIFT: str = "shift"
     TYPE_CLUSTER: str = "cluster"
+
+
 _attrs = _Attrs()
 
 

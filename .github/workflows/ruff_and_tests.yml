@@ -74,6 +74,13 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Need token for pushing to PR
+
+      - name: Pull latest changes
+        run: |
+          git pull origin ${{ github.head_ref }}
+        shell: bash
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v3

@@ -12,15 +12,12 @@ class ShiftsMethod(ABC):
     ) -> np.ndarray:
         """Apply the shifts detection method.
 
-        >> Args:
-            values_1d : (np.ndarray)
-                Input values.
-            times_1d : (np.ndarray)
-                Input times.
+        Args:
+            values_1d: Input values.
+            times_1d: Input times.
 
-        >> Returns:
-            np.ndarray:
-                A detection time series with the same length as the input,
+        Returns:
+            np.ndarray: A detection time series with the same length as the input,
                 where each value indicates the presence or magnitude of a detected shift.
         """
         pass

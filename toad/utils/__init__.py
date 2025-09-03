@@ -1,12 +1,23 @@
+"""
+Utility functions and constants for TOAD.
+
+This module provides helper functions and constants used throughout TOAD, including:
+- Dimension handling and coordinate detection
+- Attribute management and naming conventions
+- Deprecation utilities
+- Grid validation
+"""
+
 import warnings
 import functools
 from typing import Union, Tuple, Optional
 import xarray as xr
 import numpy as np
 import re
+from dataclasses import dataclass
 
 from .synthetic_data import create_global_dataset
-from .toad_attrs import attrs
+
 
 __all__ = [
     "create_global_dataset",
@@ -19,8 +30,34 @@ __all__ = [
     "is_equal_to",
     "contains_value",
     "get_unique_variable_name",
-    "attrs",
+    "_attrs",
 ]
+
+
+@dataclass(frozen=True)
+class _Attrs:
+    """Constants for xarray attribute names and values used throughout TOAD."""
+
+    # Attribute names
+    VARIABLE_TYPE: str = "variable_type"
+    BASE_VARIABLE: str = "base_variable"
+    SHIFTS_VARIABLE: str = "shifts_variable"
+    CLUSTER_IDS: str = "cluster_ids"
+    SHIFT_THRESHOLD: str = "shift_threshold"
+    SHIFT_SIGN: str = "shift_sign"
+    SCALER: str = "scaler"
+    TIME_SCALE_FACTOR: str = "time_scale_factor"
+    N_DATA_POINTS: str = "n_data_points"
+    METHOD_NAME: str = "method_name"
+    TOAD_VERSION: str = "toad_version"
+    TIME_DIM: str = "time_dim"
+
+    # Attribute values
+    TYPE_SHIFT: str = "shift"
+    TYPE_CLUSTER: str = "cluster"
+
+
+_attrs = _Attrs()
 
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:

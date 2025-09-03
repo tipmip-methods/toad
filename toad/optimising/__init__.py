@@ -1,14 +1,20 @@
+"""
+Optimising module for TOAD.
+"""
+
+from collections.abc import Callable
 import optuna
 import time
 
 import numpy as np
-from toad.shifts import ASDETECT
 from sklearn.cluster import HDBSCAN
+from toad import shifts
+from sklearn.base import ClusterMixin
 
 __all__ = ["optimise", "combined_spatial_nonlinearity", "default_cluster_param_ranges"]
 
 
-def combined_spatial_nonlinearity(td, var, weights=[1, 1]):
+def combined_spatial_nonlinearity(td, var, weights=[1, 1]) -> float:
     """Compute a weighted combination of spatial autocorrelation and nonlinearity scores.
 
     Args:
@@ -48,32 +54,26 @@ default_cluster_param_ranges = dict(
 
 def optimise(
     td,
-    var,
-    shifts_method=ASDETECT,
-    cluster_method=HDBSCAN,
-    shifts_param_ranges=dict({}),
-    cluster_param_ranges=default_cluster_param_ranges,
-    objective=combined_spatial_nonlinearity,
-    n_trials=50,
-    direction="maximize",
+    var: str,
+    shifts_method: type[shifts.ShiftsMethod] = shifts.ASDETECT,
+    cluster_method: type[ClusterMixin] = HDBSCAN,
+    shifts_param_ranges: dict = dict({}),
+    cluster_param_ranges: dict = default_cluster_param_ranges,
+    objective: Callable | str = combined_spatial_nonlinearity,
+    n_trials: int = 50,
+    direction: str = "maximize",
     log_level: int = optuna.logging.WARNING,
-    show_progress_bar=True,
+    show_progress_bar: bool = True,
 ):
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
-    >> Args:
-        var:
-            Name of the variable to cluster.
-        shifts_method:
-            Class for shift detection. Defaults to ASDETECT.
-        cluster_method:
-            Class for clustering. Defaults to HDBSCAN.
-        shifts_param_ranges:
-            Dict of parameter ranges for shift detection. Defaults to empty dict.
-        cluster_param_ranges:
-            Dict of parameter ranges for clustering. Defaults to default_cluster_param_ranges.
-        objective:
-            Function or string specifying evaluation metric. Defaults to combined_spatial_nonlinearity.
+    Args:
+        var: Name of the variable to cluster.
+        shifts_method: Class for shift detection. Defaults to ASDETECT.
+        cluster_method: Class for clustering. Defaults to HDBSCAN.
+        shifts_param_ranges: Dict of parameter ranges for shift detection. Defaults to empty dict.
+        cluster_param_ranges: Dict of parameter ranges for clustering. Defaults to default_cluster_param_ranges.
+        objective: Function or string specifying evaluation metric. Defaults to combined_spatial_nonlinearity.
             Can be one of:
             - callable: Custom objective function taking (td, cluster_ids, var) as arguments
             - "median_heaviside": Median heaviside score across clusters
@@ -81,16 +81,14 @@ def optimise(
             - "mean_consistency": Mean consistency score across clusters
             - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
             - "mean_nonlinearity": Mean nonlinearity score across clusters
-        n_trials:
-            Number of optimization trials to run. Defaults to 50.
-        direction:
-            Whether to maximize or minimize objective. Defaults to "maximize".
+        n_trials: Number of optimization trials to run. Defaults to 50.
+        direction: Whether to maximize or minimize objective. Defaults to "maximize".
 
-    >> Returns:
-        dict: Best parameters found during optimization
+    Returns:
+        dict: Best parameters found during optimization.
 
-    >> Raises:
-        ValueError: If objective is not valid
+    Raises:
+        ValueError: If objective is not valid.
     """
 
     """

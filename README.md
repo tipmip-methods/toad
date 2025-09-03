@@ -75,12 +75,26 @@ For more details, check out our tutorials:
 ```bash
 $ git clone https://github.com/tipmip-methods/toad.git
 $ cd toad
-$ pip install -e .
+$ pip install -e .[dev]
 ```
 
 The `-e` flag installs the package in "editable" mode, which means changes to the source code are immediately reflected without needing to reinstall.
 
 We encourage using [ruff](https://github.com/astral-sh/ruff) for consistent code formatting across the project.
+
+### Pre-commit hooks
+
+To ensure consistent code formatting and quality, we use pre-commit hooks. After installing the dev dependencies, install the pre-commit hooks:
+
+```bash
+$ pre-commit install
+```
+
+The hooks will automatically run on each commit, checking and fixing code formatting with ruff. If you want to manually run the hooks on all files:
+
+```bash
+$ pre-commit run --all-files
+```
 
 ## Version information
 

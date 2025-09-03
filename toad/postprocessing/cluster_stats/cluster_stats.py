@@ -7,12 +7,12 @@ class ClusterStats:
     """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
 
     def __init__(self, toad, var):
-        """
-        >> Args:
-            toad : (TOAD)
-                TOAD object
-            var : (str)
-                Base variable name (e.g. 'temperature', will look for 'temperature_cluster') or custom cluster variable name.
+        """Initialize the ClusterStats object.
+
+        Args:
+            toad (TOAD): TOAD object
+            var (str): Base variable name (e.g. 'temperature', will look for 'temperature_cluster') 
+                or custom cluster variable name.
         """
         self.td = toad
         self.var = var

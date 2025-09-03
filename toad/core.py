@@ -750,31 +750,29 @@ class TOAD:
             The shifts xr.DataArray for the specified variable.
 
         Raises:
-            ValueError: Failed to find valid shifts xr.DataArray for the given var. Note: An
-                xr.DataArray is only considered a shifts label if it contains _dts in its name.
+            ValueError: Failed to find valid shifts xr.DataArray for the given var.
         """
 
         # Check if the variable is a shifts variable
-        v = f"{var}{label_suffix}"
-        if v in self.data and "_dts" in v:
-            return self.data[v]
+        if self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT:
+            return self.data[var]
 
-        # Infer the default shifts variable name
-        shifts_var = f"{var}_dts{label_suffix}"
-        if shifts_var in self.data:
-            return self.data[shifts_var]
+        shift_vars = self.shift_vars_for_var(var)
+
+        # Filter by label_suffix if provided
+        if label_suffix:
+            shift_vars = [s for s in shift_vars if s.endswith(label_suffix)]
+
+        if len(shift_vars) > 1:
+            raise ValueError(
+                f"Multiple shift variables exist for {var}: {shift_vars}. Please specify which one to use"
+            )
+        elif len(shift_vars) == 0:
+            raise ValueError(
+                f"No shifts variable found for {var}. Please first run compute_shifts()."
+            )
         else:
-            # Tell the user about alternative shifts variables
-            alt_shift_vars: List[str] = [
-                str(data_var)
-                for data_var in self.data.data_vars
-                if "_dts" in str(data_var)
-            ]
-
-            message = f"No shifts variable found for {var} or {shifts_var}. Please first run compute_shifts()."
-            if alt_shift_vars:
-                message += f" Or did you mean to use any of these?: {', '.join(alt_shift_vars)}"
-            raise ValueError(message)
+            return self.data[shift_vars[0]]
 
     def get_clusters(self, var: str) -> xr.DataArray:
         """Get cluster xr.DataArray for the specified variable.

@@ -35,8 +35,7 @@ from toad.regridding.base import BaseRegridder
 class TOAD:
     """Main object for interacting with TOAD.
 
-    TOAD (Tippping and Other Abrupt events Detector) is a framework for detecting
-    and clustering spatio-temporal patterns in spatio-temporal data.
+    TOAD (Tippping and Other Abrupt events Detector) is a framework for detecting and clustering spatio-temporal patterns in spatio-temporal data.
 
     Args:
         data: The input data. Can be either an xarray Dataset or a path to a netCDF file.

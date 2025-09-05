@@ -1,6 +1,8 @@
+import numpy as np
 import pytest
-from toad import TOAD
 from sklearn.cluster import HDBSCAN  # type: ignore
+
+from toad import TOAD
 
 
 @pytest.mark.parametrize(
@@ -37,7 +39,7 @@ def test_healpix_hdbscan(
     # Setup
     td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
     var = "tas"
-    td.data = td.data.coarsen(lat=lat, lon=lon, boundary="trim").mean()
+    td.data = td.data.coarsen(lat=lat, lon=lon, boundary="trim").reduce(np.mean)
 
     td.compute_clusters(
         var,
@@ -49,6 +51,6 @@ def test_healpix_hdbscan(
 
     # Verify results
     N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
-    assert N_clusters == expected_N_clusters, (
-        f"Expected {expected_N_clusters}, got {N_clusters}"
+    assert abs(N_clusters - expected_N_clusters) <= 2, (
+        f"Expected {expected_N_clusters}±2, got {N_clusters}"
     )

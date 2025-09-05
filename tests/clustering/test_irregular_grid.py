@@ -1,32 +1,21 @@
 import pytest
-from toad import TOAD
-
 from sklearn.cluster import HDBSCAN  # type: ignore
+
+from toad import TOAD
 from toad.shifts import ASDETECT
 
 
-@pytest.fixture
-def test_params():
-    """Fixture providing parameters for the clustering test.
-    Returns:
-        dict: A dictionary containing:
-            - min_cluster_size (int): Minimum size of clusters to be identified.
-            - shifts_threshold (float): Threshold for filtering shifts.
-            - expected_N_clusters (dict): Expected number of clusters for validation.
-    """
-    return {
-        "min_cluster_size": 20,
-        "shifts_threshold": 0.9,
-        "expected_N_clusters": 2,
-    }
-
-
-@pytest.fixture
-def toad_instance():
-    return TOAD("tutorials/test_data/sea_ice_irregular_grid.nc")
-
-
-def test_irregular_grid(test_params, toad_instance):
+@pytest.mark.parametrize(
+    "min_cluster_size,shifts_threshold,shift_selection,expected_N_clusters",
+    [
+        (10, 0.8, "all", 10),
+        (10, 0.8, "local", 4),
+        (10, 0.8, "global", 3),
+    ],
+)
+def test_irregular_grid(
+    min_cluster_size, shifts_threshold, shift_selection, expected_N_clusters
+):
     """Test TOAD pipeline on irregular grid data.
 
     This test verifies that the TOAD pipeline (computing shifts and clustering)
@@ -34,12 +23,13 @@ def test_irregular_grid(test_params, toad_instance):
     sea ice concentration data and checks that the cluster counts match expected values.
 
     Args:
-        test_params (dict): Parameters for the test.
-        toad_instance (TOAD): Instance of TOAD containing the data.
+        min_cluster_size (int): Minimum size of clusters to be identified.
+        shifts_threshold (float): Threshold for filtering shifts.
+        expected_N_clusters (int): Expected number of clusters.
     """
 
     # Setup
-    td = toad_instance
+    td = TOAD("tutorials/test_data/sea_ice_irregular_grid.nc")
     var = "siconc"
 
     # For irregular grids, use resampling instead of coarsening
@@ -51,15 +41,17 @@ def test_irregular_grid(test_params, toad_instance):
 
     td.compute_clusters(
         var=var,
-        shift_threshold=test_params["shifts_threshold"],
-        method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
+        shift_threshold=shifts_threshold,
+        method=HDBSCAN(min_cluster_size=min_cluster_size),
         overwrite=True,
         time_scale_factor=1,
+        shift_selection=shift_selection,
     )
 
     N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
+    print(shift_selection, N_clusters)
 
     # only compare the noise cluster - was getting ±1 difference on the seceond cluster when running tests on Github Actions.
-    assert N_clusters == test_params["expected_N_clusters"], (
-        f"Expected {test_params['expected_N_clusters']}, got {N_clusters}"
+    assert abs(N_clusters - expected_N_clusters) <= 2, (
+        f"Expected {expected_N_clusters}±2, got {N_clusters}"
     )

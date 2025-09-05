@@ -196,9 +196,15 @@ class TOAD:
 
                         # Cluster variables under this shift
                         for cluster_var in sorted(shift_clusters):
+                            n_clusters = self.data[cluster_var].attrs.get(
+                                _attrs.CLUSTER_IDS
+                            )
+                            n_clusters = (
+                                len(n_clusters) - 1 if n_clusters is not None else 0
+                            )  # -1 to remove noise cluster
                             hierarchy_html.append(f"""
                             <div style="margin-left: 12px; padding: 2px 0px;">
-                                <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var}
+                                <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var} <span style="opacity: 0.5; font-size: 0.85em;">({n_clusters} clusters)</span>
                             </div>
                             """)
 
@@ -211,14 +217,6 @@ class TOAD:
                             <span style="background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var}  <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
                         </div>
                         """)
-
-                # Direct clusters (not associated with specific shifts)
-                for cluster_var in sorted(info["clusters"]):
-                    hierarchy_html.append(f"""
-                    <div style="margin: 2px 0;">
-                        <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var}</span>
-                    </div>
-                    """)
                 hierarchy_html.append("</div></div>")
 
             variable_table = f"""
@@ -445,12 +443,15 @@ class TOAD:
         var: str,
         method: ClusterMixin,
         shift_threshold: float = 0.8,
-        shift_sign: str = "absolute",
-        scaler: Optional[
-            Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
-        ] = StandardScaler(),
+        shift_direction: Literal["both", "positive", "negative"] = "both",
+        shift_selection: Literal["local", "global", "all"] = "local",
+        scaler: StandardScaler
+        | MinMaxScaler
+        | RobustScaler
+        | MaxAbsScaler
+        | None = StandardScaler(),
         time_scale_factor: float = 1,
-        regridder: Optional[BaseRegridder] = None,
+        regridder: BaseRegridder | None = None,
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -465,8 +466,12 @@ class TOAD:
             method: The clustering method to use. Choose methods from sklearn.cluster or create
                 your by inheriting from sklearn.base.ClusterMixin.
             shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
-            shift_sign: The sign of the shift. Options are "absolute", "positive", "negative".
-                Defaults to "absolute".
+            shift_direction: The sign of the shift. Options are "both", "positive", "negative". Defaults to "both".
+            shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
+                - "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.
+                - "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
+                - "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
+                Defaults to "local".
             scaler: The scaling method to apply to the data before clustering. StandardScaler(),
                 MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are
                 supported. Defaults to StandardScaler().
@@ -497,9 +502,8 @@ class TOAD:
             var=var,
             method=method,
             shift_threshold=shift_threshold,
-            shift_sign=shift_sign,
-            time_dim=self.time_dim,
-            space_dims=self.space_dims,
+            shift_selection=shift_selection,
+            shift_direction=shift_direction,
             scaler=scaler,
             time_scale_factor=time_scale_factor,
             regridder=regridder,

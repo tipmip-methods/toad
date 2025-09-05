@@ -4,6 +4,7 @@ import inspect
 from scipy.optimize import minimize_scalar
 from scipy.signal import savgol_filter
 import xarray as xr
+from toad.utils import _attrs
 
 
 class ClusterTimeStats:
@@ -270,12 +271,17 @@ class ClusterTimeStats:
         )
 
     def compute_cluster_transition_time(self, cluster_ids, direction="absolute"):
-        # get shifts and spatial cluster mask
-        dts = self.td.get_shifts(self.var)
+        # get spatial cluster mask
         cluster_mask = self.td.get_spatial_cluster_mask(
             self.var, cluster_id=cluster_ids
         )
-        dts = dts.where(cluster_mask, drop=True)
+
+        # get shifts
+        shifts_variable = self.td.get_clusters(self.var).attrs.get(
+            _attrs.SHIFTS_VARIABLE
+        )
+        assert shifts_variable is not None, "Shifts variable not found"
+        dts = self.td.data[shifts_variable].where(cluster_mask, drop=True)
 
         return self.compute_transition_time(dts, direction)
 

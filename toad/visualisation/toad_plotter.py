@@ -1,14 +1,16 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, to_hex, to_rgba, to_rgb
+from dataclasses import dataclass
+from typing import Any, List, Literal, Optional, Tuple, Union, overload
+
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.figure
-from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.axes import Axes
-from typing import Union, Tuple, Optional, List, Any, overload, Literal
-from dataclasses import dataclass
-from toad.utils import detect_latlon_names, is_regular_grid, _attrs
+from matplotlib.colors import ListedColormap, to_hex, to_rgb, to_rgba
+from matplotlib.patches import Rectangle
+
+from toad.utils import _attrs, detect_latlon_names, is_regular_grid
 
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
@@ -822,6 +824,8 @@ class TOADPlotter:
     ) -> tuple[Optional[matplotlib.figure.Figure], Axes]:
         """Plot aggregated time series statistics for one or multiple clusters.
 
+        TODO: make this function faster!!
+
         Plots median and/or mean lines along with shaded interquartile ranges (default: full range and 68% IQR).
         The shift indicator shows the temporal extent of each cluster by plotting horizontal lines at different shades:
         - The light shaded line spans the full duration of the cluster (from first to last occurrence)
@@ -951,7 +955,7 @@ class TOADPlotter:
         color: Optional[str] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
         figsize: Optional[Tuple[float, float]] = None,
-        remaining_clusters_color: Optional[str] = None,
+        remaining_clusters_color: Optional[str] = "gray",
     ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
         """Plot the cumulative sum of the timeseries for one or multiple clusters.
 
@@ -1158,6 +1162,7 @@ class TOADPlotter:
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = range(5),
         map_var: Optional[str] = None,
         timeseries_var: Optional[str] = None,
+        plot_shifts: bool = False,
         projection: Optional[str] = None,
         figsize: tuple = (12, 6),
         width_ratios: List[float] = [1, 1],
@@ -1226,6 +1231,8 @@ class TOADPlotter:
         # Get base variable from clusters attrs
         if timeseries_var is None:
             timeseries_var = self.td.get_clusters(var).attrs[_attrs.BASE_VARIABLE]
+        if plot_shifts:
+            timeseries_var = self.td.get_clusters(var).attrs[_attrs.SHIFTS_VARIABLE]
 
         # Calculate layout dimensions
         n_ts = len(cluster_ids)

@@ -8,16 +8,16 @@ This module provides helper functions and constants used throughout TOAD, includ
 - Grid validation
 """
 
-import warnings
 import functools
-from typing import Union, Tuple, Optional
-import xarray as xr
-import numpy as np
 import re
+import warnings
 from dataclasses import dataclass
+from typing import Optional, Tuple, Union
+
+import numpy as np
+import xarray as xr
 
 from .synthetic_data import create_global_dataset
-
 
 __all__ = [
     "create_global_dataset",
@@ -44,11 +44,16 @@ class _Attrs:
     SHIFTS_VARIABLE: str = "shifts_variable"
     CLUSTER_IDS: str = "cluster_ids"
     SHIFT_THRESHOLD: str = "shift_threshold"
-    SHIFT_SIGN: str = "shift_sign"
+    SHIFT_SELECTION: str = "shift_selection"
+    SHIFT_DIRECTION: str = "shift_direction"
     SCALER: str = "scaler"
     TIME_SCALE_FACTOR: str = "time_scale_factor"
     N_DATA_POINTS: str = "n_data_points"
     METHOD_NAME: str = "method_name"
+    RUNTIME_PREPROCESSING: str = "runtime_preprocessing"
+    RUNTIME_CLUSTERING: str = "runtime_clustering"
+    RUNTIME_SHIFTS_DETECTION: str = "runtime_shifts_detection"
+    RUNTIME_TOTAL: str = "runtime_total"
     TOAD_VERSION: str = "toad_version"
     TIME_DIM: str = "time_dim"
 
@@ -245,7 +250,7 @@ def get_unique_variable_name(base_name: str, existing_vars, logger=None) -> str:
     new_name = f"{name_without_num}_{next_num}"
 
     if logger:
-        logger.info(f"Variable {base_name} already exists. Using {new_name} instead.")
+        logger.debug(f"Variable {base_name} already exists. Using {new_name} instead.")
 
     return new_name
 

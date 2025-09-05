@@ -2,14 +2,15 @@
 Optimising module for TOAD.
 """
 
-from collections.abc import Callable
-import optuna
 import time
+from collections.abc import Callable
 
 import numpy as np
-from sklearn.cluster import HDBSCAN
-from toad import shifts
+import optuna
 from sklearn.base import ClusterMixin
+from sklearn.cluster import HDBSCAN
+
+from toad import shifts
 
 __all__ = ["optimise", "combined_spatial_nonlinearity", "default_cluster_param_ranges"]
 
@@ -276,7 +277,7 @@ def optimise(
             best_score = score
             # Only save the shift and cluster data, not the entire dataset
             best_shift_data = td.data[f"{var}_dts"].copy()
-            best_cluster_data = td.data[f"{var}_cluster"].copy()
+            best_cluster_data = td.data[f"{var}_dts_cluster"].copy()
 
         return score
 
@@ -289,7 +290,7 @@ def optimise(
     # Restore the best results
     if best_shift_data is not None and best_cluster_data is not None:
         td.data[f"{var}_dts"] = best_shift_data
-        td.data[f"{var}_cluster"] = best_cluster_data
+        td.data[f"{var}_dts_cluster"] = best_cluster_data
 
     # print final score and best params
     print(f"Completed {n_trials} trials in {t1 - t0:.2f} seconds")

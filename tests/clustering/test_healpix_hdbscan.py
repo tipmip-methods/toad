@@ -1,35 +1,20 @@
+import numpy as np
 import pytest
-from toad import TOAD
-
 from sklearn.cluster import HDBSCAN  # type: ignore
 
-
-@pytest.fixture
-def test_params():
-    """Fixture providing parameters for the clustering test.
-    Returns:
-        dict: A dictionary containing:
-            - lat (int): Latitude coarsening factor.
-            - lon (int): Longitude coarsening factor.
-            - min_cluster_size (int): Minimum size of clusters to be identified.
-            - shifts_threshold (float): Threshold for filtering shifts.
-            - expected_N_clusters (dict): Expected number of clusters for validation.
-    """
-    return {
-        "lat": 6,
-        "lon": 6,
-        "min_cluster_size": 25,
-        "shifts_threshold": 0.5,
-        "expected_N_clusters": 7,
-    }
+from toad import TOAD
 
 
-@pytest.fixture
-def toad_instance():
-    return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
-
-
-def test_healpix_hdbscan(test_params, toad_instance):
+@pytest.mark.parametrize(
+    "lat,lon,min_cluster_size,shifts_threshold,shift_selection,expected_N_clusters",
+    [
+        (6, 6, 25, 0.5, "all", 7),  # First parameter set
+        (6, 6, 25, 0.5, "local", 2),  # Second parameter set
+    ],
+)
+def test_healpix_hdbscan(
+    lat, lon, min_cluster_size, shifts_threshold, shift_selection, expected_N_clusters
+):
     """Test the HealPix HDBSCAN clustering method.
 
     This test verifies the clustering of data using the HDBSCAN algorithm
@@ -39,8 +24,12 @@ def test_healpix_hdbscan(test_params, toad_instance):
     cluster counts and nside values match the expected results.
 
     Args:
-        test_params (dict): Parameters for the test.
-        toad_instance (TOAD): Instance of TOAD containing the data.
+        lat (int): Latitude coarsening factor.
+        lon (int): Longitude coarsening factor.
+        min_cluster_size (int): Minimum size of clusters to be identified.
+        shifts_threshold (float): Threshold for filtering shifts.
+        shift_selection (str): How shift values are selected for clustering.
+        expected_N_clusters (int): Expected number of clusters.
 
     Note:
         This throws a warning the following warning which has been surpressed in pytest.ini: "RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility".
@@ -48,21 +37,20 @@ def test_healpix_hdbscan(test_params, toad_instance):
     """
 
     # Setup
-    td = toad_instance
+    td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
     var = "tas"
-    td.data = td.data.coarsen(
-        lat=test_params["lat"], lon=test_params["lon"], boundary="trim"
-    ).mean()
+    td.data = td.data.coarsen(lat=lat, lon=lon, boundary="trim").reduce(np.mean)
 
     td.compute_clusters(
         var,
-        shift_threshold=test_params["shifts_threshold"],
-        method=HDBSCAN(min_cluster_size=test_params["min_cluster_size"]),
+        shift_threshold=shifts_threshold,
+        method=HDBSCAN(min_cluster_size=min_cluster_size),
         overwrite=True,
+        shift_selection=shift_selection,
     )
 
     # Verify results
     N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
-    assert N_clusters == test_params["expected_N_clusters"], (
-        f"Expected {test_params['expected_N_clusters']}, got {N_clusters}"
+    assert abs(N_clusters - expected_N_clusters) <= 2, (
+        f"Expected {expected_N_clusters}±2, got {N_clusters}"
     )

@@ -13,33 +13,37 @@ includes utilities for:
 - Converting between geodetic and cartesian coordinates
 - Sorting clusters by size
 - Preserving metadata and attributes in xarray objects
+- Filtering shifts based on thresholds and directions
+- Selecting between local and global shift patterns
 
 The clustering results are returned as xarray objects with appropriate metadata and can be
 visualized using TOAD's plotting utilities.
 """
 
 import logging
-import xarray as xr
-import numpy as np
-from toad._version import __version__
-from typing import TYPE_CHECKING, Optional, Union
-from toad.utils import (
-    get_space_dims,
-    reorder_space_dims,
-    detect_latlon_names,
-    get_unique_variable_name,
-    _attrs,
-)
+from time import time as time_now
+from typing import TYPE_CHECKING, Literal, Union
 
+import numpy as np
+import xarray as xr
+from numba import njit
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
-    MinMaxScaler,
-    StandardScaler,
-    RobustScaler,
     MaxAbsScaler,
+    MinMaxScaler,
+    RobustScaler,
+    StandardScaler,
 )
-from toad.regridding.base import BaseRegridder
+
+from toad._version import __version__
 from toad.regridding import HealPixRegridder
+from toad.regridding.base import BaseRegridder
+from toad.utils import (
+    _attrs,
+    detect_latlon_names,
+    get_unique_variable_name,
+    reorder_space_dims,
+)
 
 logger = logging.getLogger("TOAD")
 
@@ -53,14 +57,15 @@ def compute_clusters(
     var: str,
     method: ClusterMixin,
     shift_threshold: float = 0.8,
-    shift_sign: str = "absolute",  # TODO: rename to shift_direction
-    time_dim: str = "time",
-    space_dims: Optional[list[str]] = None,
-    scaler: Optional[
-        Union[StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]
-    ] = StandardScaler(),
+    shift_direction: Literal["both", "positive", "negative"] = "both",
+    shift_selection: Literal["local", "global", "all"] = "local",
+    scaler: StandardScaler
+    | MinMaxScaler
+    | RobustScaler
+    | MaxAbsScaler
+    | None = StandardScaler(),
     time_scale_factor: float = 1,
-    regridder: Optional[BaseRegridder] = None,
+    regridder: BaseRegridder | None = None,
     output_label_suffix: str = "",
     overwrite: bool = False,
     merge_input: bool = True,
@@ -73,9 +78,12 @@ def compute_clusters(
         var: Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is thrown, in which case you should specify the shifts variable name.
         method: The clustering method to use. Choose methods from `sklearn.cluster` or create your own by inheriting from `sklearn.base.ClusterMixin`.
         shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
-        shift_sign: The sign of the shift. Options are "absolute", "positive", "negative". Defaults to "absolute".
-        time_dim: Name of the time dimension. Defaults to "time".
-        space_dims: List of spatial dimension names. If None, will be auto-detected.
+        shift_direction: The direction of the shift. Options are "both", "positive", "negative". Defaults to "both".
+        shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
+            - "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.
+            - "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
+            - "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
+            Defaults to "local".
         scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
         time_scale_factor: The factor to scale the time values by. Defaults to 1.
         regridder: The regridding method to use from `toad.clustering.regridding`. Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
@@ -88,9 +96,6 @@ def compute_clusters(
         If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
         If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
 
-    Raises:
-        ValueError: If data is invalid or required parameters are missing
-
     Notes:
         For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
     """
@@ -98,14 +103,14 @@ def compute_clusters(
     """
     Overview of the clustering process:
     1. Input Validation
-        - Verify shifts variable exists in dataset
+        - Verify shifts variable exists in dataset (either directly or via base variable)
         - Check data has required 3 dimensions
-        - Validate dimension names and ordering
+        - Validate shift_threshold is positive
     2. Preprocessing
         - Generate output label with optional suffix
-        - Check for existing results and handle overwrite
-        - Convert xarray Dataset/DataArray to pandas DataFrame
-        - Apply user-defined filtering on variables and shifts
+        - Check for existing results and handle overwrite based on parameters
+        - Compute peak/sign mask based on shift_selection ("local"/"global")
+        - Filter points based on shift_direction ("both"/"positive"/"negative")
         - Extract spatial and temporal coordinates
         - Apply optional regridding to standardize coordinates
         - Scale coordinates using sklearn preprocessing
@@ -117,11 +122,13 @@ def compute_clusters(
         - Generate cluster labels for each point
     4. Postprocessing
         - Sort clusters by size if requested
-        - Convert cluster labels to xarray format
+        - Scatter labels back to xarray coordinates
         - Add clustering parameters as attributes
         - Optionally merge results with input dataset
-        - Return Dataset or DataArray based on merge_input
+        - Return Dataset or DataArray based on merge_input parameter
     """
+
+    start_time = time_now()
 
     # if supplied variable is a shift variable, use that
     if td.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT:
@@ -137,7 +144,6 @@ def compute_clusters(
             raise ValueError(
                 f"No shifts found for base variable {var}. Please run compute_shifts() for var={var} first."
             )
-
         # use the first/only shift variable
         shifts_variable = shift_vars[0]
 
@@ -157,184 +163,192 @@ def compute_clusters(
     elif overwrite and output_label in td.data:
         td.data = td.data.drop_vars(output_label)
 
-    # Extract and filter data for clustering
-    df_dts = td.data[shifts_variable].to_dataframe().reset_index()
-
-    def shifts_filter_func(x):
-        """Filter shifts based on sign and threshold."""
-        if shift_sign == "absolute":
-            return np.abs(x) > shift_threshold
-        elif shift_sign == "positive":
-            return x > shift_threshold
-        elif shift_sign == "negative":
-            return x < -shift_threshold
-        else:
-            raise ValueError(
-                f"shift_sign must be 'absolute', 'positive', or 'negative', got {shift_sign}"
-            )
-
-    # apply filter
-    filtered_df = df_dts[df_dts[shifts_variable].apply(shifts_filter_func)]
-
-    # return empty clusters if no data points left
-    if filtered_df.empty:
-        logger.warning(
-            f"No gridcells left after applying shift threshold {shift_threshold} and shift sign {shift_sign}"
+    sh = td.data[shifts_variable]
+    if shift_selection in ("local", "global"):
+        mask_da = _compute_dts_peak_sign_mask(
+            sh,
+            td.time_dim,
+            shift_threshold,
+            shift_selection=shift_selection,
         )
-
-        clusters = td.data[shifts_variable].copy().rename(output_label)
-        clusters.data[:] = -1
-        clusters.attrs = {}
-
-        # Save details as attributes
-        clusters.attrs.update(
-            {
-                _attrs.CLUSTER_IDS: [],
-                _attrs.SHIFT_THRESHOLD: shift_threshold,
-                _attrs.SHIFT_SIGN: shift_sign,
-                _attrs.N_DATA_POINTS: 0,
-                _attrs.TOAD_VERSION: __version__,
-            }
-        )
-
-        # Merge the cluster labels back into the original data
-        return (
-            xr.merge([td.data, clusters], combine_attrs="override", compat="override")
-            if merge_input
-            else clusters
-        )
-
-    # Handle dimensions
-    space_dims = space_dims if space_dims else get_space_dims(td.data, time_dim)
-    space_dims = reorder_space_dims(space_dims)
-    index_dims = [time_dim] + space_dims
-
-    # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
-    lat_name, lon_name = detect_latlon_names(td.data)
-
-    # check if dataset has lat/lon (as dims, or coords, or variables)
-    has_latlon = lat_name is not None and lon_name is not None
-
-    # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
-    is_latlon_dims = space_dims == [lat_name, lon_name]
-
-    # Build coordinates array
-    if is_latlon_dims:
-        # lat/lon already present as columns in filtered_df
-        coord_cols = [time_dim, lat_name, lon_name]
-        coords = filtered_df[coord_cols].to_numpy()
-    elif has_latlon:
-        # Irregular i/j grids: join 2D lat/lon onto the filtered rows keyed by spatial dims
-        lat_df = td.data[lat_name].to_dataframe(name=lat_name).reset_index()
-        lon_df = td.data[lon_name].to_dataframe(name=lon_name).reset_index()
-        latlon_df = lat_df.merge(lon_df, on=space_dims, how="inner")
-        filtered_df_ext = filtered_df.merge(latlon_df, on=space_dims, how="left")
-        coord_cols = [time_dim, lat_name, lon_name]
-        coords = filtered_df_ext[coord_cols].to_numpy()
+        if shift_direction == "both":
+            cond = mask_da != 0
+        elif shift_direction == "positive":
+            cond = mask_da > 0
+        else:  # "negative"
+            cond = mask_da < 0
     else:
-        # No lat/lon (as dims or coords or variables) → Fall back to using raw index dimensions (e.g., x/y or i/j)
-        coords = filtered_df[index_dims].to_numpy()
-
-    # take absolute value of shifts as weights
-    weights = np.abs(filtered_df[shifts_variable].to_numpy())
-
-    # Create HealPixRegridder only for regular 1D lat/lon grids
-    if regridder is None and is_latlon_dims:
-        regridder = HealPixRegridder()
-
-    # Regrid and scale
-    if regridder:
-        logger.info(f"Regridding {shifts_variable} with {regridder.__class__.__name__}")
-        coords, weights = regridder.regrid(coords, weights)
-
-    # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
-    if has_latlon:
-        coords = geodetic_to_cartesian(
-            time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
-        )
-
-    # Scale coordinates using sklearn preprocessing
-    if scaler:
-        coords = scaler.fit_transform(coords)
-
-    # Scale time values by scaler value
-    if time_scale_factor != 1:
-        coords[:, 0] = coords[:, 0] * time_scale_factor
-
-    # Save method params before clustering (because they might change during clustering)
-    method_params = {
-        f"method_{param}": str(value)
-        for param, value in dict(sorted(vars(method).items())).items()
-        if value is not None and not param.startswith("_")
-    }
-
-    # Save regridder params
-    regridder_params = {}
-    if regridder:
-        regridder_params["regridder_name"] = regridder.__class__.__name__
-        regridder_params.update(
-            {
-                f"regridder_{param}": str(value)
-                for param, value in dict(sorted(vars(regridder).items())).items()
-                if value is not None
-                and type(value)
-                in [
-                    int,
-                    float,
-                    str,
-                ]  # regridder has other params (such as coords and df) which we don't want to save
-            }
-        )
-
-    # Perform clustering
-    logger.info(f"Applying clusterer {method.__class__.__name__} to {shifts_variable}")
-    try:
-        cluster_labels = np.array(method.fit_predict(coords, weights))
-    except ValueError as e:
-        if "min_samples" in str(e) and "must be at most" in str(e):
-            logger.warning(
-                f"Clustering failed due to insufficient data points. Returning no clusters. Error: {e}"
-            )
-            cluster_labels = np.full(len(coords), -1)
+        # shift_selection == "all": filter original magnitudes
+        if shift_direction == "both":
+            cond = np.abs(sh) > shift_threshold
+        elif shift_direction == "positive":
+            cond = sh > shift_threshold
         else:
-            raise e
+            cond = sh < -shift_threshold
 
-    # Regrid back
-    if regridder:
-        cluster_labels = regridder.regrid_clusters_back(
-            cluster_labels
-        )  # regridder holds the original coordinates
+    # boolean → indices (tuple: (t_idx, *space_idx))
+    cond_vals = np.asarray(cond.data)
+    idx = np.nonzero(cond_vals)
+    n_pts = idx[0].size
 
-    # Sort cluster labels by size (After regridding because regridding
-    # may change the number of members in each cluster)
-    cluster_labels = (
-        sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
-    )
+    if n_pts == 0:
+        logger.warning(
+            f'No gridcells left after applying shift_threshold={shift_threshold} and shift_direction="{shift_direction}"'
+        )
+        # create cluster variable with all -1
+        clusters = xr.full_like(sh, -1).rename(output_label)
+        preprocessing_time = 0.0
+        clustering_time = 0.0
+        cluster_labels = np.array([-1], dtype=int)
+        coords = np.empty((0, 3))
+        method_params = {}
+        regridder_params = {}
+    else:
+        # Handle dimensions
+        space_dims = td.space_dims
+        space_dims = reorder_space_dims(space_dims)
 
-    # Convert back to xarray DataArray
-    df_dims = df_dts[index_dims].copy()
-    df_dims[output_label] = -1
-    df_dims.loc[filtered_df.index, output_label] = cluster_labels
-    clusters = df_dims.set_index(index_dims).to_xarray()[output_label]
+        # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
+        lat_name, lon_name = detect_latlon_names(td.data)
 
-    # Transpose if dimensions don't match
-    if clusters.dims != td.data[shifts_variable].dims:
-        clusters = clusters.transpose(*td.data[shifts_variable].dims)
+        # check if dataset has lat/lon (as dims, or coords, or variables)
+        has_latlon = lat_name is not None and lon_name is not None
+
+        # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
+        is_latlon_dims = has_latlon and (space_dims == [lat_name, lon_name])
+
+        # Build coordinates array (NumPy only, no DataFrame merges)
+        # time coordinate
+        time_vals = td.data[td.time_dim].values[idx[0]]
+        time_numeric = _as_numeric_time(time_vals)
+
+        if is_latlon_dims:
+            # lat/lon are 1D dims: index directly
+            lat_vals = td.data[lat_name].values[idx[1]]
+            lon_vals = td.data[lon_name].values[idx[2]]
+            coords = np.column_stack((time_numeric, lat_vals, lon_vals))
+        elif has_latlon:
+            # Irregular i/j grids: take 2D lat/lon variables aligned with space_dims
+            lat_grid = td.data[lat_name].transpose(*space_dims).values
+            lon_grid = td.data[lon_name].transpose(*space_dims).values
+            lat_vals = lat_grid[tuple(idx[1:])]
+            lon_vals = lon_grid[tuple(idx[1:])]
+            coords = np.column_stack((time_numeric, lat_vals, lon_vals))
+        else:
+            # No lat/lon (as dims or coords or variables) → Fall back to using raw index dimensions (e.g., x/y or i/j)
+            cols = [time_numeric]
+            for d, i_idx in zip(space_dims, idx[1:]):
+                vals_d = td.data[shifts_variable].coords[d].values
+                cols.append(vals_d[i_idx])
+            coords = np.column_stack(cols)
+
+        # take absolute value of shifts as weights (at selected points)
+        vals_sh = np.asarray(sh.data)[idx]
+        weights = np.abs(vals_sh)
+
+        # Create HealPixRegridder only for regular 1D lat/lon grids
+        if regridder is None and is_latlon_dims:
+            regridder = HealPixRegridder()
+
+        # Regrid and scale
+        if regridder:
+            logger.info(
+                f"Regridding {shifts_variable} with {regridder.__class__.__name__}"
+            )
+            coords, weights = regridder.regrid(coords, weights)
+
+        # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
+        if has_latlon:
+            coords = geodetic_to_cartesian(
+                time=coords[:, 0], lat=coords[:, 1], lon=coords[:, 2]
+            )
+
+        # Scale coordinates using sklearn preprocessing
+        if scaler:
+            coords = scaler.fit_transform(coords)
+
+        # Scale time values by scaler value
+        if time_scale_factor != 1:
+            coords[:, 0] = coords[:, 0] * time_scale_factor
+
+        # Save method params before clustering (because they might change during clustering)
+        method_params = {
+            f"method_{param}": str(value)
+            for param, value in dict(sorted(vars(method).items())).items()
+            if value is not None and not param.startswith("_")
+        }
+
+        # Save regridder params
+        regridder_params = {}
+        if regridder:
+            regridder_params["regridder_name"] = regridder.__class__.__name__
+            regridder_params.update(
+                {
+                    f"regridder_{param}": str(value)
+                    for param, value in dict(sorted(vars(regridder).items())).items()
+                    if value is not None and isinstance(value, (int, float, str))
+                }
+            )
+
+        # Measure preprocessing time
+        preprocessing_time = time_now() - start_time
+
+        logger.debug(
+            f"Applying clusterer {method.__class__.__name__} to {shifts_variable}"
+        )
+
+        cluster_start = time_now()
+        try:
+            cluster_labels = np.array(method.fit_predict(coords, weights))
+        except ValueError as e:
+            if "min_samples" in str(e) and "must be at most" in str(e):
+                logger.warning(
+                    f"Clustering failed due to insufficient data points. Returning no clusters. Error: {e}"
+                )
+                cluster_labels = np.full(len(coords), -1)
+            else:
+                raise e
+        clustering_time = time_now() - cluster_start
+
+        # Regrid back
+        if regridder:
+            cluster_labels = regridder.regrid_clusters_back(
+                cluster_labels
+            )  # regridder holds the original coordinates
+
+        # Sort cluster labels by size (After regridding because regridding
+        # may change the number of members in each cluster)
+        cluster_labels = (
+            sorted_cluster_labels(cluster_labels) if sort_by_size else cluster_labels
+        )
+
+        # Scatter labels back into xarray without DataFrame
+        clusters = xr.full_like(sh, -1).rename(output_label)
+        clusters.data = clusters.data.astype(np.int32, copy=False)
+        clusters.data[idx] = np.asarray(cluster_labels, dtype=np.int32)
+
+        # Transpose if dimensions don't match (shouldn't be needed but keep)
+        if clusters.dims != td.data[shifts_variable].dims:
+            clusters = clusters.transpose(*td.data[shifts_variable].dims)
 
     # Get base variable from shifts attrs
     base_variable = td.data[shifts_variable].attrs.get(_attrs.BASE_VARIABLE)
     base_variable = base_variable if base_variable else "Unknown"
 
-    # Save details as attributes
+    # Save details as attributes (single update block)
     clusters.attrs.update(
         {
             _attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
             _attrs.SHIFT_THRESHOLD: shift_threshold,
-            _attrs.SHIFT_SIGN: shift_sign,
-            _attrs.SCALER: scaler.__class__.__name__,
+            _attrs.SHIFT_SELECTION: shift_selection,
+            _attrs.SHIFT_DIRECTION: shift_direction,
+            _attrs.SCALER: scaler.__class__.__name__ if scaler else "None",
             _attrs.TIME_SCALE_FACTOR: time_scale_factor,
-            _attrs.N_DATA_POINTS: len(coords),
+            _attrs.N_DATA_POINTS: n_pts,
             _attrs.METHOD_NAME: method.__class__.__name__,
+            _attrs.RUNTIME_PREPROCESSING: float(preprocessing_time),
+            _attrs.RUNTIME_CLUSTERING: float(clustering_time),
+            _attrs.RUNTIME_TOTAL: float(preprocessing_time + clustering_time),
             _attrs.TOAD_VERSION: __version__,
             _attrs.BASE_VARIABLE: base_variable,
             _attrs.SHIFTS_VARIABLE: shifts_variable,
@@ -344,7 +358,7 @@ def compute_clusters(
         }
     )
 
-    logger.info(f"Detected {len(np.unique(cluster_labels)) - 1} clusters")
+    logger.info(_format_cluster_summary(output_label, cluster_labels, n_pts))
 
     # Merge the cluster labels back into the original data
     return (
@@ -352,6 +366,42 @@ def compute_clusters(
         if merge_input
         else clusters
     )
+
+
+def _format_cluster_summary(
+    output_label: str, cluster_labels: np.ndarray, n_points_used: int
+) -> str:
+    """
+    Produce a concise summary:
+      - name of the new variable (output_label)
+      - number of identified clusters (excluding -1)
+      - number of data points used (after filtering)
+      - percentage of points labeled as noise (-1)
+    """
+    n = int(n_points_used)
+    if n == 0:
+        return f"{output_label}: Identified 0 CLUSTERS in 0 points"
+
+    labels = np.asarray(cluster_labels)
+    noise = int(np.count_nonzero(labels == -1))
+    pct_noise = 100.0 * noise / n
+    n_clusters = int(np.unique(labels[labels != -1]).size)
+
+    # nice, compact, and informative
+    return (
+        f"{output_label}: Identified {n_clusters} "
+        f"{'CLUSTER' if n_clusters == 1 else 'CLUSTERS'} in {n:,} pts; "
+        f"Left behind {pct_noise:.1f}% as noise"
+        f" ({noise:,} pts)."
+    )
+
+
+def _as_numeric_time(t: np.ndarray) -> np.ndarray:
+    """Convert time values to float for sklearn (seconds since epoch if datetime64)."""
+    t = np.asarray(t)
+    if np.issubdtype(t.dtype, np.datetime64):
+        return t.astype("datetime64[ns]").astype("int64") / 1e9
+    return t.astype(float, copy=False)
 
 
 def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
@@ -374,8 +424,21 @@ def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
 
 
 def geodetic_to_cartesian(time, lat, lon, height=0) -> np.ndarray:
-    """Convert geodetic coordinates (time, lat, lon) to Cartesian coordinates (time, x, y, z)"""
+    """Converts geodetic coordinates to Cartesian coordinates.
 
+    Transforms geodetic coordinates (time, latitude, longitude, optional height) into
+    Cartesian coordinates (time, x, y, z) using the WGS84 ellipsoid model.
+
+    Args:
+        time: Array of timestamps.
+        lat: Array of latitudes in degrees.
+        lon: Array of longitudes in degrees.
+        height: Optional array of heights above ellipsoid in km. Defaults to 0.
+
+    Returns:
+        np.ndarray: Array of shape (n, 4) containing [time, x, y, z] coordinates,
+            where x, y, z are in km from the Earth's center.
+    """
     # WGS84 parameters
     a = 6378.137  # semi-major axis (km)
     b = 6356.752  # semi-minor axis (km)
@@ -394,3 +457,245 @@ def geodetic_to_cartesian(time, lat, lon, height=0) -> np.ndarray:
     z = (b**2 / a**2 * N + height) * np.sin(lat_rad)
 
     return np.column_stack((time, x, y, z))  # Shape: (n, 4)
+
+
+@njit(cache=True, fastmath=True)
+def _peaks_local_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
+    """Finds local peaks in segments of a time series where values exceed a threshold.
+
+    For each segment where absolute values exceed the threshold, identifies the maximum
+    absolute value peak. For plateaus (consecutive equal maximum values), selects the
+    middle point as the peak. NaN values break segments.
+
+    Args:
+        ts: 1D numpy array containing the time series data.
+        thr: Threshold value that peaks must exceed in absolute value.
+        eps: Small value for floating point comparisons. Defaults to 1e-12.
+
+    Returns:
+        tuple:
+            - idxs (np.ndarray): Array of indices where peaks were found.
+            - sgns (np.ndarray): Array of signs (-1 for negative peaks, +1 for positive peaks)
+              corresponding to each index.
+
+    Note:
+        This is a numba-optimized implementation that uses @njit for performance.
+    """
+    n = ts.size
+    idxs = np.empty(n, dtype=np.int64)  # over-alloc; trimmed later
+    sgns = np.empty(n, dtype=np.int8)
+    k = 0
+    i = 0
+
+    while i < n:
+        # Skip below-threshold or NaN
+        while i < n:
+            v = ts[i]
+            if not np.isnan(v) and (abs(v) > thr):
+                break
+            i += 1
+        if i >= n:
+            break
+
+        # Start of segment
+        max_abs = abs(ts[i])
+        plat_start = i
+        plat_end = i
+        i += 1
+
+        # Walk segment
+        while i < n:
+            v = ts[i]
+            if np.isnan(v):
+                break
+            av = abs(v)
+            if not (av > thr):
+                break
+
+            if av > max_abs + eps:
+                max_abs = av
+                plat_start = i
+                plat_end = i
+            elif abs(av - max_abs) <= eps:
+                plat_end = i
+            i += 1
+
+        # Middle of the segment's max plateau
+        max_idx = plat_start + (plat_end - plat_start) // 2
+        idxs[k] = max_idx
+        sgns[k] = np.int8(-1 if np.signbit(ts[max_idx]) else 1)
+        k += 1
+
+    return idxs[:k], sgns[:k]
+
+
+@njit(cache=True, fastmath=True)
+def _peak_global_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
+    """Finds the global peak in a time series using middle-of-plateau tie rule.
+
+    Performs a single pass through the time series to find the global maximum absolute value
+    peak that exceeds the threshold. For plateaus (consecutive equal maximum values), the
+    middle point is selected as the peak. NaN values break plateaus.
+
+    Args:
+        ts: 1D numpy array containing the time series data
+        thr: Threshold value that peaks must exceed in absolute value
+        eps: Small value for floating point comparisons. Defaults to 1e-12.
+
+    Returns:
+        tuple:
+            - idx (np.int64): Index of the peak, or -1 if no peak passes threshold
+            - sgn (np.int8): Sign of the peak (-1 for negative, +1 for positive, 0 if no peak)
+
+    Note:
+        This is a numba-optimized implementation that uses @njit for performance.
+    """
+    n = ts.size
+    max_abs = -1.0
+    have_max = False
+    plat_start = 0
+    plat_end = -1
+    in_equal_run = False  # are we currently extending a contiguous max plateau?
+
+    for i in range(n):
+        v = ts[i]
+        if np.isnan(v):
+            in_equal_run = False
+            continue
+        av = abs(v)
+
+        if av > max_abs + eps:
+            max_abs = av
+            have_max = True
+            plat_start = i
+            plat_end = i
+            in_equal_run = True
+        elif have_max and abs(av - max_abs) <= eps:
+            # extend only if contiguous with current max plateau
+            if in_equal_run:
+                plat_end = i
+            in_equal_run = True
+        else:
+            in_equal_run = False
+
+    if (not have_max) or (max_abs <= thr):
+        return np.int64(-1), np.int8(0)
+
+    mid = plat_start + (plat_end - plat_start) // 2
+    return np.int64(mid), np.int8(-1 if np.signbit(ts[mid]) else 1)
+
+
+@njit(cache=True, fastmath=True)
+def _compute_local_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
+    """Computes local peak mask for time series data.
+
+    For each time series in dts_TP, identifies local peaks within segments where values exceed the threshold.
+    Peaks are marked in out_TP as -1 for negative peaks and +1 for positive peaks. For plateaus (consecutive
+    equal maximum values), only the middle point is marked as a peak.
+
+    Args:
+        dts_TP: Input array of shape (T, P) containing P time series of length T.
+        thr: Threshold value that peaks must exceed in absolute value.
+        out_TP: Output array of shape (T, P) that will be modified in-place.
+            Values will be in {-1, 0, +1} indicating peak signs.
+
+    Note:
+        This is a numba-optimized implementation that modifies out_TP in-place.
+        The @njit decorator compiles this function to machine code.
+    """
+    T, P = dts_TP.shape
+    for p in range(P):
+        ts = dts_TP[:, p]
+        idxs, sgns = _peaks_local_for_ts(ts, thr)
+        for m in range(idxs.size):
+            out_TP[idxs[m], p] = sgns[m]
+
+
+@njit(cache=True, fastmath=True)
+def _compute_global_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
+    """Computes global peak mask for time series data.
+
+    For each time series in dts_TP, finds the global peak and marks it in out_TP.
+    A peak is marked with -1 for negative peaks or +1 for positive peaks that exceed
+    the threshold. Only the middle point of the maximum plateau is marked.
+
+    Args:
+        dts_TP: Input array of shape (T, P) containing P time series of length T.
+        thr: Threshold value that peaks must exceed in absolute value.
+        out_TP: Output array of shape (T, P) that will be modified in-place.
+            Values will be in {-1, 0, +1} indicating peak signs.
+
+    Note:
+        This is a numba-optimized implementation that modifies out_TP in-place.
+        The @njit decorator compiles this function to machine code.
+    """
+    T, P = dts_TP.shape
+    for p in range(P):
+        ts = dts_TP[:, p]
+        idx, sgn = _peak_global_for_ts(ts, thr)
+        if idx >= 0:
+            out_TP[idx, p] = sgn
+
+
+def _compute_dts_peak_sign_mask(
+    shifts: xr.DataArray,
+    time_dim: str,
+    shift_threshold: float = 0.8,
+    shift_selection: Literal["local", "global"] = "local",
+) -> xr.DataArray:
+    """Computes a dense mask indicating peak signs in the shifts data.
+
+    Creates an int8 mask with values in {-1, 0, +1} marking peaks in the shifts data.
+    For local selection, marks the middle of max-|value| plateaus within each |shifts|>threshold segment.
+    For global selection, marks the middle of the global max-|value| plateau (only if max > threshold).
+    NaN values break segments/plateaus.
+
+    Args:
+        shifts: Input DataArray containing the shifts data.
+        time_dim: Name of the time dimension.
+        shift_threshold: Threshold value for detecting peaks. Defaults to 0.8.
+        shift_selection: Selection method, either "local" or "global". Defaults to "local".
+
+    Returns:
+        xr.DataArray: Mask array with same dimensions as input, containing values:
+            -1: Negative peak
+            0: No peak
+            +1: Positive peak
+
+    Raises:
+        ValueError: If shift_selection is not "local" or "global".
+
+    Notes:
+        - Works with float32 or float64 input without dtype casting
+        - Optimized to avoid unnecessary transposes and extra passes
+    """
+    if shift_selection not in ("local", "global"):
+        raise ValueError('shift_selection must be "local" or "global"')
+
+    # Put time first (view), then flatten space -> (T, P) WITHOUT transposing to (P, T)
+    space_dims = tuple(d for d in shifts.dims if d != time_dim)
+    da_t_first = shifts.transpose(time_dim, *space_dims)
+
+    # Use .data to avoid an eager copy if it's already a NumPy array; no dtype cast here
+    vals = np.asarray(da_t_first.data)  # shape: (T, *space_shape), float32 or float64
+    T = vals.shape[0]
+    space_shape = vals.shape[1:]
+    P = int(np.prod(space_shape)) if space_shape else 1
+
+    dts_TP = vals.reshape(T, P)  # view if possible, minimal overhead
+    out_TP = np.zeros((T, P), dtype=np.int8)  # dense mask (touches once)
+
+    if shift_selection == "local":
+        _compute_local_mask_TP(dts_TP, float(shift_threshold), out_TP)
+    else:
+        _compute_global_mask_TP(dts_TP, float(shift_threshold), out_TP)
+
+    # Back to xarray with original dims
+    out = out_TP.reshape((T, *space_shape))
+    out_da_t_first = xr.DataArray(
+        out,
+        coords=da_t_first.coords,
+        dims=(time_dim, *space_dims),
+        name=shifts.name,
+    )
+    return out_da_t_first.transpose(*shifts.dims)

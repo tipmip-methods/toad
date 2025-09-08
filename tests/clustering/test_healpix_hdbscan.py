@@ -38,11 +38,9 @@ def test_healpix_hdbscan(
 
     # Setup
     td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
-    var = "tas"
     td.data = td.data.coarsen(lat=lat, lon=lon, boundary="trim").reduce(np.mean)
 
     td.compute_clusters(
-        var,
         shift_threshold=shifts_threshold,
         method=HDBSCAN(min_cluster_size=min_cluster_size),
         overwrite=True,
@@ -50,7 +48,7 @@ def test_healpix_hdbscan(
     )
 
     # Verify results
-    N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
+    N_clusters = len(td.get_cluster_ids(td.base_vars[0], exclude_noise=True))
     assert abs(N_clusters - expected_N_clusters) <= 2, (
         f"Expected {expected_N_clusters}±2, got {N_clusters}"
     )

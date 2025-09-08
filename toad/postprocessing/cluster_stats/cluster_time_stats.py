@@ -1,10 +1,11 @@
-import numpy as np
-from toad.utils import all_functions
 import inspect
+
+import numpy as np
+import xarray as xr
 from scipy.optimize import minimize_scalar
 from scipy.signal import savgol_filter
-import xarray as xr
-from toad.utils import _attrs
+
+from toad.utils import all_functions
 
 
 class ClusterTimeStats:
@@ -239,7 +240,81 @@ class ClusterTimeStats:
     #             dict[method_name] = attr() if callable(attr) else attr
     #     return dict
 
-    def compute_transition_time(self, shifts=None, direction="absolute"):
+    def compute_transition_time(
+        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.5
+    ) -> xr.DataArray:
+        """Computes the transition time for each grid cell.
+
+        This method identifies the time point of maximum rate of change (peak shift) for each
+        spatial location in the data. It uses the absolute value of shifts to detect both
+        positive and negative transitions.
+
+        Args:
+            cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
+                If None, analyzes all clusters. If specified, only analyzes grid cells belonging
+                to the given cluster(s).
+            shift_threshold: Optional float specifying the minimum absolute shift value that should
+                be considered a valid transition. Defaults to 0.5. Grid cells with maximum shift
+                values below this threshold will be marked as having no transition (NaN).
+
+        Returns:
+            xarray DataArray containing the transition time for each grid cell. Grid cells
+            with no detected transition will contain NaN values. The output has the same
+            spatial dimensions as the input shifts data.
+
+        Note:
+            The transition time is determined by finding the time index where the absolute
+            value of the shifts reaches its maximum for each grid cell. This corresponds to
+            the point of most rapid change in the underlying data.
+
+            For grid cells where the maximum absolute shift value is below shift_threshold,
+            or where no clear transition is detected, NaN values will be returned.
+        """
+        from toad.clustering import _compute_dts_peak_sign_mask
+
+        # If user has specified a clsuter variable, we need to get the shifts variable from attrs
+        shifts = self.td.get_shifts(self.var)
+
+        # Filter by clusters if specified
+        if cluster_ids is not None:
+            mask = self.td.get_spatial_cluster_mask(self.var, cluster_ids)
+            shifts = shifts.where(mask)
+
+        max_dts_mask = _compute_dts_peak_sign_mask(
+            shifts, self.td.time_dim, shift_selection="global", shift_threshold=0.25
+        )
+
+        max_dts_mask = np.abs(max_dts_mask)
+
+        # Get the indices where mask is 1 for each grid cell
+        time_indices = max_dts_mask.argmax(
+            axis=0
+        )  # This will give us a (76,76) array of indices
+
+        # Create a mask for grid cells that actually have a 1
+        has_peak = max_dts_mask.sum(axis=0) > 0
+
+        # Create a DataArray with the same coordinates as the spatial dimensions of your data
+        time_coords = self.td.data[self.td.time_dim].values
+
+        # For cells with no peak, we'll use -1 as a marker
+        time_indices = xr.where(has_peak, time_indices, -1)
+
+        # Now create the output array with dataset's time values
+        time_values = xr.where(time_indices >= 0, time_coords[time_indices], np.nan)
+
+        # Add metadata to the DataArray
+        time_values = time_values.rename("transition_time")  # Give it a meaningful name
+        time_values.attrs["long_name"] = self.td.data[self.td.time_dim].name
+        time_values.attrs["units"] = self.td.data[self.td.time_dim].attrs.get(
+            "units", ""
+        )  # Copy units from original time coordinate
+        time_values.attrs["description"] = "Time point of maximum rate of change"
+        return time_values
+
+    def compute_gaussian_transition_time(self, shifts=None, direction="absolute"):
+        # This may be removed in the future.
+
         # get shifts
         shifts = self.td.get_shifts(self.var) if shifts is None else shifts
 
@@ -269,21 +344,6 @@ class ClusterTimeStats:
             vectorize=True,
             output_dtypes=[np.float64],
         )
-
-    def compute_cluster_transition_time(self, cluster_ids, direction="absolute"):
-        # get spatial cluster mask
-        cluster_mask = self.td.get_spatial_cluster_mask(
-            self.var, cluster_id=cluster_ids
-        )
-
-        # get shifts
-        shifts_variable = self.td.get_clusters(self.var).attrs.get(
-            _attrs.SHIFTS_VARIABLE
-        )
-        assert shifts_variable is not None, "Shifts variable not found"
-        dts = self.td.data[shifts_variable].where(cluster_mask, drop=True)
-
-        return self.compute_transition_time(dts, direction)
 
 
 def fit_gaussian_transition(

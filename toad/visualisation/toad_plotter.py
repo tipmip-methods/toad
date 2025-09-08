@@ -377,7 +377,7 @@ class TOADPlotter:
 
     def cluster_map(
         self,
-        var: str,
+        var: str | None = None,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
         projection: Optional[str] = None,
         ax: Optional[Axes] = None,
@@ -396,7 +396,8 @@ class TOADPlotter:
 
         Args:
             var: Base variable name (e.g. 'temperature', will look for
-                        'temperature_cluster') or custom cluster variable name.
+                        'temperature_cluster') or custom cluster variable name. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: Single cluster ID or list of cluster IDs to plot.
                          Defaults to all clusters (except -1) if None.
             projection: Projection to use for the map. Uses default if None.
@@ -424,6 +425,8 @@ class TOADPlotter:
             TypeError: If `cluster_ids` is not an int, list, ndarray, range, or None,
                        or if `cmap` is not a string or ListedColormap.
         """
+
+        var = self.td._get_base_var_if_none(var)
         clusters = self.td.get_clusters(var)
         if clusters is None:
             raise ValueError(f"No clusters found for variable {var}")
@@ -603,8 +606,8 @@ class TOADPlotter:
 
     def cluster_maps(
         self,
-        var: str,
-        cluster_ids: Union[List[int], np.ndarray, range],
+        var: str | None = None,
+        cluster_ids: Union[List[int], np.ndarray, range] = range(5),
         ncols: int = 5,
         color: Optional[str] = None,
         projection: Optional[str] = None,
@@ -615,7 +618,8 @@ class TOADPlotter:
         """Plot individual clusters on separate maps in a grid layout.
 
         Args:
-            var: Variable name for which clusters have been computed.
+            var: Variable name for which clusters have been computed. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: List, range, or array of cluster IDs to plot.
             ncols: Number of columns in the subplot grid.
             color: Single color to use for all cluster visualizations. Passed to `cluster_map`.
@@ -630,6 +634,7 @@ class TOADPlotter:
         Raises:
             ValueError: If no clusters found for the given variable `var`.
         """
+        var = self.td._get_base_var_if_none(var)
         cluster_counts = self.td.get_cluster_counts(var)
         if cluster_counts is None:
             raise ValueError(f"No clusters found for variable {var}")
@@ -664,8 +669,8 @@ class TOADPlotter:
 
     def cluster_timeseries(
         self,
-        var: str,
-        cluster_ids: Union[int, List[int], np.ndarray, range],
+        var: str | None = None,
+        cluster_ids: Union[int, List[int], np.ndarray, range] = range(5),
         plot_var: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
@@ -684,7 +689,8 @@ class TOADPlotter:
         """Plot the time series of one or multiple clusters.
 
         Args:
-            var: Variable name for which clusters have been computed.
+            var: Variable name for which clusters have been computed. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: ID or list of IDs of clusters to plot.
             plot_var: Variable name to plot (if different from var). Defaults to var.
             ax: Matplotlib axes to plot on. Creates new figure if None.
@@ -711,6 +717,7 @@ class TOADPlotter:
         """
 
         # Filter cluster_ids to only include existing clusters
+        var = self.td._get_base_var_if_none(var)
         cluster_ids = self.filter_by_existing_clusters(cluster_ids, var)
 
         plot_var = plot_var if plot_var is not None else var
@@ -802,15 +809,15 @@ class TOADPlotter:
 
     def cluster_aggregate(
         self,
-        cluster_var: str,
-        cluster_ids: Union[List[int], np.ndarray, range],
+        cluster_var: str | None = None,
+        cluster_ids: Union[List[int], np.ndarray, range] = range(5),
         plot_var: Optional[str] = None,
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
         median_linewidth: float = 3,
         mean_linewidth: float = 3,
-        shift_indicator_linewidth: float = 5,
+        shift_indicator_linewidth: float = 5,  # TODO delete
         normalize: Optional[Literal["first", "max", "last"]] = None,
         add_legend: bool = True,
         plot_range: bool = True,
@@ -832,7 +839,8 @@ class TOADPlotter:
         - The darker shaded line shows the 68% interquartile range (IQR) duration, which represents the core period when the cluster is most active
 
         Args:
-            cluster_var: Variable name for which clusters have been computed.
+            cluster_var: Variable name for which clusters have been computed. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: List of cluster IDs to plot.
             plot_var: Variable name to plot (if different from cluster_var). Defaults to cluster_var.
             ax: Matplotlib axes to plot on. Creates new figure if None.
@@ -861,6 +869,7 @@ class TOADPlotter:
             fig, ax = plt.subplots()
 
         # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
+        cluster_var = self.td._get_base_var_if_none(cluster_var)
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Filter cluster_ids to only include existing clusters
@@ -948,7 +957,7 @@ class TOADPlotter:
 
     def cluster_cummulative(
         self,
-        cluster_var: str,
+        cluster_var: str | None = None,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
         plot_var: Optional[str] = None,
         ax: Optional[Axes] = None,
@@ -967,10 +976,10 @@ class TOADPlotter:
             fig, ax = plt.subplots(figsize=figsize)
 
         # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
+        cluster_var = self.td._get_base_var_if_none(cluster_var)
         plot_var = plot_var if plot_var is not None else cluster_var
 
         # Get all valid cluster IDs (excluding -1)
-
         # If cluster_ids specified, separate into selected and remaining clusters
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
@@ -1102,12 +1111,12 @@ class TOADPlotter:
 
     def cluster_evolution(
         self,
-        cluster_var: str,
-        cluster_id: int,
-        plot_var: Optional[str] = None,
+        cluster_var: str | None = None,
+        cluster_id: int = 0,
+        plot_var: str | None = None,
         ncols: int = 5,
         snapshots: int = 5,
-        projection: Optional[str] = None,
+        projection: str | None = None,
     ) -> Tuple[matplotlib.figure.Figure, np.ndarray]:
         """Plot spatial snapshots of a cluster's evolution over time.
 
@@ -1116,7 +1125,8 @@ class TOADPlotter:
         within the cluster's duration and plots them on separate maps.
 
         Args:
-            cluster_var: Variable name used for clustering.
+            cluster_var: Variable name used for clustering. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_id: ID of the specific cluster to visualize.
             plot_var: Variable name whose data to plot within the cluster mask.
                       Defaults to `cluster_var` if None.
@@ -1130,6 +1140,8 @@ class TOADPlotter:
         """
 
         # TODO, I think this crashes if no clusters have been computed
+
+        cluster_var = self.td._get_base_var_if_none(cluster_var)
 
         # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
         plot_var = plot_var if plot_var is not None else cluster_var
@@ -1158,7 +1170,7 @@ class TOADPlotter:
 
     def cluster_overview(
         self,
-        var: str,
+        var: str | None = None,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = range(5),
         map_var: Optional[str] = None,
         timeseries_var: Optional[str] = None,
@@ -1182,7 +1194,8 @@ class TOADPlotter:
         Combination of a `cluster_map` and `cluster_aggregate`.
 
         Args:
-            var: Variable name used for clustering.
+            var: Variable name used for clustering. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: ID or list of IDs of clusters to plot. Defaults to all
                          clusters found for `var`.
             map_var: Variable name whose data to plot in the map.
@@ -1213,6 +1226,8 @@ class TOADPlotter:
                 - axes_dict: A dictionary containing the map axes and a list of
                   timeseries axes, e.g., {'map': map_ax, 'timeseries': [ts_ax1, ts_ax2,...]}.
         """
+
+        var = self.td._get_base_var_if_none(var)
 
         if not cluster_ids:
             cluster_ids = self.td.get_cluster_ids(var)

@@ -1,35 +1,36 @@
-from collections.abc import Callable
 import logging
-import xarray as xr
-import numpy as np
-from typing import List, Union, Optional, Literal
 import os
-from sklearn.base import ClusterMixin
+from collections.abc import Callable
+from typing import List, Literal, Optional, Union
+
+import numpy as np
 import optuna
 import sklearn.cluster
+import xarray as xr
+from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
-    StandardScaler,
+    MaxAbsScaler,
     MinMaxScaler,
     RobustScaler,
-    MaxAbsScaler,
+    StandardScaler,
 )
 
 from toad import (
-    shifts,
     clustering,
-    postprocessing,
-    visualisation,
-    preprocessing,
     optimising,
-)
-from toad.utils import (
-    get_space_dims,
-    is_equal_to,
-    contains_value,
-    detect_latlon_names,
-    _attrs,
+    postprocessing,
+    preprocessing,
+    shifts,
+    visualisation,
 )
 from toad.regridding.base import BaseRegridder
+from toad.utils import (
+    _attrs,
+    contains_value,
+    detect_latlon_names,
+    get_space_dims,
+    is_equal_to,
+)
 
 
 class TOAD:
@@ -293,8 +294,8 @@ class TOAD:
         # Try to load and encode the TOAD logo
         logo_html = ""
         try:
-            import os
             import base64
+            import os
 
             current_dir = os.path.dirname(__file__)
             logo_path = os.path.abspath(
@@ -401,8 +402,8 @@ class TOAD:
 
     def compute_shifts(
         self,
-        var: str,
-        method: shifts.ShiftsMethod,
+        var: str | None = None,
+        method: shifts.ShiftsMethod = shifts.ASDETECT(),
         output_label_suffix: str = "",
         overwrite: bool = False,
         return_results_directly: bool = False,
@@ -410,8 +411,11 @@ class TOAD:
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
         Args:
-            var: Name of the variable in the dataset to analyze for abrupt shifts.
-            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in `toad.shifts` (e.g., `ASDETECT`), or create your own by subclassing `ShiftsMethod` from `toad.shifts`.
+            var: Name of the base variable to analyze for abrupt shifts. If None and only one base variable exists,
+                that variable will be used automatically. If None and multiple base variables exist, raises a ValueError.
+                Defaults to None.
+            method: The abrupt shift detection algorithm to use. Choose from predefined method objects in `toad.shifts` (e.g., `ASDETECT`),
+                or create your own by subclassing `ShiftsMethod` from `toad.shifts`. Defaults to `ASDETECT()`.
             output_label_suffix: A suffix to add to the output label. Defaults to `""`.
             overwrite: Whether to overwrite existing variable. Defaults to `False`.
             return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to `False`.
@@ -423,9 +427,10 @@ class TOAD:
         Raises:
             ValueError: If data is invalid or required parameters are missing
         """
+
         results = shifts.compute_shifts(
             data=self.data,
-            var=var,
+            var=self._get_base_var_if_none(var),
             time_dim=self.time_dim,
             method=method,
             output_label_suffix=output_label_suffix,
@@ -440,8 +445,8 @@ class TOAD:
 
     def compute_clusters(
         self,
-        var: str,
-        method: ClusterMixin,
+        var: str | None = None,
+        method: ClusterMixin = sklearn.cluster.HDBSCAN(min_cluster_size=10),
         shift_threshold: float = 0.8,
         shift_direction: Literal["both", "positive", "negative"] = "both",
         shift_selection: Literal["local", "global", "all"] = "local",
@@ -460,11 +465,11 @@ class TOAD:
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
         Args:
-            var: Name of the base variable or shifts variable to compute clusters for. If multiple
-                shifts variables exist for the base variable, a ValueError is throw, in which case
-                you should specify the shifts variable name.
+            var: Name of the shifts variable to cluster, or name of the base variable whose shifts
+                should be clustered. If None, TOAD will attempt to infer which shifts to use.
+                A ValueError is raised if the shifts variable cannot be uniquely determined.
             method: The clustering method to use. Choose methods from sklearn.cluster or create
-                your by inheriting from sklearn.base.ClusterMixin.
+                your by inheriting from sklearn.base.ClusterMixin. Defaults to HDBSCAN(min_cluster_size=10).
             shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
             shift_direction: The sign of the shift. Options are "both", "positive", "negative". Defaults to "both".
             shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
@@ -499,7 +504,7 @@ class TOAD:
         """
         results = clustering.compute_clusters(
             td=self,
-            var=var,
+            var=self._get_base_var_if_none(var),
             method=method,
             shift_threshold=shift_threshold,
             shift_selection=shift_selection,
@@ -525,7 +530,7 @@ class TOAD:
 
     def optimise(
         self,
-        var: str,
+        var: str | None = None,
         shifts_method: type[shifts.ShiftsMethod] = shifts.ASDETECT,
         cluster_method: type[ClusterMixin] = sklearn.cluster.HDBSCAN,
         shifts_param_ranges: dict = dict({}),
@@ -539,7 +544,8 @@ class TOAD:
         """Optimise the parameters for shift detection and clustering.
 
         Args:
-            var (str): Name of the variable to cluster.
+            var (str): Name of the variable to cluster. If None, TOAD will attempt to infer which variable to use.
+                A ValueError is raised if the variable cannot be uniquely determined.
             shifts_method: Class for shift detection. Defaults to ASDETECT.
             cluster_method: Class for clustering. Defaults to HDBSCAN.
             shifts_param_ranges: Dict of parameter ranges for shift detection. Defaults to empty dict.
@@ -688,7 +694,7 @@ class TOAD:
         return [
             str(x)
             for x in list(self.data.data_vars.keys())
-            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT
+            if self._is_shift_variable(x)
         ]
 
     @property
@@ -704,38 +710,85 @@ class TOAD:
         return [
             str(x)
             for x in list(self.data.data_vars.keys())
-            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER
+            if self._is_cluster_variable(x)
         ]
 
     def shift_vars_for_var(self, var: str) -> list[str]:
         """Get the shift variables for a given variable.
 
         Args:
-            var: The base variable to get the shift variables for.
+            var: The variable to get shift variables for. Can be either:
+                - A base variable (e.g. 'temperature')
+                - A cluster variable (e.g. 'temperature_cluster')
+                Cannot be a shift variable.
 
         Returns:
-            List of shift variables for the given base variable.
+            List of shift variables associated with the given variable:
+                - For base variables: Returns all shift variables that have this as their base variable
+                - For cluster variables: Returns the shift variable used to create this cluster
+
+        Raises:
+            ValueError: If var is a shift variable, or if no shift variables are found.
         """
-        return [
-            str(x)
-            for x in self.shift_vars
-            if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
-        ]
+        # If variable is a cluster variable, get the shift variable from attrs
+        if self._is_cluster_variable(var):
+            shift_variable = self.data[var].attrs.get(_attrs.SHIFTS_VARIABLE)
+            if shift_variable:
+                if shift_variable in self.shift_vars:
+                    return [shift_variable]
+                else:
+                    raise ValueError(
+                        f"Shift variable {shift_variable} not found in shift variables."
+                    )
+            else:
+                raise ValueError(f"No shift variable found for cluster variable {var}.")
+        # If variable is a shift variable, raise error
+        if self._is_shift_variable(var):
+            raise ValueError(
+                "This is a shift variable. Use this function to get shift variable of a cluster or base variable."
+            )
+        # Else, must be a base variable, get all shift variables for that base variable
+        else:
+            return [
+                str(x)
+                for x in self.shift_vars
+                if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
+            ]
 
     def cluster_vars_for_var(self, var: str) -> list[str]:
         """Get the cluster variables for a given variable.
 
         Args:
-            var: The base variable to get the cluster variables for.
+            var: The variable to get cluster variables for. Can be either:
+                - A base variable (e.g. 'temperature')
+                - A shift variable (e.g. 'temperature_dts')
+                Cannot be a cluster variable.
 
         Returns:
-            List of cluster variables for the given base variable.
+            List of cluster variables associated with the given variable:
+                - For base variables: Returns cluster variables that have this as their base variable
+                - For shift variables: Returns cluster variables that were derived from this shift variable
+
+        Raises:
+            ValueError: If var is a cluster variable. This function can only get cluster variables
+                for base or shift variables.
         """
-        return [
-            str(x)
-            for x in self.cluster_vars
-            if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
-        ]
+        if self._is_cluster_variable(var):
+            raise ValueError(
+                "This is a cluster variable. Use this function to get cluster variables of a base or shift variable."
+            )
+        elif self._is_shift_variable(var):
+            return [
+                str(x)
+                for x in self.cluster_vars
+                if self.data[x].attrs.get(_attrs.SHIFTS_VARIABLE) == var
+            ]
+        else:
+            return [
+                str(x)
+                for x in self.cluster_vars
+                if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
+            ]
 
     def get_base_var(self, var: str) -> Optional[str]:
         """Get the base variable for a given variable."""
@@ -758,7 +811,7 @@ class TOAD:
         """
 
         # Check if the variable is a shifts variable
-        if self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT:
+        if self._is_shift_variable(var):
             return self.data[var]
 
         shift_vars = self.shift_vars_for_var(var)
@@ -794,7 +847,7 @@ class TOAD:
                 its name.
         """
         # Check if the variable is a cluster variable
-        if self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER:
+        if self._is_cluster_variable(var):
             return self.data[var]
 
         cluster_vars = self.cluster_vars_for_var(var)
@@ -1082,6 +1135,46 @@ class TOAD:
             mask = self.get_cluster_mask(var, cluster_id)
 
         return self.data.where(mask)
+
+    def _get_base_var_if_none(self, var: str | None) -> str:
+        """Get the default base variable if none specified, or return the provided variable.
+
+        Helper method to handle cases where a variable is optional and should default to the
+        single base variable if one exists, or raise an error if multiple exist.
+
+        Args:
+            var: Optional variable name. If None, will attempt to use the single base variable.
+
+        Returns:
+            The variable name to use - either the provided var or the default base variable.
+
+        Raises:
+            ValueError: If var is None and multiple base variables exist.
+        """
+        if var is None:
+            if len(self.base_vars) > 1:
+                raise ValueError(
+                    "Multiple base variables exist: {self.base_vars}. Please specify which one to use."
+                )
+            else:
+                return self.base_vars[0]
+        else:
+            return var
+
+    def _is_shift_variable(self, var: str) -> bool:
+        """Check if a variable is a shift variable."""
+        return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT
+
+    def _is_cluster_variable(self, var: str) -> bool:
+        """Check if a variable is a cluster variable."""
+        return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER
+
+    def _is_base_variable(self, var: str) -> bool:
+        """Check if a variable is a base variable."""
+        return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) not in [
+            _attrs.TYPE_SHIFT,
+            _attrs.TYPE_CLUSTER,
+        ]
 
     def _aggregate_spatial(
         self,

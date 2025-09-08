@@ -11,13 +11,15 @@ Currently implemented methods:
 
 import logging
 from typing import Union
-import xarray as xr
-from toad._version import __version__
-import numpy as np
-from toad.utils import get_unique_variable_name, _attrs
 
-from .methods.base import ShiftsMethod
+import numpy as np
+import xarray as xr
+
+from toad._version import __version__
+from toad.utils import _attrs, get_unique_variable_name
+
 from .methods.asdetect import ASDETECT
+from .methods.base import ShiftsMethod
 
 # Currently implemented methods:
 # - ASDETECT: Implementation of the [Boulton+Lenton2019]_ algorithm for detecting abrupt shifts
@@ -98,15 +100,31 @@ def compute_shifts(
         data = data.drop_vars(output_label)
 
     # Apply the detector
-    logger.info(f"Applying detector {method.__class__.__name__} to {var}")
-    shifts = xr.apply_ufunc(
+    logger.debug(f"Applying detector {method.__class__.__name__} to {var}")
+
+    # Create a mask for non-constant, non-NaN cells
+    # Create separate masks for constant values and NaN values
+    constant_mask = data_array.min(dim=time_dim) == data_array.max(dim=time_dim)
+    nan_mask = data_array.isnull().all(dim=time_dim)
+
+    # Combine masks to get valid cells (not constant and not all NaN)
+    valid_mask = ~(constant_mask | nan_mask)
+
+    # Initialize output array with NaN values
+    shifts = xr.full_like(data_array, fill_value=np.nan)
+
+    # Apply detector only to valid cells
+    valid_shifts = xr.apply_ufunc(
         method.fit_predict,
-        data_array,
+        data_array.where(valid_mask),
         kwargs=dict(times_1d=data_array[time_dim].values),
         input_core_dims=[[time_dim]],
         output_core_dims=[[time_dim]],
         vectorize=True,
     ).transpose(*data_array.dims)
+
+    # Update only the valid cells in the output array
+    shifts = shifts.where(~valid_mask, valid_shifts)
 
     # Rename the output variable
     shifts = shifts.rename(output_label)
@@ -128,6 +146,19 @@ def compute_shifts(
             _attrs.VARIABLE_TYPE: _attrs.TYPE_SHIFT,
             **method_params,
         }
+    )
+
+    n_constants = int((constant_mask).sum().values)
+    n_nans = int((nan_mask).sum().values)
+    n_true = int(valid_mask.sum().values)
+    left_behind_ratio = float(100 * (1 - n_true / valid_mask.size))
+    min_shift = float(shifts.min().values)
+    mean_shift = float(shifts.mean().values)
+    max_shift = float(shifts.max().values)
+
+    logger.info(
+        f"New shifts variable \033[1m{output_label}\033[0m: min/mean/max={min_shift:.3f}/{mean_shift:.3f}/{max_shift:.3f} using {n_true} grid cells. "
+        f"Left behind {left_behind_ratio:.1f}% grid cells: {int(n_nans)} NaN, {int(n_constants)} constant."
     )
 
     # 6. Merge the detected shifts with the original data

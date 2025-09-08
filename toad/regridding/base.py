@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 import numpy as np
 
 
@@ -11,7 +12,7 @@ class BaseRegridder(ABC):
 
     @abstractmethod
     def regrid(
-        self, coords: np.ndarray, weights: np.ndarray
+        self, coords: np.ndarray, weights: np.ndarray, space_dims_size: tuple[int, int]
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Regrid data to new coordinate system.
@@ -19,6 +20,7 @@ class BaseRegridder(ABC):
         Args:
             coords: 3dArray of coordinates (time, lon, lat) in that order
             weights: 1dArray of weights
+            space_dims_size: Tuple of (nlat, nlon) sizes of the original grid dimensions
         Returns:
             3dArray of coordinates (time, lon, lat) in that order
             1dArray of weights

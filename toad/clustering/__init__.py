@@ -395,9 +395,9 @@ def _format_cluster_summary(
     n_clusters = int(np.unique(labels[labels != -1]).size)
 
     # nice, compact, and informative
+    clusters_text = f"{n_clusters} {'cluster' if n_clusters == 1 else 'clusters'}"
     return (
-        f"{output_label}: Identified {n_clusters} "
-        f"{'CLUSTER' if n_clusters == 1 else 'CLUSTERS'} in {n:,} pts; "
+        f"New cluster variable \033[1m{output_label}\033[0m: Identified \033[1m{clusters_text}\033[0m in {n:,} pts; "
         f"Left behind {pct_noise:.1f}% as noise"
         f" ({noise:,} pts)."
     )

@@ -255,7 +255,14 @@ def compute_clusters(
             logger.info(
                 f"Regridding {shifts_variable} with {regridder.__class__.__name__}"
             )
-            coords, weights = regridder.regrid(coords, weights)
+            coords, weights = regridder.regrid(
+                coords,
+                weights,
+                space_dims_size=(
+                    td.data.sizes[td.space_dims[0]],
+                    td.data.sizes[td.space_dims[1]],
+                ),
+            )
 
         # Convert to Cartesian (time, x, y, z) coordinates when lat/lon are available
         if has_latlon:

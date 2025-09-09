@@ -31,4 +31,3 @@ Core Modules
 	toad.visualisation
 	toad.utils
 	toad.postprocessing
-	toad.optimising

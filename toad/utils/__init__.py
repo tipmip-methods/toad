@@ -57,6 +57,15 @@ class _Attrs:
     TOAD_VERSION: str = "toad_version"
     TIME_DIM: str = "time_dim"
 
+    # Optimisation related attributes
+    OPTIMISATION: str = "optimisation"
+    OPT_OBJECTIVE: str = "opt_objective"
+    OPT_BEST_SCORE: str = "opt_best_score"
+    OPT_DIRECTION: str = "opt_direction"
+    OPT_PARAMS: str = "opt_params"
+    OPT_BEST_PARAMS: str = "opt_best_params"
+    OPT_N_TRIALS: str = "opt_n_trials"
+
     # Attribute values
     TYPE_SHIFT: str = "shift"
     TYPE_CLUSTER: str = "cluster"
@@ -209,7 +218,7 @@ def contains_value(x, value):
     return value in x
 
 
-def get_unique_variable_name(base_name: str, existing_vars, logger=None) -> str:
+def get_unique_variable_name(desired_name: str, existing_vars, logger=None) -> str:
     """Generate a unique variable name by appending sequential numbers if needed.
 
     Args:
@@ -228,19 +237,19 @@ def get_unique_variable_name(base_name: str, existing_vars, logger=None) -> str:
         >>> get_unique_variable_name("tas_cluster_5", ["tas_cluster_5", "tas_cluster_6"])
         "tas_cluster_7"
     """
-    if base_name not in existing_vars:
-        return base_name
+    if desired_name not in existing_vars:
+        return desired_name
 
     # Check if the name already has a number at the end
-    match = re.search(r"_(\d+)$", base_name)
+    match = re.search(r"_(\d+)$", desired_name)
     if match:
         # Extract the base name and current number
-        name_without_num = base_name[: match.start()]
+        name_without_num = desired_name[: match.start()]
         current_num = int(match.group(1))
         next_num = current_num + 1
     else:
         # No number at the end, start with _1
-        name_without_num = base_name
+        name_without_num = desired_name
         next_num = 1
 
     # Find the next available number
@@ -250,7 +259,9 @@ def get_unique_variable_name(base_name: str, existing_vars, logger=None) -> str:
     new_name = f"{name_without_num}_{next_num}"
 
     if logger:
-        logger.debug(f"Variable {base_name} already exists. Using {new_name} instead.")
+        logger.debug(
+            f"Variable {desired_name} already exists. Using {new_name} instead."
+        )
 
     return new_name
 

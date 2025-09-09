@@ -23,7 +23,7 @@ visualized using TOAD's plotting utilities.
 import logging
 from collections.abc import Callable
 from time import time as time_now
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import optuna
@@ -37,10 +37,10 @@ from sklearn.preprocessing import (
 )
 
 from toad._version import __version__
-from toad.clustering.cluster_optimising import (
+from toad.clustering.optimising import (
     _optimise_clusters,
     combined_spatial_nonlinearity,
-    default_cluster_param_ranges,
+    default_hdbscan_optimisation_params,
 )
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
@@ -56,7 +56,7 @@ logger = logging.getLogger("TOAD")
 
 __all__ = [
     "compute_clusters",
-    "default_cluster_param_ranges",
+    "default_hdbscan_optimisation_params",
     "combined_spatial_nonlinearity",
 ]
 
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 def compute_clusters(
     td: "TOAD",
     var: str,
-    method: ClusterMixin,
+    method: ClusterMixin | type,
     shift_threshold: float = 0.8,
     shift_direction: Literal["both", "positive", "negative"] = "both",
     shift_selection: Literal["local", "global", "all"] = "local",
@@ -82,19 +82,25 @@ def compute_clusters(
     output_label_suffix: str = "",
     output_label: str | None = None,
     overwrite: bool = False,
-    merge_input: bool = True,
     sort_by_size: bool = True,
+    # Optimisation params
     optimise: bool = False,
-    cluster_param_ranges: dict = default_cluster_param_ranges,
-    objective: Callable | str = combined_spatial_nonlinearity,
+    optimisation_params: dict = default_hdbscan_optimisation_params,
+    objective: Callable
+    | Literal[
+        "median_heaviside",
+        "mean_heaviside",
+        "mean_consistency",
+        "mean_spatial_autocorrelation",
+        "mean_nonlinearity",
+        "combined_spatial_nonlinearity",
+    ] = "combined_spatial_nonlinearity",
     n_trials: int = 50,
     direction: str = "maximize",
     log_level: int = optuna.logging.WARNING,
     show_progress_bar: bool = True,
-) -> Union[xr.Dataset, xr.DataArray]:
+) -> xr.Dataset:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
-
-    TODO: add optimise param
 
     Args:
         td: TOAD object containing the data to cluster
@@ -114,10 +120,22 @@ def compute_clusters(
         overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
         merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
         sort_by_size: Whether to reorder clusters by size. Defaults to True.
+        optimise: Whether to optimise the clustering parameters. Defaults to False.
+        optimisation_params: Parameters for the optimisation. Defaults to default_hdbscan_optimisation_params.
+        objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
+            - callable: Custom objective function taking (td, output_label) as arguments
+            - "median_heaviside": Median heaviside score across clusters
+            - "mean_heaviside": Mean heaviside score across clusters
+            - "mean_consistency": Mean consistency score across clusters
+            - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
+            - "mean_nonlinearity": Mean nonlinearity score across clusters
+        n_trials: Number of trials to run for optimisation. Defaults to 50.
+        direction: The direction of the optimisation. Defaults to "maximize".
+        log_level: The log level for the optimisation. Defaults to optuna.logging.WARNING.
+        show_progress_bar: Whether to show the progress bar for the optimisation. Defaults to True.
 
     Returns:
-        If `merge_input` is `True`, returns an `xarray.Dataset` containing the original data and the clustering results.
-        If `merge_input` is `False`, returns an `xarray.DataArray` containing the clustering results.
+        An `xarray.Dataset` containing the original data and the clustering results.
 
     Notes:
         For global datasets, use `toad.clustering.regridding.HealpyRegridder` to ensure equal spacing between data points and prevent biased clustering at high latitudes.
@@ -153,6 +171,7 @@ def compute_clusters(
 
     start_time = time_now()
 
+    # ==================== VARIABLE CHECKING ====================
     # if supplied variable is a shift variable, use that
     if td._is_shift_variable(var):
         shifts_variable = var
@@ -183,25 +202,44 @@ def compute_clusters(
     if shift_threshold < 0:
         raise ValueError(f"shift_threshold must be positive, got {shift_threshold}")
 
+    # ==================== LABEL MAKING ====================
     # Set output label (name of shifts_variable + _cluster + output_label_suffix) and check if already in data
-    new_output_label = output_label or f"{shifts_variable}_cluster{output_label_suffix}"
-    if merge_input and not overwrite:
+    new_output_label = (
+        output_label
+        if output_label
+        else f"{shifts_variable}_cluster{output_label_suffix}"
+    )
+    if not overwrite:
         new_output_label = get_unique_variable_name(new_output_label, td.data, logger)
     elif overwrite and new_output_label in td.data:
         td.data = td.data.drop_vars(new_output_label)
 
-    # if optimise is True, optimise the parameters for clustering
+    # ==================== OPTIMISATION ====================
+    # if optimise is True, optimise the parameters for clustering.
     if optimise:
-        # collect all local variable
-        kwargs = {**locals()}
-        print(kwargs)
+        return _optimise_clusters(
+            td=td,
+            var=var,
+            method=method,
+            shift_threshold=shift_threshold,
+            shift_direction=shift_direction,
+            shift_selection=shift_selection,
+            scaler=scaler,
+            time_scale_factor=time_scale_factor,
+            regridder=regridder,
+            output_label=new_output_label,
+            overwrite=True,
+            sort_by_size=sort_by_size,
+            optimise=False,
+            optimisation_params=optimisation_params,
+            objective=objective,
+            n_trials=n_trials,
+            direction=direction,
+            log_level=log_level,
+            show_progress_bar=show_progress_bar,
+        )
 
-        # Pass the new computed output label and overwrite=True.
-        kwargs["optimise"] = False
-        kwargs["output_label"] = new_output_label
-        kwargs["overwrite"] = True
-        return _optimise_clusters(kwargs)
-
+    # ==================== SHIFT SELECTION ====================
     sh = td.data[shifts_variable]
     if shift_selection in ("local", "global"):
         mask_da = _compute_dts_peak_sign_mask(
@@ -261,6 +299,7 @@ def compute_clusters(
         time_vals = td.data[td.time_dim].values[idx[0]]
         time_numeric = _as_numeric_time(time_vals)
 
+        # ==================== COORDINATES ====================
         if is_latlon_dims:
             # lat/lon are 1D dims: index directly
             lat_vals = td.data[lat_name].values[idx[1]]
@@ -285,11 +324,10 @@ def compute_clusters(
         vals_sh = np.asarray(sh.data)[idx]
         weights = np.abs(vals_sh)
 
+        # ==================== REGIDDING ====================
         # Create HealPixRegridder only for regular 1D lat/lon grids
         if regridder is None and is_latlon_dims:
             regridder = HealPixRegridder()
-
-        # Regrid and scale
         if regridder:
             logger.debug(
                 f"Regridding {shifts_variable} with {regridder.__class__.__name__}"
@@ -317,6 +355,9 @@ def compute_clusters(
         if time_scale_factor != 1:
             coords[:, 0] = coords[:, 0] * time_scale_factor
 
+        # convert method to instance if class was passed
+        method = method() if isinstance(method, type) else method
+
         # Save method params before clustering (because they might change during clustering)
         method_params = {
             f"method_{param}": str(value)
@@ -343,6 +384,7 @@ def compute_clusters(
             f"Applying clusterer {method.__class__.__name__} to {shifts_variable}"
         )
 
+        # ==================== APPLY CLUSTERING METHOD ====================
         cluster_start = time_now()
         try:
             cluster_labels = np.array(method.fit_predict(coords, weights))
@@ -409,11 +451,7 @@ def compute_clusters(
     logger.info(_format_cluster_summary(new_output_label, cluster_labels, n_pts))
 
     # Merge the cluster labels back into the original data
-    return (
-        xr.merge([td.data, clusters], combine_attrs="override", compat="override")
-        if merge_input
-        else clusters
-    )
+    return xr.merge([td.data, clusters], combine_attrs="override", compat="override")
 
 
 def _format_cluster_summary(

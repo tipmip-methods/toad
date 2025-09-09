@@ -17,15 +17,13 @@ from sklearn.preprocessing import (
 
 from toad import (
     clustering,
-    optimising,
     postprocessing,
     preprocessing,
     shifts,
     visualisation,
 )
-from toad.clustering import (
-    combined_spatial_nonlinearity,
-    default_cluster_param_ranges,
+from toad.clustering.optimising import (
+    default_hdbscan_optimisation_params,
 )
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
@@ -200,7 +198,7 @@ class TOAD:
                         """)
 
                         # Cluster variables under this shift
-                        for cluster_var in sorted(shift_clusters):
+                        for cluster_var in shift_clusters:
                             n_clusters = self.data[cluster_var].attrs.get(
                                 _attrs.CLUSTER_IDS
                             )
@@ -450,7 +448,7 @@ class TOAD:
     def compute_clusters(
         self,
         var: str | None = None,
-        method: ClusterMixin = sklearn.cluster.HDBSCAN(min_cluster_size=10),
+        method: ClusterMixin | type = sklearn.cluster.HDBSCAN(),
         shift_threshold: float = 0.8,
         shift_direction: Literal["both", "positive", "negative"] = "both",
         shift_selection: Literal["local", "global", "all"] = "local",
@@ -462,33 +460,40 @@ class TOAD:
         time_scale_factor: float = 1,
         regridder: BaseRegridder | None = None,
         output_label_suffix: str = "",
+        output_label: str | None = None,
         overwrite: bool = False,
-        return_results_directly: bool = False,
         sort_by_size: bool = True,
+        # optimisation related params
         optimise: bool = False,
-        cluster_param_ranges: dict = default_cluster_param_ranges,
-        objective: Callable | str = combined_spatial_nonlinearity,
+        optimisation_params: dict = default_hdbscan_optimisation_params,
+        objective: Callable
+        | Literal[
+            "median_heaviside",
+            "mean_heaviside",
+            "mean_consistency",
+            "mean_spatial_autocorrelation",
+            "mean_nonlinearity",
+            "combined_spatial_nonlinearity",
+        ] = "combined_spatial_nonlinearity",
         n_trials: int = 50,
         direction: str = "maximize",
         log_level: int = optuna.logging.WARNING,
         show_progress_bar: bool = True,
-    ) -> Union[xr.DataArray, None]:
+    ):
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
-
-        TODO: add optimise param
 
         Args:
             var: Name of the shifts variable to cluster, or name of the base variable whose shifts
                 should be clustered. If None, TOAD will attempt to infer which shifts to use.
                 A ValueError is raised if the shifts variable cannot be uniquely determined.
             method: The clustering method to use. Choose methods from sklearn.cluster or create
-                your by inheriting from sklearn.base.ClusterMixin. Defaults to HDBSCAN(min_cluster_size=10).
+                your by inheriting from sklearn.base.ClusterMixin. Defaults to HDBSCAN().
             shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
             shift_direction: The sign of the shift. Options are "both", "positive", "negative". Defaults to "both".
             shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
-                - "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.
-                - "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
-                - "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
+                "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.
+                "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
+                "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
                 Defaults to "local".
             scaler: The scaling method to apply to the data before clustering. StandardScaler(),
                 MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are
@@ -502,11 +507,22 @@ class TOAD:
             return_results_directly: Whether to return the clustering results directly or merge
                 into the original dataset. Defaults to False.
             sort_by_size: Whether to reorder clusters by size. Defaults to True.
+            optimise: Whether to optimise the clustering parameters. Defaults to False.
+            optimisation_params: Parameters for the optimisation. Defaults to default_hdbscan_optimisation_params.
+            objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
+                - callable: Custom objective function taking (td, output_label) as arguments
+                - "median_heaviside": Median heaviside score across clusters
+                - "mean_heaviside": Mean heaviside score across clusters
+                - "mean_consistency": Mean consistency score across clusters
+                - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
+                - "mean_nonlinearity": Mean nonlinearity score across clusters
+            n_trials: Number of trials to run for optimisation. Defaults to 50.
+            direction: The direction of the optimisation. Defaults to "maximize".
+            log_level: The log level for the optimisation. Defaults to optuna.logging.WARNING.
+            show_progress_bar: Whether to show the progress bar for the optimisation. Defaults to True.
 
         Returns:
-            If return_results_directly is True, returns an xarray.DataArray containing cluster
-            labels for the data points. Otherwise, the clustering results are merged into the
-            original dataset, and the function returns None.
+            None.
 
         Raises:
             ValueError: If data is invalid or required parameters are missing
@@ -526,11 +542,11 @@ class TOAD:
             time_scale_factor=time_scale_factor,
             regridder=regridder,
             output_label_suffix=output_label_suffix,
+            output_label=output_label,
             overwrite=overwrite,
-            merge_input=not return_results_directly,
             sort_by_size=sort_by_size,
             optimise=optimise,
-            cluster_param_ranges=cluster_param_ranges,
+            optimisation_params=optimisation_params,
             objective=objective,
             n_trials=n_trials,
             direction=direction,
@@ -538,70 +554,7 @@ class TOAD:
             show_progress_bar=show_progress_bar,
         )
 
-        if return_results_directly and isinstance(results, xr.DataArray):
-            return results
-        elif isinstance(results, xr.Dataset):
-            self.data = results
-            return None
-
-    # # ======================================================================
-    # #               OPTIMISE functions
-    # # ======================================================================
-
-    def optimise(
-        self,
-        var: str | None = None,
-        shifts_method: type[shifts.ShiftsMethod] = shifts.ASDETECT,
-        cluster_method: type[ClusterMixin] = sklearn.cluster.HDBSCAN,
-        shifts_param_ranges: dict = dict({}),
-        cluster_param_ranges: dict = optimising.default_cluster_param_ranges,
-        objective: Callable = optimising.combined_spatial_nonlinearity,
-        n_trials: int = 50,
-        direction: str = "maximize",
-        log_level: int = optuna.logging.WARNING,
-        show_progress_bar: bool = True,
-    ):
-        """Optimise the parameters for shift detection and clustering.
-
-        Args:
-            var (str): Name of the variable to cluster. If None, TOAD will attempt to infer which variable to use.
-                A ValueError is raised if the variable cannot be uniquely determined.
-            shifts_method: Class for shift detection. Defaults to ASDETECT.
-            cluster_method: Class for clustering. Defaults to HDBSCAN.
-            shifts_param_ranges: Dict of parameter ranges for shift detection. Defaults to empty dict.
-            cluster_param_ranges: Dict of parameter ranges for clustering. Defaults to default_cluster_param_ranges.
-            objective: Function or string specifying evaluation metric. Defaults to combined_spatial_nonlinearity.
-                Can be one of:
-                - callable: Custom objective function taking (td, cluster_ids, var) as arguments
-                - "median_abruptness": Median heaviside score across clusters
-                - "mean_abruptness": Mean heaviside score across clusters
-                - "mean_consistency": Mean consistency score across clusters
-                - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
-                - "mean_nonlinearity": Mean nonlinearity score across clusters
-            n_trials: Number of optimization trials to run. Defaults to 50.
-            direction: Whether to maximize or minimize objective. Defaults to "maximize".
-            log_level: The logging level for the optuna logger. Defaults to "WARNING".
-            show_progress_bar: Whether to show the progress bar. Defaults to True.
-
-        Returns:
-            dict: Best parameters found during optimization
-
-        Raises:
-            ValueError: If objective is not valid
-        """
-        optimising.optimise(
-            td=self,
-            var=var,
-            shifts_method=shifts_method,
-            cluster_method=cluster_method,
-            shifts_param_ranges=shifts_param_ranges,
-            cluster_param_ranges=cluster_param_ranges,
-            objective=objective,
-            n_trials=n_trials,
-            direction=direction,
-            log_level=log_level,
-            show_progress_bar=show_progress_bar,
-        )
+        self.data = results
 
     # # ======================================================================
     # #               netCDF functions

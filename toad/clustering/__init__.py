@@ -21,10 +21,12 @@ visualized using TOAD's plotting utilities.
 """
 
 import logging
+from collections.abc import Callable
 from time import time as time_now
 from typing import TYPE_CHECKING, Literal, Union
 
 import numpy as np
+import optuna
 import xarray as xr
 from sklearn.base import ClusterMixin
 from sklearn.preprocessing import (
@@ -35,6 +37,11 @@ from sklearn.preprocessing import (
 )
 
 from toad._version import __version__
+from toad.clustering.cluster_optimising import (
+    _optimise_clusters,
+    combined_spatial_nonlinearity,
+    default_cluster_param_ranges,
+)
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
@@ -46,6 +53,12 @@ from toad.utils import (
 from toad.utils.shift_selection_utils import _compute_dts_peak_sign_mask
 
 logger = logging.getLogger("TOAD")
+
+__all__ = [
+    "compute_clusters",
+    "default_cluster_param_ranges",
+    "combined_spatial_nonlinearity",
+]
 
 # to avoid circular import we use TYPE_CHECKING for importing TOAD obj
 if TYPE_CHECKING:
@@ -67,11 +80,21 @@ def compute_clusters(
     time_scale_factor: float = 1,
     regridder: BaseRegridder | None = None,
     output_label_suffix: str = "",
+    output_label: str | None = None,
     overwrite: bool = False,
     merge_input: bool = True,
     sort_by_size: bool = True,
+    optimise: bool = False,
+    cluster_param_ranges: dict = default_cluster_param_ranges,
+    objective: Callable | str = combined_spatial_nonlinearity,
+    n_trials: int = 50,
+    direction: str = "maximize",
+    log_level: int = optuna.logging.WARNING,
+    show_progress_bar: bool = True,
 ) -> Union[xr.Dataset, xr.DataArray]:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
+
+    TODO: add optimise param
 
     Args:
         td: TOAD object containing the data to cluster
@@ -131,9 +154,13 @@ def compute_clusters(
     start_time = time_now()
 
     # if supplied variable is a shift variable, use that
-    if td.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT:
+    if td._is_shift_variable(var):
         shifts_variable = var
     else:
+        assert not td._is_cluster_variable(var), (
+            f"{var} is a cluster variable. Please pass a base or shift variable."
+        )
+
         # if supplied variable is a base variable, check if multiple shifts variables exist
         shift_vars = td.shift_vars_for_var(var)
         if len(shift_vars) > 1:
@@ -157,11 +184,23 @@ def compute_clusters(
         raise ValueError(f"shift_threshold must be positive, got {shift_threshold}")
 
     # Set output label (name of shifts_variable + _cluster + output_label_suffix) and check if already in data
-    output_label = f"{shifts_variable}_cluster{output_label_suffix}"
+    new_output_label = output_label or f"{shifts_variable}_cluster{output_label_suffix}"
     if merge_input and not overwrite:
-        output_label = get_unique_variable_name(output_label, td.data, logger)
-    elif overwrite and output_label in td.data:
-        td.data = td.data.drop_vars(output_label)
+        new_output_label = get_unique_variable_name(new_output_label, td.data, logger)
+    elif overwrite and new_output_label in td.data:
+        td.data = td.data.drop_vars(new_output_label)
+
+    # if optimise is True, optimise the parameters for clustering
+    if optimise:
+        # collect all local variable
+        kwargs = {**locals()}
+        print(kwargs)
+
+        # Pass the new computed output label and overwrite=True.
+        kwargs["optimise"] = False
+        kwargs["output_label"] = new_output_label
+        kwargs["overwrite"] = True
+        return _optimise_clusters(kwargs)
 
     sh = td.data[shifts_variable]
     if shift_selection in ("local", "global"):
@@ -196,7 +235,7 @@ def compute_clusters(
             f'No gridcells left after applying shift_threshold={shift_threshold} and shift_direction="{shift_direction}"'
         )
         # create cluster variable with all -1
-        clusters = xr.full_like(sh, -1).rename(output_label)
+        clusters = xr.full_like(sh, -1).rename(new_output_label)
         preprocessing_time = 0.0
         clustering_time = 0.0
         cluster_labels = np.array([-1], dtype=int)
@@ -330,13 +369,15 @@ def compute_clusters(
         )
 
         # Scatter labels back into xarray without DataFrame
-        clusters = xr.full_like(sh, -1).rename(output_label)
+        clusters = xr.full_like(sh, -1).rename(new_output_label)
         clusters.data = clusters.data.astype(np.int32, copy=False)
         clusters.data[idx] = np.asarray(cluster_labels, dtype=np.int32)
 
         # Transpose if dimensions don't match (shouldn't be needed but keep)
         if clusters.dims != td.data[shifts_variable].dims:
             clusters = clusters.transpose(*td.data[shifts_variable].dims)
+
+        # end of if n_pts > 0
 
     # Get base variable from shifts attrs
     base_variable = td.data[shifts_variable].attrs.get(_attrs.BASE_VARIABLE)
@@ -365,7 +406,7 @@ def compute_clusters(
         }
     )
 
-    logger.info(_format_cluster_summary(output_label, cluster_labels, n_pts))
+    logger.info(_format_cluster_summary(new_output_label, cluster_labels, n_pts))
 
     # Merge the cluster labels back into the original data
     return (

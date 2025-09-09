@@ -23,6 +23,10 @@ from toad import (
     shifts,
     visualisation,
 )
+from toad.clustering import (
+    combined_spatial_nonlinearity,
+    default_cluster_param_ranges,
+)
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
@@ -461,8 +465,17 @@ class TOAD:
         overwrite: bool = False,
         return_results_directly: bool = False,
         sort_by_size: bool = True,
+        optimise: bool = False,
+        cluster_param_ranges: dict = default_cluster_param_ranges,
+        objective: Callable | str = combined_spatial_nonlinearity,
+        n_trials: int = 50,
+        direction: str = "maximize",
+        log_level: int = optuna.logging.WARNING,
+        show_progress_bar: bool = True,
     ) -> Union[xr.DataArray, None]:
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
+
+        TODO: add optimise param
 
         Args:
             var: Name of the shifts variable to cluster, or name of the base variable whose shifts
@@ -516,6 +529,13 @@ class TOAD:
             overwrite=overwrite,
             merge_input=not return_results_directly,
             sort_by_size=sort_by_size,
+            optimise=optimise,
+            cluster_param_ranges=cluster_param_ranges,
+            objective=objective,
+            n_trials=n_trials,
+            direction=direction,
+            log_level=log_level,
+            show_progress_bar=show_progress_bar,
         )
 
         if return_results_directly and isinstance(results, xr.DataArray):

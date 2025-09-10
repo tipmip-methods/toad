@@ -1127,7 +1127,7 @@ class TOAD:
         if var is None:
             if len(self.base_vars) > 1:
                 raise ValueError(
-                    "Multiple base variables exist: {self.base_vars}. Please specify which one to use."
+                    f"Multiple base variables exist: {self.base_vars}. Please specify which one to use."
                 )
             else:
                 return self.base_vars[0]

@@ -6,10 +6,10 @@ Created: January 22, ? (Sina)
 Refactored: Nov, 2024 (Jakob)
 """
 
-import numpy as np
 from typing import Optional
-from numba import njit
 
+import numpy as np
+from numba import njit
 from numpy.linalg import lstsq
 
 from .base import ShiftsMethod
@@ -26,14 +26,23 @@ class ASDETECT(ShiftsMethod):
         5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
         6. Normalize the detection array by dividing by the number of window sizes used.
 
+    Note: ASDETECT does not work with NaN values so it will return a detection time series of all zeros if the input time series contains NaN values.
+
     Args:
         lmin: The minimum segment length for detection. Defaults to 5.
         lmax: The maximum segment length for detection. If not specified, it defaults to one-third of the size of the time dimension.
+        ignore_nan_warnings: If True, no warning will be raised if the input time series contains NaN values.
     """
 
-    def __init__(self, lmin: int = 5, lmax: Optional[int] = None):
+    def __init__(
+        self,
+        lmin: int = 5,
+        lmax: Optional[int] = None,
+        ignore_nan_warnings: bool = False,
+    ):
         self.lmin = lmin
         self.lmax = lmax
+        self.ignore_nan_warnings = ignore_nan_warnings
 
     def fit_predict(
         self,
@@ -58,6 +67,7 @@ class ASDETECT(ShiftsMethod):
             times_1d=times_1d,
             lmin=self.lmin,
             lmax=self.lmax,
+            ignore_nan_warnings=self.ignore_nan_warnings,
         )
 
         return shifts
@@ -70,6 +80,7 @@ def construct_detection_ts(
     times_1d: np.ndarray,
     lmin: int = 5,
     lmax: Optional[int] = None,
+    ignore_nan_warnings: bool = False,
 ) -> np.ndarray:
     """Construct a detection time series (asdetect algorithm).
 
@@ -84,17 +95,21 @@ def construct_detection_ts(
         times_1d: Times, shape (n,), same length as values_1d
         lmin: Smallest segment length, default = 5
         lmax: Largest segment length, default = n/3
+        ignore_nan_warnings: ASDETECT does not work with NaN values so it will return a detection time series of all zeros. If True, no warning will be raised.
 
     Returns:
         Abrupt shift score time series, shape (n,)
     """
 
     n_tot = len(values_1d)
-
     detection_ts = np.zeros_like(values_1d)
 
+    # return zeros if timeseries contains nan values
     if np.isnan(values_1d).any():
-        # print("you tried evaluating a ts with nan entries")
+        if not ignore_nan_warnings:
+            print(
+                "WARNING: Input time series contains NaN values. Returned detection time series of all zeros. Please remove NaNs before running the detector."
+            )
         return detection_ts
 
     # default to have at least three gradients (needed for grad distribution)

@@ -192,7 +192,7 @@ class TOAD:
                         <div style="margin: 4px 0;">
                             <span onclick="toggleSection_{instance_id}('{shift_id}')" style="cursor: pointer; user-select: none;">
                                 <span id="{shift_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
-                                <span style="background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var} <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
+                                <span style="color: black; background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var} <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
                             </span>
                             <div id="{shift_id}_content" style="display: none; margin-left: 20px; margin-top: 3px;">
                         """)
@@ -207,7 +207,7 @@ class TOAD:
                             )  # -1 to remove noise cluster
                             hierarchy_html.append(f"""
                             <div style="margin-left: 12px; padding: 2px 0px;">
-                                <span style="background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var} <span style="opacity: 0.5; font-size: 0.85em;">({n_clusters} clusters)</span>
+                                <span style="color: black; background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var} <span style="opacity: 0.5; font-size: 0.85em;">({n_clusters} clusters)</span>
                             </div>
                             """)
 
@@ -217,7 +217,7 @@ class TOAD:
                         hierarchy_html.append(f"""
                         <div style="margin: 2px 0;">
                             <span style="font-family: monospace; font-weight: bold; opacity: 0;">▶</span>
-                            <span style="background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var}  <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
+                            <span style="color: black; background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var}  <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
                         </div>
                         """)
                 hierarchy_html.append("</div></div>")

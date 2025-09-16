@@ -9,140 +9,44 @@ Refactored: Nov, 2024 (Jakob)
 
 import numpy as np
 from typing import Optional
-from numba import njit, jit
+from numba import njit
 
 from numpy.linalg import lstsq
 
 from .base import ShiftsMethod
 
-# NOTE: remove next line!
-import matplotlib.pyplot as plt
 
-###################################################################################################
-#################################### Segmentation Methods #########################################
-###################################################################################################
-
-@njit
-def centered_segmentation(n_tot, length):
+class ASSWDETECT(ShiftsMethod):
     """
-    Old segmentation -> as comparison.
-    """
-
-    n_seg = int(n_tot / length)  # number of segments
-    rest = n_tot - n_seg * length  # uncovered points
-    idx0 = int(rest / 2)  # first index of the first segment
-
-    return idx0
-
-#@jit
-def dynamic_segmentation(n_tot, length):
-    """
-    NOTE: Not Working properly yet...
-
-    Dynamically choses the starting index of the first segment for each
-    segment lengths, according to the one making the gap-distribution as
-    uniform as possible.
-    Chi^2 function is used to compare the distribution to a perfect
-    uniform distribution.
-    """
-    
-    n_seg = int(n_tot / length)                         # number of segments
-    rest = n_tot - n_seg * length                       # uncovered points
-    if rest != 0:
-        q_arr = []
-        for idx0 in range(rest + 1):                     # try all possible starting indices for the first segment
-            seg_idces = idx0 + length * np.arange(n_seg + 1)
-            q_arr.append(_chi2(seg_idces))                  # use chi2 to evaluate the uniformity of the segmentation
-
-        idx0 = np.argmin(q_arr)  # choose the starting index which leads to the most uniform distribution
-    else:
-        idx0 = 0
-
-    return idx0
-
-#@jit
-def _chi2(hist):
-    hist = np.asarray(hist, dtype=float)
-    
-    # Normalize to probability distribution
-    p = hist / hist.sum()
-    n = len(p)
-    uniform = np.ones(n) / n
-    
-    return np.sum((p - uniform) ** 2 / uniform)
-
-@njit
-def truncated_segmentation(n_tot, length):
-    """
-    Performs the whole truncation at the beginning.
-    """
-
-    n_seg = int(n_tot / length)     # number of segments
-    rest = n_tot - n_seg * length   # uncovered points
-    idx0 = rest                     # first index of the first segment
-
-    return idx0
-
-def anti_centered_segmentation(n_tot, length):
-    """
-    Aligns the center of the time series with the center of a segment.
-    -> will lead to more truncation at the ends.
-    """
-
-    ix_center_ts = int(n_tot / 2)
-    ix_center_seg = int(length / 2)
-    idx_center = ix_center_ts - ix_center_seg
-    idx0 = idx_center%length
-
-    return idx0
-
-def picked_centered_segmentation(n_tot, length):
-    """
-    Centered segmentation, but if the gap-index hits
-    the center, a random offset is added.
-    """
-
-    n_seg = int(n_tot / length)  # number of segments
-    rest = n_tot - n_seg * length  # uncovered points
-    idx0 = rest // 2  # first index of the first segment
-
-    if idx0 == int(n_tot/2)%length:             # if the gap-index hits the center
-        idx0 += length//2 #np.random.randint(1, length)
-
-    return idx0
-
-###################################################################################################
-########################################### ASDETECT ##############################################
-###################################################################################################
-
-class ASDETECT(ShiftsMethod):
-    """
-    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_.
+    Detect abrupt shifts in a time series using gradient-based analysis by [Boulton+Lenton2019]_. The algorithm is modified to use a
+    sliding window (SW) approach.
 
     Steps:
-    1. Divide the time series into overlapping segments of size `l`.
-    2. Perform linear regression within each segment to calculate gradients.
+    1. Given a segment of size `l`, slide it over the time series.
+    2. Perform linear regression within each segment position to calculate gradients.
     3. Identify significant gradients exceeding ±3 Median Absolute Deviations (MAD) from the median gradient.
     4. Update a detection array by adding +1 for significant positive gradients and -1 for significant negative gradients in each each segment.
     5. Iterate over multiple window sizes (`l`), updating the detection array at each step.
-    6. Normalize the detection array by dividing by the number of window sizes used.
+    6. Normalize the detection array by dividing by the number of maximum calls of a value.
 
     Args:
         lmin: (Optional) The minimum segment length for detection. Defaults to 5.
         lmax: (Optional) The maximum segment length for detection. If not
             specified, it defaults to one-third of the size of the time dimension.
+        sliding_step: (Optional) The step size for sliding the window. Defaults to 1.
     """
 
-    def __init__(self, lmin=5, lmax=None):
+    def __init__(self, lmin=5, lmax=None, overlap=0):
         self.lmin = lmin
         self.lmax = lmax
+        self.overlap = overlap
 
     def fit_predict(
         self,
         values_1d: np.ndarray,
         times_1d: np.ndarray,
-        ufunc = centered_segmentation,
-        counter_plot = False,
+        return_counter: bool = False,
+        verbose: bool = False,
     ) -> np.ndarray:
         """Compute the detection time series for each grid cell in the 3D data array.
 
@@ -163,30 +67,32 @@ class ASDETECT(ShiftsMethod):
             times_1d=times_1d,
             lmin=self.lmin,
             lmax=self.lmax,
-            ufunc=ufunc,
-            counter_plot=counter_plot,
+            overlap=self.overlap,
+            return_counter=return_counter,
+            verbose=verbose,
         )
 
         return shifts
 
 
 # 1D time series analysis of abrupt shifts =====================================
-#@jit
+@njit
 def construct_detection_ts(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
     lmin: int = 5,
     lmax: Optional[int] = None,
-    ufunc = centered_segmentation,
-    counter_plot = False,
+    overlap: float = 0,
+    return_counter: bool = False,
+    verbose: bool = False,
 ) -> np.ndarray:
     """Construct a detection time series (asdetect algorithm).
 
-    Following [Boulton+Lenton2019]_, the time series (ts) is divided into
-    segments of length l, for each of which the gradient is computed. Segments
-    with gradients > 3 MAD of the gradients distribution are marked. Averaging
-    over many segmentation choices (i.e. values of l) results in a detection
-    time series that indicates the points of largest relative gradients.
+    Enhancing [Boulton+Lenton2019]_, a window of length l is slided over the
+    time series (ts), for each of which positions the gradient is computed.
+    Segments with gradients > 3 MAD of the gradients distribution are marked.
+    Averaging over many segmentation choices (i.e. values of l) results in a
+    detection time series that indicates the points of largest relative gradients.
 
     >> Args:
         values_1d:
@@ -197,6 +103,11 @@ def construct_detection_ts(
             Smallest segment length, default = 5
         lmax:
             Largest segment length, default = n/3
+        overlap:
+            Relative overlap between segments, default = 0
+            -> overlap = 0: no overlap, acts like original asdetect
+            -> overlap = 0.5: 50% of the segments overlap
+            -> overlap = 1: maximum meaningful overlap, i.e. sliding window with step size 1
 
     >> Returns:
         - Abrupt shift score time series, shape (n,)
@@ -214,21 +125,16 @@ def construct_detection_ts(
     if lmax is None:
         lmax = int(n_tot / 3)
 
-
-    # NOTE: remove next line!
-    counter = np.zeros_like(detection_ts)
+    counter = np.zeros_like(values_1d)  # to count how often a value is called -> needed for normalization
     for length in range(lmin, lmax + 1):
-        n_seg = int(n_tot / length)  # number of segments
-        #rest = n_tot - n_seg * length  # uncovered points
-        idx0 = ufunc(n_tot, length)
-        #idx0 = int(rest / 2)  # first index of the first segment
-        seg_idces = idx0 + length * np.arange(n_seg + 1)  # first index of each segment
-        seg_idces = seg_idces[seg_idces <= n_tot]  # ensure indices are within bounds
-        # NOTE: remove next line!
-        counter[seg_idces[0]:seg_idces[-1]] += 1
-
         # Note: numba-compatible version of data splitting and 1st degree polyfit
-        gradients = compute_gradients(values_1d, times_1d, seg_idces)
+        if overlap == 1:
+            sliding_step = 1  # step size for sliding window
+        else:
+            sliding_step = length - int(length*overlap)  # step size for sliding window
+        if verbose: print(f"length: {length}, sliding_step: {sliding_step}")
+        #print(f"sliding_step: {sliding_step}")
+        gradients = compute_gradients(values_1d, times_1d, length, sliding_step)
 
         # Note: numba-compatible versions of median absolute deviation (mad) and median
         grad_MAD = mad(gradients)  # median absolute deviation of the gradients
@@ -247,23 +153,17 @@ def construct_detection_ts(
 
         # Update detection time series
         for i, shift_detected in enumerate(detection_mask):
+            i1 = i * sliding_step
+            i2 = i1 + length
+            counter[i1:i2] += 1  # update counter
             if shift_detected:
-                i1, i2 = seg_idces[i], seg_idces[i + 1]
                 detection_ts[i1:i2] += sign_mask[i]
 
     # normalize the detection time series to one
-    detection_ts /= lmax - lmin + 1
+    detection_ts /= counter
 
-    if counter_plot:
-        plt.figure()
-        plt.plot(counter, label='# of detection_ts[ix_t] calls')
-        plt.hlines(y=lmax - lmin + 1, xmin=0, xmax=len(counter), color='r', linestyle='--', label='normalization')
-        plt.legend()
-        plt.xlabel('Time Index ix_t')
-        plt.ylabel('Counter')
-        plt.title(f'Number of times each time index is included in segments\nSegmentation Method: {ufunc.__name__}')
-        plt.grid()
-        plt.show()
+    if return_counter:
+        return counter
 
     return detection_ts
 
@@ -272,33 +172,36 @@ def construct_detection_ts(
 def compute_gradients(
     values_1d: np.ndarray,
     times_1d: np.ndarray,
-    seg_idces: np.ndarray,
+    length: int,
+    sliding_step: int = 1,
 ) -> np.ndarray:
     """
-    Compute the gradients of the segments defined by given indices.
+    Slides the window of length `length` over the time series and computes the gradients
+    for each position.
 
-    Loops over the segments defined by seg_idces and computes the gradient
-    of the values_1d time series using a linear fit (1st degree polynomial).
-    The function returns an array of gradients, one for each segment.
+    Using a linear fit (1st degree polynomial).
+    The function returns an array of gradients, one for each window position.
 
     >> Args:
         values_1d:
             1D array of values (e.g., temperature, pressure, etc.)
         times_1d:
             1D array of time points corresponding to the values
-        seg_idces:
-            1D array of segment indices defining the segments
+        length:
+            Length of the sliding window
+        sliding_step:
+            Step size for sliding the window
 
     >> Returns:
         gradients:
             1D array of gradients for each segment
     """
-    n_segs = len(seg_idces) - 1
+    n_segs = (len(values_1d) - length) // sliding_step + 1
     gradients = np.empty(n_segs)
 
     for i in range(n_segs):
-        i1 = seg_idces[i]
-        i2 = seg_idces[i + 1]
+        i1 = i * sliding_step
+        i2 = i1 + length
         tseg = times_1d[i1:i2]
         aseg = values_1d[i1:i2]
 
@@ -410,4 +313,3 @@ def median(
         return np.array(0.5 * (x_sorted[n // 2 - 1] + x_sorted[n // 2]))
     else:
         return np.array(x_sorted[n // 2])
-

@@ -45,7 +45,8 @@ class ASSWDETECT(ShiftsMethod):
         self,
         values_1d: np.ndarray,
         times_1d: np.ndarray,
-        return_counter: bool = False,
+        return_norm: bool = False,
+        return_gap: bool = False,
         verbose: bool = False,
     ) -> np.ndarray:
         """Compute the detection time series for each grid cell in the 3D data array.
@@ -68,7 +69,8 @@ class ASSWDETECT(ShiftsMethod):
             lmin=self.lmin,
             lmax=self.lmax,
             overlap=self.overlap,
-            return_counter=return_counter,
+            return_norm=return_norm,
+            return_gap=return_gap,
             verbose=verbose,
         )
 
@@ -83,7 +85,8 @@ def construct_detection_ts(
     lmin: int = 5,
     lmax: Optional[int] = None,
     overlap: float = 0,
-    return_counter: bool = False,
+    return_norm: bool = False,
+    return_gap: bool = False,
     verbose: bool = False,
 ) -> np.ndarray:
     """Construct a detection time series (asdetect algorithm).
@@ -126,6 +129,8 @@ def construct_detection_ts(
         lmax = int(n_tot / 3)
 
     counter = np.zeros_like(values_1d)  # to count how often a value is called -> needed for normalization
+    gap_counter = np.zeros_like(values_1d)  # to count how often a value is at the edge of a segment
+
     for length in range(lmin, lmax + 1):
         # Note: numba-compatible version of data splitting and 1st degree polyfit
         if overlap == 1:
@@ -133,43 +138,91 @@ def construct_detection_ts(
         else:
             sliding_step = length - int(length*overlap)  # step size for sliding window
         if verbose: print(f"length: {length}, sliding_step: {sliding_step}")
-        #print(f"sliding_step: {sliding_step}")
-        gradients = compute_gradients(values_1d, times_1d, length, sliding_step)
 
-        # Note: numba-compatible versions of median absolute deviation (mad) and median
-        grad_MAD = mad(gradients)  # median absolute deviation of the gradients
-        grad_MEAN = median(gradients)  # median of the gradients
-
-        # for each segment, check whether its gradient is larger than the
-        # threshold. if yes, update the detection time series accordingly.
-        # i1/i2 are the first/last index of a segment
-        # - Create a mask for segments that exceed the threshold
-        detection_mask = (
-            np.abs(gradients - grad_MEAN) > 3 * grad_MAD
-        )  # boolean mask; wether the gradient is significant
-        sign_mask = np.sign(
-            gradients - grad_MEAN
-        )  # sign of the gradient (positive or negative)
-
-        # Update detection time series
-        for i, shift_detected in enumerate(detection_mask):
-            i1 = i * sliding_step
-            i2 = i1 + length
-            counter[i1:i2] += 1  # update counter
-            if shift_detected:
-                detection_ts[i1:i2] += sign_mask[i]
+        detection_ts, counter, gap_counter = update_detection_ts(
+            detection_ts,
+            counter,
+            gap_counter,
+            values_1d,
+            times_1d,
+            length,
+            sliding_step,
+        )
 
     # normalize the detection time series to one
     detection_ts /= counter
 
-    if return_counter:
+    if return_norm:
         return counter
+    if return_gap:
+        return gap_counter
 
     return detection_ts
+
+@njit
+def update_detection_ts(
+    detection_ts: np.ndarray,
+    counter: np.ndarray,
+    gap_counter: np.ndarray,
+    values_1d: np.ndarray,
+    times_1d: np.ndarray,
+    length: int,
+    sliding_step: int,
+) -> None:
+    """
+    Update the detection time series based on the computed gradients.
+
+    >> Args:
+        detection_ts:
+            1D array of detection time series to be updated
+        counter:
+            1D array to count how often a value is called (for normalization)
+        length:
+            Length of the sliding window
+        sliding_step:
+            Step size for sliding the window
+        ix0:
+            Starting index for the sliding window (usually 0)
+    """
+    n_tot = len(values_1d)
+
+    n_segs = (n_tot - length) // sliding_step + 1
+    res = n_tot - length - sliding_step * (n_segs - 1)      # starting index for sliding window
+    ix0 = res // 2
+
+    gradients = compute_gradients(ix0, values_1d, times_1d, length, sliding_step)
+    
+    # Note: numba-compatible versions of median absolute deviation (mad) and median
+    grad_MAD = mad(gradients)  # median absolute deviation of the gradients
+    grad_MEAN = median(gradients)  # median of the gradients
+
+    # for each segment, check whether its gradient is larger than the
+    # threshold. if yes, update the detection time series accordingly.
+    # i1/i2 are the first/last index of a segment
+    # - Create a mask for segments that exceed the threshold
+    detection_mask = (
+        np.abs(gradients - grad_MEAN) > 3 * grad_MAD
+    )  # boolean mask; wether the gradient is significant
+    sign_mask = np.sign(
+        gradients - grad_MEAN
+    )  # sign of the gradient (positive or negative)
+
+    # Update detection time series
+    for i, shift_detected in enumerate(detection_mask):
+        i1 = i * sliding_step + ix0
+        i2 = i1 + length
+        counter[i1:i2] += 1  # update counter
+        gap_counter[i1] += 1  # update gap counter
+        gap_counter[i2-1] += 1  # update gap counter
+        if shift_detected:
+            detection_ts[i1:i2] += sign_mask[i]
+
+    return detection_ts, counter, gap_counter
 
 
 @njit
 def compute_gradients(
+    ix0: int,
     values_1d: np.ndarray,
     times_1d: np.ndarray,
     length: int,
@@ -183,6 +236,8 @@ def compute_gradients(
     The function returns an array of gradients, one for each window position.
 
     >> Args:
+        ix0:
+            Starting index for the sliding window (usually 0)
         values_1d:
             1D array of values (e.g., temperature, pressure, etc.)
         times_1d:
@@ -196,11 +251,12 @@ def compute_gradients(
         gradients:
             1D array of gradients for each segment
     """
-    n_segs = (len(values_1d) - length) // sliding_step + 1
+    n_tot = len(values_1d)
+    n_segs = (n_tot - length) // sliding_step + 1
     gradients = np.empty(n_segs)
 
     for i in range(n_segs):
-        i1 = i * sliding_step
+        i1 = i * sliding_step + ix0
         i2 = i1 + length
         tseg = times_1d[i1:i2]
         aseg = values_1d[i1:i2]

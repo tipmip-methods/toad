@@ -43,7 +43,7 @@ dependencies = [
         "pandas",
         "numba",
         "healpix",
-        "optuna"
+        "optuna",
 ]
 
 [project.optional-dependencies]

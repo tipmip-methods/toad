@@ -14,7 +14,7 @@ class Aggregation:
     def __init__(self, toad):
         self.td = toad
 
-    def cluster_occurence_rate(
+    def cluster_occurrence_rate(
         self,
         cluster_vars: list[str] | None = None,
     ) -> xr.DataArray:

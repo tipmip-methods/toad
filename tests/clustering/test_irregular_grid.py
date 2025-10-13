@@ -32,6 +32,8 @@ def test_irregular_grid(
     td = TOAD("tutorials/test_data/sea_ice_irregular_grid.nc")
     var = "siconc"
 
+    print("Hellooo")
+
     # For irregular grids, use resampling instead of coarsening
     td.data = td.data.isel(
         i=slice(None, None, 4), j=slice(None, None, 4), time=slice(None, None, 2)

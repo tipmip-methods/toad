@@ -76,7 +76,7 @@ class Aggregation:
 
         return cluster_normalized
 
-    def cluster_consistency(self, td, cluster_vars: list[str] | None = None):
+    def cluster_consistency(self, cluster_vars: list[str] | None = None):
         """
         Evaluate the spatial consistency of cluster membership for each grid cell
         across multiple clustering variables (e.g., from different models).
@@ -107,24 +107,24 @@ class Aggregation:
         """
         # get all clsuter vars if nothing is provided
         if cluster_vars is None:
-            cluster_vars = list(td.cluster_vars)
+            cluster_vars = list(self.td.cluster_vars)
 
         n_vars = len(cluster_vars)
 
         # Get grid dimensions from first clustering
-        data0 = td.data[cluster_vars[0]].isel({td.time_dim: 0})
+        data0 = self.td.data[cluster_vars[0]].isel({self.td.time_dim: 0})
         N = data0.size
         grid_shape = data0.shape
         coords = {dim: data0[dim] for dim in data0.dims}
 
         # Cache which grid cells belonged to each cluster
-        membership_lookup = precompute_spatial_memberships(td, cluster_vars)
+        membership_lookup = precompute_spatial_memberships(self.td, cluster_vars)
 
         # For each grid cell, get its cluster ID in each clustering
         # Take max over time since cluster IDs are consistent
         cluster_maps = np.stack(
             [
-                td.data[cvar].max(dim=td.time_dim).values.flatten()
+                self.td.data[cvar].max(dim=self.td.time_dim).values.flatten()
                 for cvar in cluster_vars
             ],
             axis=1,

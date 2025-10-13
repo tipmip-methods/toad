@@ -33,17 +33,17 @@ classifiers = [
 ]
 
 dependencies = [
-        "numpy<=2.1.0",
-        "matplotlib",
-        "scipy>=0.17.0",    # to use lapack_driver of scipy.linalg.lstsq()
-        "scikit-learn",
-        "xarray",
-        "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
-        "cartopy",
-        "pandas",
-        "numba",
-        "healpix",
-        "optuna",
+    "numpy<=2.1.0",
+    "matplotlib",
+    "scipy>=0.17.0",    # to use lapack_driver of scipy.linalg.lstsq()
+    "scikit-learn",
+    "xarray",
+    "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
+    "cartopy",
+    "pandas",
+    "numba",
+    "healpix",
+    "optuna",
 ]
 
 [project.optional-dependencies]

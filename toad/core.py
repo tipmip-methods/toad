@@ -42,8 +42,10 @@ class TOAD:
 
     Args:
         data: The input data. Can be either an xarray Dataset or a path to a netCDF file.
+        time_dim: The name of the time dimension. Defaults to 'time'.
         log_level: The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR',
             'CRITICAL'. Defaults to 'INFO'.
+        engine: The engine to use to open the netCDF file. Defaults to 'netcdf4'.
 
     Raises:
         ValueError: If the input file path does not exist or if data dimensions are not 3D.
@@ -56,12 +58,13 @@ class TOAD:
         data: Union[xr.Dataset, str],
         time_dim: str = "time",
         log_level: str = "INFO",
+        engine: str = "netcdf4",
     ):
         # load data from path if string
         if isinstance(data, str):
             if not os.path.exists(data):
                 raise ValueError(f"File {data} does not exist.")
-            self.data = xr.open_dataset(data)
+            self.data = xr.open_dataset(data, engine=engine)
             self.data.attrs["title"] = os.path.basename(data).split(".")[
                 0
             ]  # store path as title for saving toad file later

@@ -1,8 +1,17 @@
+import gc
+
 import numpy as np
 import pytest
 from sklearn.cluster import HDBSCAN  # type: ignore
 
 from toad import TOAD
+
+
+@pytest.fixture(autouse=True)
+def cleanup_memory():
+    """Clean up memory after each test. Important otherwise get bus errors on some machines."""
+    yield
+    gc.collect()
 
 
 @pytest.mark.parametrize(

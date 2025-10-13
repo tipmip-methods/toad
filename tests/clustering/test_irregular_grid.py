@@ -1,3 +1,5 @@
+import gc
+
 import pytest
 from sklearn.cluster import HDBSCAN  # type: ignore
 
@@ -5,12 +7,19 @@ from toad import TOAD
 from toad.shifts import ASDETECT
 
 
+@pytest.fixture(autouse=True)
+def cleanup_memory():
+    """Clean up memory after each test. Important otherwise get bus errors on some machines."""
+    yield
+    gc.collect()
+
+
 @pytest.mark.parametrize(
     "min_cluster_size,shifts_threshold,shift_selection,expected_N_clusters",
     [
+        (10, 0.8, "global", 3),
         (10, 0.8, "all", 10),
         (10, 0.8, "local", 4),
-        (10, 0.8, "global", 3),
     ],
 )
 def test_irregular_grid(

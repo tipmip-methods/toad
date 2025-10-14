@@ -241,7 +241,7 @@ class ClusterTimeStats:
     #     return dict
 
     def compute_transition_time(
-        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.5
+        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.25
     ) -> xr.DataArray:
         """Computes the transition time for each grid cell.
 
@@ -281,7 +281,10 @@ class ClusterTimeStats:
             shifts = shifts.where(mask)
 
         max_dts_mask = _compute_dts_peak_sign_mask(
-            shifts, self.td.time_dim, shift_selection="global", shift_threshold=0.25
+            shifts,
+            self.td.time_dim,
+            shift_selection="global",
+            shift_threshold=shift_threshold,
         )
 
         max_dts_mask = np.abs(max_dts_mask)

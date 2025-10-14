@@ -88,18 +88,22 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[st
     Raises:
         ValueError: If provided temporal dim is not in the dimensions
     """
-    if tdim not in xr_da.dims:
+
+    # get dims from first data variable (not from the dataset, as these are more prone to change order..)
+    dims = xr_da[list(xr_da.data_vars)[0]].dims
+
+    if tdim not in dims:
         raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions!")
 
     # Check for standard spatial dim pairs
     for pair in [("x", "y"), ("lon", "lat")]:
-        if all(dim in xr_da.dims for dim in pair):
+        if all(dim in dims for dim in pair):
             return sorted(
-                list(pair), key=lambda x: list(xr_da.dims).index(x)
+                list(pair), key=lambda x: list(dims).index(x)
             )  # keep original order from xr_da
 
     # Fallback: use all non-temporal dims
-    sdims = list(xr_da.dims)
+    sdims = list(dims)
     sdims.remove(tdim)
     return [str(dim) for dim in sdims if "bnds" not in str(dim)]
 

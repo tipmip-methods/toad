@@ -15,7 +15,7 @@ def create_global_dataset(
     """
     Generate a global dataset with background trend and spatially coherent abrupt shifts.
 
-    Parameters:
+    Args:
         lat_size (int): Number of latitude points
         lon_size (int): Number of longitude points
         time_size (int): Number of time points
@@ -30,14 +30,14 @@ def create_global_dataset(
         shift_params (dict): Parameters of the generated shifts
 
     Example:
-            data_ds, labels_xr, shift_params = create_global_dataset(
-                lat_size=30,
-                lon_size=60,
-                time_size=120,
-                n_shifts=3,
-                random_seed=1,
-                background_noise=0.01,
-            )
+        >>> data_ds, labels_xr, shift_params = create_global_dataset(
+        >>>    lat_size=30,
+        >>>    lon_size=60,
+        >>>    time_size=120,
+        >>>    n_shifts=3,
+        >>>    random_seed=1,
+        >>>    background_noise=0.01,
+        >>> )
     """
     np.random.seed(random_seed)
 

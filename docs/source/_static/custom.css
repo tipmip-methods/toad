@@ -1,8 +1,8 @@
 /* Custom CSS to fix code block colors at jupyter notebook */
 .highlight {
-    background-color: #2e3440; /* Dark background */
-    color: #d8dee9; /* Light text color */
-    padding: 10px;
+    background-color: #eee;
+    color: #222;
+    padding: 4px;
     border-radius: 5px;
 }
 
@@ -12,8 +12,15 @@
 
 /* Adjust inline code */
 code {
-    background-color: #cfd0d1; /* Inline code background */
-    color: #6e6e6e; /* Inline code text + Block code text*/
+    background-color: #eeeeee;
+    color: #222; 
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.cell_output .output.stderr {
+    background-color: #eee;
+    color: #222; 
     padding: 2px 4px;
     border-radius: 3px;
 }
@@ -24,4 +31,4 @@ label {
     border-radius: 4px;
     font-size: 0.9em;
     background-color: rgba(110, 110, 110, 0.1); /* Semi-transparent black background */
-    }
+}

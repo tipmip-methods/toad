@@ -1,9 +1,11 @@
-import numpy as np
-import healpix as hp
-import pandas as pd
-from typing import Optional
-from toad.regridding.base import BaseRegridder
 import logging
+from typing import Optional
+
+import healpix as hp
+import numpy as np
+import pandas as pd
+
+from toad.regridding.base import BaseRegridder
 
 logger = logging.getLogger("TOAD")
 
@@ -34,7 +36,10 @@ class HealPixRegridder(BaseRegridder):
         return 90 - np.degrees(theta), np.degrees(phi)  # lat, lon
 
     def regrid(
-        self, coords: np.ndarray, weights: np.ndarray
+        self,
+        coords: np.ndarray,
+        weights: np.ndarray,
+        space_dims_size: tuple[int, int],
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Regrid data to new coordinate system.
@@ -42,7 +47,7 @@ class HealPixRegridder(BaseRegridder):
         Args:
             coords: 3dArray of coordinates (time, lat, lon) in that order
             weights: 1dArray of weights
-            nside: Optional[int] = None, if provided, use this nside for regridding
+            space_dims_size: Tuple of (nlat, nlon) sizes of the original grid dimensions
         Returns:
             3dArray of coordinates (time, lat, lon) in that order
             1dArray of weights
@@ -53,17 +58,11 @@ class HealPixRegridder(BaseRegridder):
 
         # If nside is not provided, compute it automatically based on the resolution of the data
         if self.nside is None:
-            n_pixels = len(np.unique(coords[:, 1])) * len(
-                np.unique(coords[:, 2])
-            )  # this assumes that the original grid is a regular grid..
-            order = 0.5 * np.log2(
-                n_pixels / 12.0
-            )  # this and next line is implementation
-            self.nside = 1 << int(
-                np.ceil(order)
-            )  # of healpy.pixelfunc.get_min_valid_nside(n_pixels)
+            n_pixels = space_dims_size[0] * space_dims_size[1]
+            order = 0.5 * np.log2(n_pixels / 12.0)
+            self.nside = 1 << int(np.ceil(order))
             logger.debug(
-                f"HealPixRegridder: Automatically computed nside: {self.nside}"
+                f"HealPixRegridder: Automatically computed nside: {self.nside} based on grid resolution {space_dims_size[0]}x{space_dims_size[1]}"
             )
 
         # Get unique lat/lon pairs and compute healpix indices once

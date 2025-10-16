@@ -52,6 +52,7 @@ class TOAD:
     """
 
     data: xr.Dataset
+    path: str | None = None
 
     def __init__(
         self,

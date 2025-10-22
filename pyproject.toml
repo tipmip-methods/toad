@@ -64,6 +64,9 @@ version = {attr = "toad._version.__version__"}
 [tool.deptry.per_rule_ignores]
 DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry"]  # ignore unused dependencies and dev tools
 
+[tool.deptry]
+ignore_notebooks = true
+
 # suppress warning about assuming corresponding module name
 [tool.deptry.package_module_name_map]
 numpy = "numpy"

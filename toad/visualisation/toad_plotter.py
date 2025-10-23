@@ -43,6 +43,10 @@ class PlotConfig:
     borders: bool = True
     projection: str = "plate_carree"
     map_frame: bool = True
+    continent_shading: bool = False
+    continent_shading_color: str = "lightgray"
+    ocean_shading: bool = False
+    ocean_shading_color: str = "lightgray"
 
 
 @dataclass
@@ -323,6 +327,17 @@ class TOADPlotter:
             ax: Matplotlib axes with cartopy projection
             config: Plot configuration, uses default if None
         """
+        # Add continent shading
+        if config.continent_shading:
+            ax.add_feature(
+                cfeature.LAND, facecolor=config.continent_shading_color, alpha=0.5
+            )
+
+        if config.ocean_shading:
+            ax.add_feature(
+                cfeature.OCEAN, facecolor=config.ocean_shading_color, alpha=0.5
+            )
+
         ax.coastlines(
             resolution=config.resolution, linewidth=config.coastline_linewidth
         )

@@ -353,9 +353,13 @@ class TOAD:
         return postprocessing.Aggregation(self)
 
     def plotter(
-        self, config: Optional[visualisation.PlotConfig] = None
+        self,
+        config: Optional[visualisation.PlotConfig] = None,
+        **kwargs,
     ) -> visualisation.TOADPlotter:
         """Access plotting methods."""
+        config = config if config else visualisation.PlotConfig()
+        config.__dict__.update(kwargs)
         return visualisation.TOADPlotter(self, config=config)
 
     # # ======================================================================

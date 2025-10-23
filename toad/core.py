@@ -79,8 +79,9 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level)
 
-        if len(self.data.dims) != 3:
-            raise ValueError("Data must be 3-dimensional: time/forcing x space x space")
+        # TODO: move this check to compute_shifts and compute_clusters. To access preprocess methods we need to init toad with a dataset with more than 3 dimensions sometimes..
+        # if len(self.data.dims) != 3:
+        #     raise ValueError("Data must be 3-dimensional: time/forcing x space x space")
 
         # rename longitude and latitude to lon and lat
         if "longitude" in self.data.dims:

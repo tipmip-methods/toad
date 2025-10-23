@@ -1,5 +1,5 @@
-import xarray as xr
 from typing import Callable, Optional, Union
+
 import numpy as np
 
 
@@ -50,6 +50,8 @@ class Preprocess:
         self,
         var: str,
         dim: str,
+        drop_original: bool = True,
+        add_dim_to_name: bool = True,
     ):
         """
         Convert a dimension in a dataset to separate variables.
@@ -57,6 +59,7 @@ class Preprocess:
         Args:
             var: Name of variable to process
             dim: Name of dimension to convert to variables
+            drop_original: Whether to remove the original variable after conversion. Defaults to True.
 
         Example:
             # Convert realization dimension to variables for 'thk'
@@ -75,14 +78,13 @@ class Preprocess:
                 f"Variable '{var}' not found in dataset. Available variables: {list(ds.data_vars.keys())}"
             )
 
-        new_ds = xr.Dataset()
+        # Create new variables directly in the existing dataset
         for val in ds[dim].values:
             data = ds[var].sel({dim: val}).drop_vars(dim)
-            new_ds[f"{var}_{dim}_{val}"] = data
+            var_name = f"{var}_{dim}_{val}" if add_dim_to_name else f"{var}_{val}"
+            self.td.data[var_name] = data
+            self.td.data[var_name].attrs[dim] = val
 
-        # Copy remaining coordinates
-        for coord in ds.coords:
-            if coord != dim and coord not in new_ds.coords:
-                new_ds[coord] = ds[coord]
-
-        self.td.data = xr.merge([self.td.data, new_ds])
+        if drop_original:
+            # Drop the original variable and dimension
+            self.td.data = self.td.data.drop_vars(var).drop_dims(dim)

@@ -104,6 +104,55 @@ class TOAD:
             f"Time dimension {self.time_dim} not found in data."
         )
 
+    def _is_time_numeric(self) -> bool:
+        """Check if the time dimension contains numeric values (int/float) or datetime objects (cftime).
+
+        Args:
+            time_array: xarray DataArray containing the time dimension to check. Defaults to the time dimension of the TOAD object.
+
+        Returns:
+            bool: True if time dimension is numeric (int/float), False if datetime objects (cftime)
+        """
+        time_array = self.data[self.time_dim]
+        return np.issubdtype(time_array.dtype, np.integer) or np.issubdtype(
+            time_array.dtype, np.floating
+        )
+
+    @property
+    def numeric_time_values(self):
+        """Get numeric time values. Defined as property since this might change if user changes the time resolution.
+
+        Returns:
+            numpy.ndarray: Array of numeric time values in seconds relative to first time point
+        """
+        from toad.utils import convert_time_to_seconds
+
+        # Store original time values for plotting
+        numeric_time_values = self.data[self.time_dim].values  # convert to numpy array
+
+        # Convert time dimension to numeric values if needed
+        if not self._is_time_numeric():
+            # Convert datetime objects to seconds since first time point
+            numeric_time_values = convert_time_to_seconds(self.data[self.time_dim])
+
+        if not np.issubdtype(
+            numeric_time_values.dtype, np.integer
+        ) and not np.issubdtype(numeric_time_values.dtype, np.floating):
+            raise ValueError(
+                "Failed to convert time dimension to numeric values. Convert manually."
+            )
+
+        return numeric_time_values
+
+    def numeric_time_values_unit(self) -> str:
+        """Get the unit of the numeric time values."""
+        if self._is_time_numeric():
+            # If original time values are numeric, use their original unit
+            return self.data[self.time_dim].attrs.get("units", "")
+        else:
+            # If we converted cftime to numeric, the unit is "seconds"
+            return "seconds"
+
     def _repr_html_(self):
         """Representation of the TOAD object in html with collapsible hierarchy."""
         # TODO: maybe show method params here?
@@ -417,8 +466,7 @@ class TOAD:
         method: shifts.ShiftsMethod = shifts.ASDETECT(),
         output_label_suffix: str = "",
         overwrite: bool = False,
-        return_results_directly: bool = False,
-    ) -> Union[xr.DataArray, None]:
+    ):
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
         Args:
@@ -429,30 +477,18 @@ class TOAD:
                 or create your own by subclassing `ShiftsMethod` from `toad.shifts`. Defaults to `ASDETECT()`.
             output_label_suffix: A suffix to add to the output label. Defaults to `""`.
             overwrite: Whether to overwrite existing variable. Defaults to `False`.
-            return_results_directly: Whether to return the detected shifts directly or merge into the original dataset. Defaults to `False`.
-
-        Returns:
-            If `return_results_directly` is True, returns an `xarray.DataArray` containing the detected shifts.
-            If `return_results_directly` is False, the detected shifts are merged into the original dataset, and the function returns `None`.
 
         Raises:
             ValueError: If data is invalid or required parameters are missing
         """
 
-        results = shifts.compute_shifts(
-            data=self.data,
+        self.data = shifts.compute_shifts(
+            td=self,
             var=self._get_base_var_if_none(var),
-            time_dim=self.time_dim,
             method=method,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
-            merge_input=not return_results_directly,
         )
-        if return_results_directly and isinstance(results, xr.DataArray):
-            return results
-        elif isinstance(results, xr.Dataset):
-            self.data = results
-            return None
 
     def compute_clusters(
         self,
@@ -540,7 +576,8 @@ class TOAD:
             For global datasets, use toad.regridding.HealPixRegridder to ensure equal spacing
             between data points and prevent biased clustering at high latitudes.
         """
-        results = clustering.compute_clusters(
+
+        self.data = clustering.compute_clusters(
             td=self,
             var=self._get_base_var_if_none(var),
             method=method,
@@ -562,8 +599,6 @@ class TOAD:
             log_level=log_level,
             show_progress_bar=show_progress_bar,
         )
-
-        self.data = results
 
     # # ======================================================================
     # #               netCDF functions
@@ -901,7 +936,7 @@ class TOAD:
         ).rename(f"Number of active clusters for {var}")
 
     def get_cluster_mask(
-        self, var: str, cluster_id: Union[int, List[int]]
+        self, var: str, cluster_id: Union[int, List[int]], numeric_times: bool = False
     ) -> xr.DataArray:
         """Returns a 3D boolean mask (time x space x space) indicating which points belong to the specified cluster(s).
 
@@ -909,15 +944,23 @@ class TOAD:
             var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
             cluster_id: Cluster id(s) to apply the mask for.
+            numeric_times: If True, returns mask with numeric time coordinates instead of original time format.
+                Defaults to False.
 
         Returns:
             Mask for the cluster label.
         """
         clusters = self.get_clusters(var)
-        return clusters.isin(cluster_id)
+        mask = clusters.isin(cluster_id)
+
+        if numeric_times:
+            # Replace time coordinates with numeric values
+            mask = mask.assign_coords({self.time_dim: self.numeric_time_values})
+
+        return mask
 
     def apply_cluster_mask(
-        self, var: str, apply_to_var: str, cluster_id: int
+        self, var: str, apply_to_var: str, cluster_id: int, numeric_times: bool = False
     ) -> xr.DataArray:
         """Apply the cluster mask to a variable.
 
@@ -926,12 +969,22 @@ class TOAD:
                 or custom cluster variable name.
             apply_to_var: The variable to apply the mask to.
             cluster_id: The cluster id to apply the mask for.
+            numeric_times: If True, returns result with numeric time coordinates instead of original time format.
+                Defaults to False.
 
         Returns:
             The masked variable.
         """
-        mask = self.get_cluster_mask(var, cluster_id)
-        return self.data[apply_to_var].where(mask)
+        mask = self.get_cluster_mask(
+            var, cluster_id, numeric_times=False
+        )  # Always get mask with original coordinates
+        result = self.data[apply_to_var].where(mask)
+
+        if numeric_times:
+            # Replace time coordinates with numeric values after applying the mask
+            result = result.assign_coords({self.time_dim: self.numeric_time_values})
+
+        return result
 
     def get_spatial_cluster_mask(  # TODO rename to get_cluster_mask_spatial
         self, var: str, cluster_id: Union[int, List[int]]

@@ -22,7 +22,7 @@ td.compute_clusters(
 )
 
 # Visualise results
-td.plotter().cluster_overview("temp");
+td.plot.cluster_overview("temp");
 ```
 
 For more details, please see the [tutorial](https://github.com/tipmip-methods/toad/blob/main/tutorials/basics.ipynb).

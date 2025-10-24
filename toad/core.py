@@ -402,6 +402,12 @@ class TOAD:
         """Access aggregation methods."""
         return postprocessing.Aggregation(self)
 
+    @property
+    def plot(self) -> visualisation.TOADPlotter:
+        """Access plotting methods."""
+        return visualisation.TOADPlotter(self)
+
+    # TODO: delete this in favour of td.plot
     def plotter(
         self,
         config: Optional[visualisation.PlotConfig] = None,
@@ -410,6 +416,7 @@ class TOAD:
         """Access plotting methods."""
         config = config if config else visualisation.PlotConfig()
         config.__dict__.update(kwargs)
+        print("plotter() is deprecated. Please use td.plot() or td.plot instead.")
         return visualisation.TOADPlotter(self, config=config)
 
     # # ======================================================================

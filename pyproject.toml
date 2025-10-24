@@ -21,7 +21,8 @@ description = "Tipping and Other Abrupt events Detector"
 readme = "README.md"
 keywords = ["tipping", "tipping points", "climate"]
 authors = [
-    {name = "Sina Loriani", email = "sina.loriani@pik-potsdam.de"}
+    {name = "Sina Loriani", email = "sina.loriani@pik-potsdam.de"},
+    {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"}
 ]
 maintainers = [
     {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"}
@@ -44,6 +45,7 @@ dependencies = [
     "numba",
     "healpix",
     "optuna",
+    "cftime"
 ]
 
 [project.optional-dependencies]
@@ -77,6 +79,7 @@ scikit-learn = "sklearn"
 numba = "numba"
 healpix = "healpix"
 optuna = "optuna"
+cftime = "cftime"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

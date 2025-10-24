@@ -7,7 +7,7 @@ import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.colors import ListedColormap, to_hex, to_rgb, to_rgba
+from matplotlib.colors import Colormap, ListedColormap, to_hex, to_rgb, to_rgba
 from matplotlib.patches import Rectangle
 
 from toad.utils import _attrs, detect_latlon_names, is_regular_grid
@@ -401,9 +401,7 @@ class TOADPlotter:
         add_contour: bool = True,
         only_contour: bool = False,
         add_labels: bool = True,
-        remaining_clusters_cmap: Optional[
-            Union[str, matplotlib.colors.Colormap]
-        ] = "jet",
+        remaining_clusters_cmap: Optional[Union[str, Colormap]] = "jet",
         remaining_clusters_legend_pos: Optional[Tuple[float, float]] = None,
         **kwargs: Any,
     ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
@@ -832,7 +830,6 @@ class TOADPlotter:
         cmap: Union[str, ListedColormap] = default_cmap,
         median_linewidth: float = 3,
         mean_linewidth: float = 3,
-        shift_indicator_linewidth: float = 5,  # TODO delete
         normalize: Optional[Literal["first", "max", "last"]] = None,
         add_legend: bool = True,
         plot_range: bool = True,
@@ -847,6 +844,7 @@ class TOADPlotter:
         """Plot aggregated time series statistics for one or multiple clusters.
 
         TODO: make this function faster!!
+        TODO: merge this function with cluster_timeseries()
 
         Plots median and/or mean lines along with shaded interquartile ranges (default: full range and 68% IQR).
         The shift indicator shows the temporal extent of each cluster by plotting horizontal lines at different shades:
@@ -863,7 +861,6 @@ class TOADPlotter:
             cmap: Colormap to use if plotting multiple clusters and color is None.
             median_linewidth: Linewidth for the median curve.
             mean_linewidth: Linewidth for the mean curve.
-            shift_indicator_linewidth: Linewidth for the duration indicator lines.
             normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
             add_legend: If True, add a legend indicating cluster IDs.
             plot_range: If True, plot the full range (min to max) as a shaded area.
@@ -900,8 +897,10 @@ class TOADPlotter:
                     id_color = get_cmap_seq(stops=len(cluster_ids), cmap=cmap)[i]
 
             def plot_iqr(percentile_start, percentile_end):
+                # Use original time values for plotting if available, otherwise use numeric values
+
                 ax.fill_between(
-                    self.td.data[self.td.time_dim],
+                    self.td.data[self.td.time_dim].values,
                     self.td.get_cluster_timeseries(
                         plot_var,
                         id,
@@ -1071,7 +1070,7 @@ class TOADPlotter:
 
         # Stack the areas for clusters
         ax.stackplot(
-            series_list[0][self.td.time_dim],
+            series_list[0][self.td.time_dim].values,
             [s.values for s in series_list],
             labels=[f"Cluster {cid}" for cid in selected_cluster_ids],
             colors=colors,
@@ -1083,7 +1082,7 @@ class TOADPlotter:
         )
 
         ax.fill_between(
-            unclustered[self.td.time_dim],
+            unclustered[self.td.time_dim].values,
             0,
             -unclustered.values,
             color="lightgray",
@@ -1434,7 +1433,7 @@ class TOADPlotter:
         legend_size: Tuple[float, float] = (0.05, 0.02),
         label_text: Optional[str] = None,
         fontsize: int = 7,
-        cmap: Optional[Union[str, matplotlib.colors.Colormap]] = None,
+        cmap: Optional[Union[str, Colormap]] = None,
         var: Optional[str] = None,
     ):
         """Add a custom gradient legend to a plot.
@@ -1681,7 +1680,11 @@ def get_high_constrast_text_color(color: Union[tuple, str]) -> str:
 
 
 def get_cmap_seq(
-    cmap: str, start: int = 0, end: int = -1, stops: int = 10, reverse: bool = False
+    cmap: Colormap | str,
+    start: int = 0,
+    end: int = -1,
+    stops: int = 10,
+    reverse: bool = False,
 ) -> List[str]:
     """Extracts a sequence of distinct colors from a matplotlib colormap.
 

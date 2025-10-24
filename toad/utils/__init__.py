@@ -14,6 +14,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
+import cftime
 import numpy as np
 import xarray as xr
 
@@ -31,6 +32,8 @@ __all__ = [
     "contains_value",
     "get_unique_variable_name",
     "_attrs",
+    "convert_time_to_seconds",
+    "convert_numeric_to_original_time",
 ]
 
 
@@ -268,6 +271,94 @@ def get_unique_variable_name(desired_name: str, existing_vars, logger=None) -> s
         )
 
     return new_name
+
+
+def convert_time_to_seconds(time_array: xr.DataArray) -> np.ndarray:
+    """Convert time dimension values to numeric seconds since the first time point.
+
+    Args:
+        time_array: xarray DataArray containing the time dimension to convert
+        time_dim: Name of the time dimension in the DataArray
+
+    Returns:
+        numpy.ndarray: Array of numeric time values in seconds relative to first time point
+
+    Raises:
+        ValueError: If time dimension values are not integers, floats, or datetime objects
+
+    Examples:
+        >>> times = xr.DataArray(pd.date_range('2000-01-01', periods=5))
+        >>> convert_time_to_seconds(times, 'time')
+        array([0., 86400., 172800., 259200., 345600.])
+    """
+    # Check if time dimension values are numeric (integers or floats)
+    if not (
+        np.issubdtype(time_array.dtype, np.integer)
+        or np.issubdtype(time_array.dtype, np.floating)
+    ):
+        # Handle datetime values (both numpy datetime64 and cftime)
+        try:
+            if np.issubdtype(time_array.dtype, np.datetime64):
+                # NumPy datetime64
+                numeric_times = (
+                    (time_array - time_array[0])
+                    .astype("timedelta64[s]")
+                    .astype(float)
+                    .values
+                )
+            else:
+                # cftime or other datetime objects
+                time_values = time_array.values
+                numeric_times = np.array(
+                    [(t - time_values[0]).total_seconds() for t in time_values]
+                )
+        except (TypeError, AttributeError):
+            raise ValueError(
+                "time dimension must consist of integers, floats, or datetime objects."
+            )
+    else:
+        # Time values are already numeric, use as-is
+        numeric_times = time_array.values  # Add .values here too
+
+    return numeric_times
+
+
+def convert_numeric_to_original_time(
+    numeric_result: float, numeric_times: np.ndarray, original_time_values: xr.DataArray
+) -> Union[float, cftime.datetime]:
+    """Convert a numeric time result back to original format for user-facing results.
+
+    Args:
+        numeric_result: The numeric time value to convert
+        numeric_times: Array of numeric time values used for calculations
+        original_time_values: Array of original time values for conversion
+
+    Returns:
+        The interpolated original time value (can be between existing values)
+    """
+    # Check if original time values are already numeric (int/float)
+    if np.issubdtype(original_time_values.dtype, np.integer) or np.issubdtype(
+        original_time_values.dtype, np.floating
+    ):
+        # If original times are numeric, just return the numeric result
+        return (
+            float(numeric_result)
+            if hasattr(numeric_result, "values")
+            else numeric_result
+        )
+    else:
+        # If original times are datetime objects (cftime), create interpolated cftime
+        from datetime import timedelta
+
+        # Extract scalar value from DataArray if needed
+        if hasattr(numeric_result, "values"):
+            seconds = float(numeric_result.values)  # type: ignore
+        else:
+            seconds = float(numeric_result)
+
+        first_time = original_time_values.values[0]
+        new_time = first_time + timedelta(seconds=seconds)
+        return new_time
 
 
 # Include this once we have a published release to fetch test data

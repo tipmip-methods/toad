@@ -1,6 +1,7 @@
-from typing import Literal, Optional, Tuple, overload, Union, Callable
+from typing import Callable, Literal, Optional, Tuple, Union, overload
+
 import numpy as np
-from scipy.cluster.hierarchy import linkage, inconsistent
+from scipy.cluster.hierarchy import inconsistent, linkage
 from scipy.spatial.distance import squareform
 
 
@@ -84,7 +85,7 @@ class ClusterGeneralStats:
         assert aggregation != "raw", "raw is not supported for this method."
 
         # Get the variable values
-        xvals = self.td.data[self.td.time_dim].values  # time values
+        xvals = self.td.numeric_time_values  # use numeric time values for fitting
         yvals = self.td.get_cluster_timeseries(
             self.var,
             cluster_id=cluster_id,
@@ -272,7 +273,7 @@ class ClusterGeneralStats:
             normalize="max",
         ).values
 
-        xvals = self.td.data[self.td.time_dim].values
+        xvals = self.td.numeric_time_values  # use numeric time values for fitting
         if len(xvals) != len(yvals):
             raise ValueError("Time and data dimensions do not match.")
 

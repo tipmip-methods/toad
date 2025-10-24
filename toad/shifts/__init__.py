@@ -10,7 +10,7 @@ Currently implemented methods:
 """
 
 import logging
-from typing import Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import xarray as xr
@@ -29,28 +29,27 @@ __all__ = ["ASDETECT", "compute_shifts", "ShiftsMethod"]
 
 logger = logging.getLogger("TOAD")
 
+# to avoid circular import we use TYPE_CHECKING for importing TOAD obj
+if TYPE_CHECKING:
+    from toad.core import TOAD
+
 
 def compute_shifts(
-    data: xr.Dataset,
+    td: "TOAD",
     var: str,
     method: ShiftsMethod,
-    time_dim: str = "time",
     output_label_suffix: str = "",
     overwrite: bool = False,
-    merge_input: bool = True,
-) -> Union[xr.Dataset, xr.DataArray]:
+) -> xr.Dataset:
     """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
     Args:
-        data: Dataset containing the variable to analyze
+        td: TOAD object
         var: Name of the variable in the dataset to analyze for abrupt shifts
         method: The abrupt shift detection algorithm to use. Choose from predefined method objects
             in toad.shifts or create your own following the base class in toad.shifts.methods.base
-        time_dim: Name of the dimension along which the time-series analysis is performed.
-            Defaults to "time".
         output_label_suffix: A suffix to add to the output label. Defaults to "".
         overwrite: Whether to overwrite existing variable. Defaults to False.
-        merge_input: Whether to merge results into input dataset (True) or return separately (False)
 
     Returns:
         Union[xr.Dataset, xr.DataArray]: If merge_input is True, returns an xarray.Dataset containing
@@ -73,7 +72,7 @@ def compute_shifts(
     """
 
     # check if var is in data
-    data_array = data.get(var)
+    data_array = td.data.get(var)
     if data_array is None:
         raise ValueError(f"variable {var} not found in dataset!")
 
@@ -85,27 +84,20 @@ def compute_shifts(
     if data_array.ndim != 3:
         raise ValueError("data must be 3-dimensional")
 
-    # check that time dim consists of ints or floats
-    if not (
-        np.issubdtype(data_array[time_dim].dtype, np.integer)
-        or np.issubdtype(data_array[time_dim].dtype, np.floating)
-    ):
-        raise ValueError("time dimension must consist of integers or floats.")
-
     # Check if the output_label is already in the data
     output_label = f"{var}_dts{output_label_suffix}"
-    if merge_input and not overwrite:
-        output_label = get_unique_variable_name(output_label, data, logger)
-    elif overwrite and output_label in data:
-        data = data.drop_vars(output_label)
+    if not overwrite:
+        output_label = get_unique_variable_name(output_label, td.data, logger)
+    elif overwrite and output_label in td.data:
+        td.data = td.data.drop_vars(output_label)
 
     # Apply the detector
     logger.debug(f"Applying detector {method.__class__.__name__} to {var}")
 
     # Create a mask for non-constant, non-NaN cells
     # Create separate masks for constant values and NaN values
-    constant_mask = data_array.min(dim=time_dim) == data_array.max(dim=time_dim)
-    nan_mask = data_array.isnull().all(dim=time_dim)
+    constant_mask = data_array.min(dim=td.time_dim) == data_array.max(dim=td.time_dim)
+    nan_mask = data_array.isnull().all(dim=td.time_dim)
 
     # Combine masks to get valid cells (not constant and not all NaN)
     valid_mask = ~(constant_mask | nan_mask)
@@ -117,9 +109,9 @@ def compute_shifts(
     valid_shifts = xr.apply_ufunc(
         method.fit_predict,
         data_array.where(valid_mask),
-        kwargs=dict(times_1d=data_array[time_dim].values),
-        input_core_dims=[[time_dim]],
-        output_core_dims=[[time_dim]],
+        kwargs=dict(times_1d=td.numeric_time_values),
+        input_core_dims=[[td.time_dim]],
+        output_core_dims=[[td.time_dim]],
         vectorize=True,
     ).transpose(*data_array.dims)
 
@@ -139,7 +131,7 @@ def compute_shifts(
     # Save details as attributes
     shifts.attrs.update(
         {
-            _attrs.TIME_DIM: time_dim,
+            _attrs.TIME_DIM: td.time_dim,
             _attrs.METHOD_NAME: method.__class__.__name__,
             _attrs.TOAD_VERSION: __version__,
             _attrs.BASE_VARIABLE: var,
@@ -162,9 +154,4 @@ def compute_shifts(
     )
 
     # 6. Merge the detected shifts with the original data
-    if merge_input:
-        return xr.merge(
-            [data, shifts], combine_attrs="override", compat="override"
-        )  # xr.dataset
-    else:
-        return shifts  # xr.dataarray
+    return xr.merge([td.data, shifts], combine_attrs="override", compat="override")

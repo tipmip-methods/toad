@@ -78,6 +78,12 @@ class TOADPlotter:
         self.td: TOAD = td
         self.default_config = config if config is not None else PlotConfig()
 
+    def __call__(self, config=None, **kwargs):
+        """Return a new TOADPlotter with updated configuration."""
+        config = config if config else self.default_config
+        config.__dict__.update(kwargs)
+        return TOADPlotter(self.td, config=config)
+
     # Overloads are used for type hinting
     @overload
     def map(

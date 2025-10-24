@@ -56,7 +56,7 @@ td.compute_clusters(
 )
 
 # Plot 8 largest clusters in ccrs.SouthPolarStereo() projection
-td.plotter().cluster_overview("thk", cluster_ids=range(8), projection="south_pole");
+td.plot.cluster_overview("thk", cluster_ids=range(8), projection="south_pole");
 ```
 
 <div align="center">

@@ -58,6 +58,7 @@ __all__ = [
     "compute_clusters",
     "default_hdbscan_optimisation_params",
     "combined_spatial_nonlinearity",
+    "sorted_cluster_labels",
 ]
 
 # to avoid circular import we use TYPE_CHECKING for importing TOAD obj

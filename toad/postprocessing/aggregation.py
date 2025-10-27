@@ -2,6 +2,7 @@ from itertools import combinations
 from typing import List, Tuple
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -165,7 +166,7 @@ class Aggregation:
         min_consensus: float = 0.3,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
-    ) -> Tuple[xr.DataArray, xr.DataArray]:
+    ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """
         Build a **spatial consensus map** from multiple clustering results by
         collapsing time within each input, constructing a pixel-adjacency
@@ -197,12 +198,13 @@ class Aggregation:
         --------
         Outputs
         --------
-        Returns a tuple:
-        (1) `consensus_clusters` (xr.DataArray[int32], shape `(time, y, x)`):
-            Consensus component IDs repeated along time for convenience; -1 = noise.
-        (2) `consensus_consistency` (xr.DataArray[float], shape (y, x)):
-            Local mean of co-association edge weights around each pixel,
-            reflecting how strongly its neighborhood co-occurs across input cluster maps.
+        Returns an (xr.Dataset, pandas.DataFrame) where the Dataset contains:
+        - `consensus_clusters` (int32, `(y, x)`): Consensus component IDs; -1 = noise.
+        - `consensus_consistency` (float32, `(y, x)`): Local mean of co-association edge weights
+          around each pixel, reflecting how strongly its neighborhood co-occurs across input
+          cluster maps.
+        And the DataFrame contains one row per cluster with columns:
+        - `cluster_id`, `mean_consistency`, `size`, `mean_{space_dim0}`, `mean_{space_dim1}`.
 
         ---------------------
         Algorithm (step-by-step)
@@ -253,7 +255,7 @@ class Aggregation:
         the largest consensus region gets label 0, the next largest 1, etc.
 
         8) **Finalize arrays**:
-        - Repeat the 2D label map along `time` to return `(time, y, x)` labels.
+        - Return the 2D label map `(y, x)`.
 
         ----------------
         Interpretation
@@ -298,13 +300,10 @@ class Aggregation:
             )
 
         # Get dimensions from first clustering
-        time_dim = self.td.time_dim
         sample = self.td.data[cluster_vars[0]]
-        dims = list(sample.dims)
         spatial_dims = self.td.space_dims
 
         # Get array sizes
-        t_len = sample.sizes[time_dim]
         y_len = sample.sizes[spatial_dims[0]]
         x_len = sample.sizes[spatial_dims[1]]
 
@@ -313,7 +312,6 @@ class Aggregation:
         flat_idx_2d = np.arange(N, dtype=np.int64).reshape((y_len, x_len))
 
         # Store coordinates for output arrays
-        coords = {d: sample[d] for d in dims}
         coords_spatial = {d: sample[d] for d in spatial_dims}
 
         def add_adjacent_true_pairs(
@@ -353,6 +351,67 @@ class Aggregation:
                     for i, j in zip(a.tolist(), b.tolist()):
                         edge_set.add((i, j) if i < j else (j, i))
 
+        def _build_summary_ds(
+            labels2d: xr.DataArray, consistency2d: xr.DataArray
+        ) -> xr.Dataset:
+            """Compute 1D per-cluster summary variables using xarray only.
+
+            Returns a Dataset with dimension `cluster_id` containing:
+            - mean_consistency
+            - size
+            - mean_{space_dim0}
+            - mean_{space_dim1}
+            """
+            cluster_map = labels2d.where(labels2d != -1)
+
+            # Mean consistency per cluster
+            mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
+
+            # Cluster sizes (number of pixels)
+            ones = xr.full_like(cluster_map, 1, dtype=np.int32)
+            cluster_sizes = (
+                ones.where(cluster_map.notnull())
+                .groupby(cluster_map)
+                .sum(skipna=True)
+                .astype(np.int32)
+            )
+
+            # Mean positions
+            sd0, sd1 = spatial_dims
+            space_dim0_mean = (
+                self.td.data[sd0]
+                .where(cluster_map >= 0)
+                .groupby(cluster_map)
+                .mean(skipna=True)
+            )
+            space_dim1_mean = (
+                self.td.data[sd1]
+                .where(cluster_map >= 0)
+                .groupby(cluster_map)
+                .mean(skipna=True)
+            )
+
+            # Rename grouping dimension to a stable name
+            group_dim = cluster_map.name if cluster_map.name else "cluster"
+            mean_consistency = mean_consistency.rename({group_dim: "cluster_id"})
+            cluster_sizes = cluster_sizes.rename({group_dim: "cluster_id"})
+            space_dim0_mean = space_dim0_mean.rename({group_dim: "cluster_id"})
+            space_dim1_mean = space_dim1_mean.rename({group_dim: "cluster_id"})
+
+            # Ensure dtypes
+            mean_consistency = mean_consistency.astype(np.float32)
+            space_dim0_mean = space_dim0_mean.astype(np.float32)
+            space_dim1_mean = space_dim1_mean.astype(np.float32)
+
+            return xr.Dataset(
+                {
+                    "mean_consistency": mean_consistency,
+                    "size": cluster_sizes,
+                    f"mean_{sd0}": space_dim0_mean,
+                    f"mean_{sd1}": space_dim1_mean,
+                }
+            )
+
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
 
@@ -386,9 +445,9 @@ class Aggregation:
                 "consensus_clusters", self.td.data, self.td.logger
             )
             da_consensus_labels = xr.DataArray(
-                np.full((t_len, y_len, x_len), -1, dtype=np.int32),
-                coords=coords,
-                dims=dims,
+                np.full((y_len, x_len), -1, dtype=np.int32),
+                coords=coords_spatial,
+                dims=spatial_dims,
                 name=final_name,
             )
             da_consistency = xr.DataArray(
@@ -397,7 +456,15 @@ class Aggregation:
                 dims=spatial_dims,
                 name="consensus_consistency",
             )
-            return da_consensus_labels, da_consistency
+            ds_out = xr.Dataset(
+                {
+                    final_name: da_consensus_labels,
+                    "consensus_consistency": da_consistency,
+                }
+            )
+            summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
+            summary_df = summary_ds.to_dataframe().reset_index()
+            return ds_out, summary_df
 
         # Create sparse adjacency matrix
         rows = np.array(edge_rows, dtype=np.int64)
@@ -432,9 +499,9 @@ class Aggregation:
                 "consensus_clusters", self.td.data, self.td.logger
             )
             da_consensus_labels = xr.DataArray(
-                np.full((t_len, y_len, x_len), -1, dtype=np.int32),
-                coords=coords,
-                dims=dims,
+                np.full((y_len, x_len), -1, dtype=np.int32),
+                coords=coords_spatial,
+                dims=spatial_dims,
                 name=final_name,
             )
             da_consistency = xr.DataArray(
@@ -443,7 +510,15 @@ class Aggregation:
                 dims=spatial_dims,
                 name="consensus_consistency",
             )
-            return da_consensus_labels, da_consistency
+            ds_out = xr.Dataset(
+                {
+                    final_name: da_consensus_labels,
+                    "consensus_consistency": da_consistency,
+                }
+            )
+            summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
+            summary_df = summary_ds.to_dataframe().reset_index()
+            return ds_out, summary_df
 
         # Find connected components in thresholded graph
         bin_adj = csr.copy()
@@ -463,15 +538,12 @@ class Aggregation:
         flat_sorted = sorted_cluster_labels(flat)
         labels_2d = flat_sorted.reshape((y_len, x_len))
 
-        # Repeat 2D labels along time dimension
-        labels_3d = np.repeat(labels_2d[np.newaxis, ...], t_len, axis=0)
-
         # Create output DataArrays
         final_name = get_unique_variable_name(
             "consensus_clusters", self.td.data, self.td.logger
         )
         da_consensus_labels = xr.DataArray(
-            labels_3d, coords=coords, dims=dims, name=final_name
+            labels_2d, coords=coords_spatial, dims=spatial_dims, name=final_name
         )
         da_consensus_labels.attrs.update(
             {
@@ -490,7 +562,12 @@ class Aggregation:
             name="consensus_consistency",
         )
 
-        return da_consensus_labels, da_consistency
+        ds_out = xr.Dataset(
+            {final_name: da_consensus_labels, "consensus_consistency": da_consistency}
+        )
+        summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
+        summary_df = summary_ds.to_dataframe().reset_index()
+        return ds_out, summary_df
 
 
 def jaccard_similarity(set_a, set_b):

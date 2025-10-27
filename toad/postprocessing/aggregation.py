@@ -115,7 +115,6 @@ class Aggregation:
         data0 = self.td.data[cluster_vars[0]].isel({self.td.time_dim: 0})
         N = data0.size
         grid_shape = data0.shape
-        coords = {dim: data0[dim] for dim in data0.dims}
 
         # Cache which grid cells belonged to each cluster
         membership_lookup = precompute_spatial_memberships(self.td, cluster_vars)
@@ -151,9 +150,9 @@ class Aggregation:
 
         return xr.DataArray(
             stability_scores.reshape(grid_shape),
-            coords=coords,
+            coords=data0.coords,
             dims=data0.dims,
-            name="Jaccard_similarity",
+            name="Jaccard similarity",
         )
 
 

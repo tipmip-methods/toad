@@ -296,8 +296,7 @@ def compute_clusters(
 
         # Build coordinates array (NumPy only, no DataFrame merges)
         # time coordinate
-        time_vals = td.data[td.time_dim].values[idx[0]]
-        time_numeric = _as_numeric_time(time_vals)
+        time_numeric = td.numeric_time_values[idx[0]]
 
         # ==================== COORDINATES ====================
         if is_latlon_dims:
@@ -480,14 +479,6 @@ def _format_cluster_summary(
         f"Left behind {pct_noise:.1f}% as noise"
         f" ({noise:,} pts)."
     )
-
-
-def _as_numeric_time(t: np.ndarray) -> np.ndarray:
-    """Convert time values to float for sklearn (seconds since epoch if datetime64)."""
-    t = np.asarray(t)
-    if np.issubdtype(t.dtype, np.datetime64):
-        return t.astype("datetime64[ns]").astype("int64") / 1e9
-    return t.astype(float, copy=False)
 
 
 def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:

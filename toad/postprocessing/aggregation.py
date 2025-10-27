@@ -164,6 +164,7 @@ class Aggregation:
         cluster_vars: List[str] | None = None,
         min_consensus: float = 0.3,
         top_n_clusters: int | None = None,
+        neighbor_connectivity: int = 8,
     ) -> Tuple[xr.DataArray, xr.DataArray]:
         """
         Build a **spatial consensus map** from multiple clustering results by
@@ -177,7 +178,8 @@ class Aggregation:
         - Time is **collapsed per cluster** inside each map using `any(axis=time)`,
         i.e., a pixel belongs to cluster *c* in that map if it was *ever* in *c*
         at any time. Consensus is therefore purely **spatial**.
-        - Adjacency is **4-neighborhood** on the (y, x) grid (Von Neumann).
+        - Adjacency is **8-neighborhood** on the (y, x) grid (Moore) by default.
+          Set `neighbor_connectivity=4` to use 4-neighborhood (Von Neumann).
         - Output label -1 marks pixels not connected to any consensus component.
 
         -------------
@@ -189,6 +191,8 @@ class Aggregation:
         chaining/merging.
         - `top_n_clusters`: if set, only the N largest clusters (per map) are used
         when voting for edges. This can focus consensus on the dominant features.
+        - `neighbor_connectivity`: 4 or 8 (default 8). Spatial neighborhood used for
+          co-association edges.
 
         --------
         Outputs
@@ -287,6 +291,12 @@ class Aggregation:
             cluster_vars = list(self.td.cluster_vars)
         assert len(cluster_vars) > 0, "No cluster variables provided/found."
 
+        # Check if neighbor connectivity is valid
+        if neighbor_connectivity not in (4, 8):
+            raise ValueError(
+                f"`neighbor_connectivity` must be 4 or 8, but got {neighbor_connectivity}."
+            )
+
         # Get dimensions from first clustering
         time_dim = self.td.time_dim
         sample = self.td.data[cluster_vars[0]]
@@ -307,23 +317,41 @@ class Aggregation:
         coords_spatial = {d: sample[d] for d in spatial_dims}
 
         def add_adjacent_true_pairs(
-            mask2d: np.ndarray, rows: List[int], cols: List[int]
+            mask2d: np.ndarray, edge_set: set[tuple[int, int]], use_eight: bool
         ) -> None:
-            """Add 4-neighbor edges for True cells on a 2D mask (y,x)."""
-            # Find horizontally adjacent True cells
+            """Add undirected neighbor edges for True cells on a 2D mask (y,x), deduplicated per map.
+
+            If `use_eight` is True, include diagonal neighbors (8-neighborhood). Otherwise, only 4-neighborhood.
+            """
+            # Horizontal neighbors
             common = mask2d[:, :-1] & mask2d[:, 1:]
             if common.any():
-                a = flat_idx_2d[:, :-1][common]
-                b = flat_idx_2d[:, 1:][common]
-                rows.extend(a.tolist())
-                cols.extend(b.tolist())
-            # Find vertically adjacent True cells
+                a = flat_idx_2d[:, :-1][common].ravel()
+                b = flat_idx_2d[:, 1:][common].ravel()
+                for i, j in zip(a.tolist(), b.tolist()):
+                    edge_set.add((i, j) if i < j else (j, i))
+            # Vertical neighbors
             common = mask2d[:-1, :] & mask2d[1:, :]
             if common.any():
-                a = flat_idx_2d[:-1, :][common]
-                b = flat_idx_2d[1:, :][common]
-                rows.extend(a.tolist())
-                cols.extend(b.tolist())
+                a = flat_idx_2d[:-1, :][common].ravel()
+                b = flat_idx_2d[1:, :][common].ravel()
+                for i, j in zip(a.tolist(), b.tolist()):
+                    edge_set.add((i, j) if i < j else (j, i))
+            if use_eight:
+                # Diagonal neighbors: top-left to bottom-right
+                common = mask2d[:-1, :-1] & mask2d[1:, 1:]
+                if common.any():
+                    a = flat_idx_2d[:-1, :-1][common].ravel()
+                    b = flat_idx_2d[1:, 1:][common].ravel()
+                    for i, j in zip(a.tolist(), b.tolist()):
+                        edge_set.add((i, j) if i < j else (j, i))
+                # Diagonal neighbors: top-right to bottom-left
+                common = mask2d[:-1, 1:] & mask2d[1:, :-1]
+                if common.any():
+                    a = flat_idx_2d[:-1, 1:][common].ravel()
+                    b = flat_idx_2d[1:, :-1][common].ravel()
+                    for i, j in zip(a.tolist(), b.tolist()):
+                        edge_set.add((i, j) if i < j else (j, i))
 
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
@@ -339,10 +367,18 @@ class Aggregation:
             if top_n_clusters is not None and top_n_clusters > 0:
                 unique_ids = unique_ids[:top_n_clusters]
 
+            # Per-map deduplication of edges
+            map_edges: set[tuple[int, int]] = set()
+
             # For each cluster, find adjacent cells that were ever in it
             for cid in unique_ids:
                 mask2d = (labels == cid).any(axis=0)  # (Y, X)
-                add_adjacent_true_pairs(mask2d, edge_rows, edge_cols)
+                add_adjacent_true_pairs(mask2d, map_edges, neighbor_connectivity == 8)
+
+            if map_edges:
+                r, c = zip(*map_edges)
+                edge_rows.extend(r)
+                edge_cols.extend(c)
 
         # If no edges found, return all cells as noise
         if len(edge_rows) == 0:
@@ -369,14 +405,18 @@ class Aggregation:
         data = np.ones(len(rows), dtype=np.float32)
         M = len(cluster_vars)
 
-        # Convert to normalized adjacency matrix
+        # Convert to normalized adjacency matrix (fraction of maps supporting each undirected edge)
         coo = coo_matrix((data, (rows, cols)), shape=(N, N))
         csr = coo.tocsr()
+        csr.sum_duplicates()
         csr.data = np.divide(csr.data, float(M))
+
+        # Symmetrize by taking maximum to ensure undirected adjacency
+        csr = csr.maximum(csr.T)
 
         # Remove edges below consensus threshold
         mask_keep = csr.data >= float(min_consensus)
-        csr.data = csr.data * mask_keep.astype(csr.data.dtype)
+        csr.data = np.where(mask_keep, csr.data, 0).astype(csr.data.dtype, copy=False)
         csr.eliminate_zeros()
 
         # Compute per-node average edge weight
@@ -408,6 +448,7 @@ class Aggregation:
         # Find connected components in thresholded graph
         bin_adj = csr.copy()
         bin_adj.data[:] = 1.0
+        bin_adj = bin_adj.maximum(bin_adj.T)
         _, labels_flat = connected_components(
             bin_adj, directed=False, return_labels=True
         )
@@ -437,6 +478,7 @@ class Aggregation:
                 "cluster_vars": cluster_vars,
                 "min_consensus": min_consensus,
                 "top_n_clusters": top_n_clusters,
+                "neighbor_connectivity": neighbor_connectivity,
                 "description": "Spatial consensus clusters (time-collapsed).",
             }
         )

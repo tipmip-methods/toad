@@ -353,57 +353,58 @@ class Aggregation:
 
         def _build_summary_ds(
             labels2d: xr.DataArray, consistency2d: xr.DataArray
-        ) -> xr.Dataset:
-            """Compute 1D per-cluster summary variables using xarray only.
+        ) -> pd.DataFrame:
+            """Compute 1D per-cluster summary variables and return as a DataFrame.
 
-            Returns a Dataset with dimension `cluster_id` containing:
+            Returns a DataFrame with columns:
             - mean_consistency
             - size
             - mean_{space_dim0}
             - mean_{space_dim1}
+            and index cluster_id.
             """
             cluster_map = labels2d.where(labels2d != -1)
+            sd0, sd1 = spatial_dims
+            dim = cluster_map.name if cluster_map.name else "cluster"
+            cname = "cluster_id"
 
-            # Mean consistency per cluster
-            mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
+            # If no clusters present, return empty DataFrame
+            if np.all(labels2d.values == -1):
+                cols = ["mean_consistency", "size", f"mean_{sd0}", f"mean_{sd1}"]
+                return pd.DataFrame({c: [] for c in cols})
 
-            # Cluster sizes (number of pixels)
-            ones = xr.full_like(cluster_map, 1, dtype=np.int32)
+            mean_consistency = (
+                consistency2d.groupby(cluster_map)
+                .mean(skipna=True)
+                .rename({dim: cname})
+                .astype(np.float32)
+            )
             cluster_sizes = (
-                ones.where(cluster_map.notnull())
+                xr.full_like(cluster_map, 1, dtype=np.int32)
+                .where(cluster_map.notnull())
                 .groupby(cluster_map)
                 .sum(skipna=True)
+                .rename({dim: cname})
                 .astype(np.int32)
             )
-
-            # Mean positions
-            sd0, sd1 = spatial_dims
             space_dim0_mean = (
                 self.td.data[sd0]
                 .where(cluster_map >= 0)
                 .groupby(cluster_map)
                 .mean(skipna=True)
+                .rename({dim: cname})
+                .astype(np.float32)
             )
             space_dim1_mean = (
                 self.td.data[sd1]
                 .where(cluster_map >= 0)
                 .groupby(cluster_map)
                 .mean(skipna=True)
+                .rename({dim: cname})
+                .astype(np.float32)
             )
 
-            # Rename grouping dimension to a stable name
-            group_dim = cluster_map.name if cluster_map.name else "cluster"
-            mean_consistency = mean_consistency.rename({group_dim: "cluster_id"})
-            cluster_sizes = cluster_sizes.rename({group_dim: "cluster_id"})
-            space_dim0_mean = space_dim0_mean.rename({group_dim: "cluster_id"})
-            space_dim1_mean = space_dim1_mean.rename({group_dim: "cluster_id"})
-
-            # Ensure dtypes
-            mean_consistency = mean_consistency.astype(np.float32)
-            space_dim0_mean = space_dim0_mean.astype(np.float32)
-            space_dim1_mean = space_dim1_mean.astype(np.float32)
-
-            return xr.Dataset(
+            ds = xr.Dataset(
                 {
                     "mean_consistency": mean_consistency,
                     "size": cluster_sizes,
@@ -411,6 +412,7 @@ class Aggregation:
                     f"mean_{sd1}": space_dim1_mean,
                 }
             )
+            return ds.to_dataframe().reset_index()
 
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
@@ -462,8 +464,7 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
-            summary_df = summary_ds.to_dataframe().reset_index()
+            summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
             return ds_out, summary_df
 
         # Create sparse adjacency matrix
@@ -516,8 +517,7 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
-            summary_df = summary_ds.to_dataframe().reset_index()
+            summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
             return ds_out, summary_df
 
         # Find connected components in thresholded graph
@@ -565,8 +565,7 @@ class Aggregation:
         ds_out = xr.Dataset(
             {final_name: da_consensus_labels, "consensus_consistency": da_consistency}
         )
-        summary_ds = _build_summary_ds(da_consensus_labels, da_consistency)
-        summary_df = summary_ds.to_dataframe().reset_index()
+        summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
         return ds_out, summary_df
 
 

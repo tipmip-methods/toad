@@ -477,7 +477,7 @@ def _format_cluster_summary(
     clusters_text = f"{n_clusters} {'cluster' if n_clusters == 1 else 'clusters'}"
     return (
         f"New cluster variable \033[1m{output_label}\033[0m: Identified \033[1m{clusters_text}\033[0m in {n:,} pts; "
-        f"Left behind {pct_noise:.1f}% as noise"
+        f"Skipped {pct_noise:.1f}% as noise"
         f" ({noise:,} pts)."
     )
 

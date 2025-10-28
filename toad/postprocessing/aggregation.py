@@ -443,14 +443,11 @@ class Aggregation:
 
         # If no edges found, return all cells as noise
         if len(edge_rows) == 0:
-            final_name = get_unique_variable_name(
-                "consensus_clusters", self.td.data, self.td.logger
-            )
             da_consensus_labels = xr.DataArray(
                 np.full((y_len, x_len), -1, dtype=np.int32),
                 coords=coords_spatial,
                 dims=spatial_dims,
-                name=final_name,
+                name="consensus_clusters",
             )
             da_consistency = xr.DataArray(
                 np.full((y_len, x_len), 0, dtype=np.float32),
@@ -460,7 +457,7 @@ class Aggregation:
             )
             ds_out = xr.Dataset(
                 {
-                    final_name: da_consensus_labels,
+                    "consensus_clusters": da_consensus_labels,
                     "consensus_consistency": da_consistency,
                 }
             )
@@ -496,14 +493,11 @@ class Aggregation:
 
         # If no edges remain after thresholding, return all noise
         if csr.nnz == 0:
-            final_name = get_unique_variable_name(
-                "consensus_clusters", self.td.data, self.td.logger
-            )
             da_consensus_labels = xr.DataArray(
                 np.full((y_len, x_len), -1, dtype=np.int32),
                 coords=coords_spatial,
                 dims=spatial_dims,
-                name=final_name,
+                name="consensus_clusters",
             )
             da_consistency = xr.DataArray(
                 consensus_consistency,
@@ -513,7 +507,7 @@ class Aggregation:
             )
             ds_out = xr.Dataset(
                 {
-                    final_name: da_consensus_labels,
+                    "consensus_clusters": da_consensus_labels,
                     "consensus_consistency": da_consistency,
                 }
             )
@@ -539,11 +533,11 @@ class Aggregation:
         labels_2d = flat_sorted.reshape((y_len, x_len))
 
         # Create output DataArrays
-        final_name = get_unique_variable_name(
-            "consensus_clusters", self.td.data, self.td.logger
-        )
         da_consensus_labels = xr.DataArray(
-            labels_2d, coords=coords_spatial, dims=spatial_dims, name=final_name
+            labels_2d,
+            coords=coords_spatial,
+            dims=spatial_dims,
+            name="consensus_clusters",
         )
         da_consensus_labels.attrs.update(
             {
@@ -563,7 +557,10 @@ class Aggregation:
         )
 
         ds_out = xr.Dataset(
-            {final_name: da_consensus_labels, "consensus_consistency": da_consistency}
+            {
+                "consensus_clusters": da_consensus_labels,
+                "consensus_consistency": da_consistency,
+            }
         )
         summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
         return ds_out, summary_df

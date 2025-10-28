@@ -351,7 +351,7 @@ class Aggregation:
                     for i, j in zip(a.tolist(), b.tolist()):
                         edge_set.add((i, j) if i < j else (j, i))
 
-        def _build_summary_ds(
+        def _build_summary_df(
             labels2d: xr.DataArray, consistency2d: xr.DataArray
         ) -> pd.DataFrame:
             """Compute 1D per-cluster summary variables and return as a DataFrame.
@@ -461,7 +461,7 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
+            summary_df = _build_summary_df(da_consensus_labels, da_consistency)
             return ds_out, summary_df
 
         # Create sparse adjacency matrix
@@ -511,7 +511,7 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
+            summary_df = _build_summary_df(da_consensus_labels, da_consistency)
             return ds_out, summary_df
 
         # Find connected components in thresholded graph
@@ -562,7 +562,7 @@ class Aggregation:
                 "consensus_consistency": da_consistency,
             }
         )
-        summary_df = _build_summary_ds(da_consensus_labels, da_consistency)
+        summary_df = _build_summary_df(da_consensus_labels, da_consistency)
         return ds_out, summary_df
 
 

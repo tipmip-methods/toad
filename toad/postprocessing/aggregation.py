@@ -403,56 +403,78 @@ class Aggregation:
                 }
             )
 
-            # === Transition-time metrics ===
-            transition_maps = []
-            for cvar in self.td.cluster_vars:
-                svar = self.td.data[cvar].shifts_variable
-                transition_maps += [
-                    self.td.cluster_stats(svar).time.compute_transition_time(
-                        shift_threshold=0.1
+            # === Transition-time metrics (vectorized, readable) ===
+            # Build per-model transition-time maps (threshold=0 selects all transitions)
+            transition_time_maps = []
+            for cluster_var in self.td.cluster_vars:
+                shift_var = self.td.data[cluster_var].shifts_variable
+                transition_time_maps.append(
+                    self.td.cluster_stats(shift_var).time.compute_transition_time(
+                        shift_threshold=0.0
                     )
-                ]
-
-            results = []
-            cluster_ids = df["cluster_id"].values
-
-            for cluster_id in cluster_ids:
-                mask = labels2d == cluster_id
-                maps = [m.where(mask) for m in transition_maps]
-                stack = xr.concat(maps, dim="cluster_var")
-
-                if stack.notnull().sum() == 0:
-                    results.append(
-                        {
-                            "cluster_id": int(cluster_id),
-                            "mean_transition_time": 0,
-                            "std_transition_time": 0,
-                            "mean_within_model_spread": 0,
-                            "std_within_model_spread": 0,
-                        }
-                    )
-
-                # spatial mean for each model
-                mean_per_model = stack.mean(dim=self.td.space_dims, skipna=True)
-
-                mean_transition_time = mean_per_model.mean(skipna=True).item()
-                std_transition_time = mean_per_model.std(skipna=True).item()
-
-                std_per_model = stack.std(dim=self.td.space_dims, skipna=True)
-                mean_within_model_spread = std_per_model.mean(skipna=True).item()
-                std_within_model_spread = std_per_model.std(skipna=True).item()
-
-                results.append(
-                    {
-                        "cluster_id": int(cluster_id),
-                        "mean_transition_time": mean_transition_time,
-                        "std_transition_time": std_transition_time,
-                        "mean_within_model_spread": mean_within_model_spread,
-                        "std_within_model_spread": std_within_model_spread,
-                    }
                 )
 
-            df_transitions = pd.DataFrame(results)
+            if len(transition_time_maps) == 0:
+                # No models available: return NaNs for transition-time statistics
+                df_transitions = pd.DataFrame(
+                    {
+                        "cluster_id": df["cluster_id"].values.astype(int),
+                        "mean_transition_time": np.nan,
+                        "std_transition_time": np.nan,
+                        "mean_within_model_spread": np.nan,
+                        "std_within_model_spread": np.nan,
+                    }
+                )
+            else:
+                # Stack models into a single array along a named 'cluster_var' axis
+                cluster_var_index = pd.Index(self.td.cluster_vars, name="cluster_var")
+                transition_time_stack = xr.concat(
+                    transition_time_maps, dim=cluster_var_index
+                )
+
+                # For each cluster id: compute per-model spatial mean/std (reduces 'y','x')
+                per_cluster_per_model_mean = transition_time_stack.groupby(
+                    cluster_map
+                ).mean(skipna=True)
+                per_cluster_per_model_std = transition_time_stack.groupby(
+                    cluster_map
+                ).std(skipna=True)
+
+                # Aggregate across models for each cluster id
+                mean_transition_time = per_cluster_per_model_mean.mean(
+                    dim="cluster_var", skipna=True
+                )
+                std_transition_time_by = per_cluster_per_model_mean.std(
+                    dim="cluster_var", skipna=True
+                )
+                mean_within_model_spread = per_cluster_per_model_std.mean(
+                    dim="cluster_var", skipna=True
+                )
+                std_within_model_spread = per_cluster_per_model_std.std(
+                    dim="cluster_var", skipna=True
+                )
+
+                # Build DataFrame with the same grouping dimension as above
+                group_dim = mean_consistency.dims[0]
+                df_transitions = pd.DataFrame(
+                    {
+                        "cluster_id": mean_transition_time[group_dim].values.astype(
+                            int
+                        ),
+                        "mean_transition_time": mean_transition_time.values.astype(
+                            np.float32
+                        ),
+                        "std_transition_time": std_transition_time_by.values.astype(
+                            np.float32
+                        ),
+                        "mean_within_model_spread": mean_within_model_spread.values.astype(
+                            np.float32
+                        ),
+                        "std_within_model_spread": std_within_model_spread.values.astype(
+                            np.float32
+                        ),
+                    }
+                )
 
             # Merge side-by-side
             df = df.merge(df_transitions, on="cluster_id", how="left")

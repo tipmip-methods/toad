@@ -143,14 +143,14 @@ def compute_shifts(
     n_constants = int((constant_mask).sum().values)
     n_nans = int((nan_mask).sum().values)
     n_true = int(valid_mask.sum().values)
-    left_behind_ratio = float(100 * (1 - n_true / valid_mask.size))
+    skipped_ratio = float(100 * (1 - n_true / valid_mask.size))
     min_shift = float(shifts.min().values)
     mean_shift = float(shifts.mean().values)
     max_shift = float(shifts.max().values)
 
     logger.info(
         f"New shifts variable \033[1m{output_label}\033[0m: min/mean/max={min_shift:.3f}/{mean_shift:.3f}/{max_shift:.3f} using {n_true} grid cells. "
-        f"Left behind {left_behind_ratio:.1f}% grid cells: {int(n_nans)} NaN, {int(n_constants)} constant."
+        f"Skipped {skipped_ratio:.1f}% grid cells: {int(n_nans)} NaN, {int(n_constants)} constant."
     )
 
     # 6. Merge the detected shifts with the original data

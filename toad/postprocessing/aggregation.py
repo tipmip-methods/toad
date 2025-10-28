@@ -163,130 +163,64 @@ class Aggregation:
     def cluster_consensus_spatial(
         self,
         cluster_vars: List[str] | None = None,
-        min_consensus: float = 0.3,
+        min_consensus: float = 0.5,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """
-        Build a **spatial consensus map** from multiple clustering results by
-        collapsing time within each input, constructing a pixel-adjacency
-        **co-association graph**, thresholding by agreement, and labeling the
-        resulting **connected components**.
+        Builds a spatial consensus map from multiple clustering results by collapsing time within each input,
+        constructing a pixel-adjacency co-association graph, thresholding by agreement, and labeling the resulting
+        connected components.
 
-        --------------------
-        Data & assumptions
-        --------------------
-        - Time is **collapsed per cluster** inside each map using `any(axis=time)`,
-        i.e., a pixel belongs to cluster *c* in that map if it was *ever* in *c*
-        at any time. Consensus is therefore purely **spatial**.
-        - Adjacency is **8-neighborhood** on the (y, x) grid (Moore) by default.
-          Set `neighbor_connectivity=4` to use 4-neighborhood (Von Neumann).
-        - Output label -1 marks pixels not connected to any consensus component.
+        The function produces robust, spatially coherent regions that persist across clustering choices/variables
+        by combining clusterings through a graph-based consensus method.
 
-        -------------
-        Key tunables
-        -------------
-        - `min_consensus` ∈ [0,1]: minimum fraction of maps that must support an
-        edge between two neighboring pixels for that edge to be kept. Higher
-        values = fewer edges, more fragmentation; lower = more edges, possible
-        chaining/merging.
-        - `top_n_clusters`: if set, only the N largest clusters (per map) are used
-        when voting for edges. This can focus consensus on the dominant features.
-        - `neighbor_connectivity`: 4 or 8 (default 8). Spatial neighborhood used for
-          co-association edges.
+        Args:
+            cluster_vars (List[str] or None): List of clustering variable names to include in the consensus.
+                If None, uses all cluster variables in self.td.cluster_vars.
+            min_consensus (float): Minimum fraction (in [0,1]) of clusterings that must support an edge
+                (pixel adjacency) for it to be included in the consensus graph. Higher values = stricter consensus.
+            top_n_clusters (int or None): If set, only top N largest clusters (per clustering) are used when voting for edges.
+                If None, all clusters are included.
+            neighbor_connectivity (int): Neighborhood connectivity for spatial adjacency, either 4 (Von Neumann) or 8 (Moore, default).
 
-        --------
-        Outputs
-        --------
-        Returns an (xr.Dataset, pandas.DataFrame) where the Dataset contains:
-        - `consensus_clusters` (int32, `(y, x)`): Consensus component IDs; -1 = noise.
-        - `consensus_consistency` (float32, `(y, x)`): Local mean of co-association edge weights
-          around each pixel, reflecting how strongly its neighborhood co-occurs across input
-          cluster maps.
-        And the DataFrame contains one row per cluster with columns:
-        - `cluster_id`, `mean_consistency`, `size`, `mean_{space_dim0}`, `mean_{space_dim1}`.
+        Returns:
+            Tuple[xr.Dataset, pd.DataFrame]:
+                - xr.Dataset with:
+                    * consensus_clusters (int32, shape: (y, x)): Consensus cluster/component labels; -1 indicates noise or unassigned.
+                    * consensus_consistency (float32, shape: (y, x)): Local mean of co-association edge weights around each pixel,
+                      reflecting neighborhood agreement across input cluster maps.
+                - pd.DataFrame: One row per consensus cluster with columns:
+                    * cluster_id
+                    * mean_consistency
+                    * size
+                    * mean_{space_dim0}, mean_{space_dim1} (average spatial coordinates for the cluster)
 
-        ---------------------
-        Algorithm (step-by-step)
-        ---------------------
-        High-level overview:
-        1. Collapse time in each clustering map: mark a pixel as "clustered" if it is ever clustered at any time.
-        2. Record pixel occurrence: count in how many maps each pixel is clustered.
-        3. Vote for spatial edges: whenever two adjacent pixels appear in the same cluster in a map, add a vote for that edge.
-        4. Normalize edge votes: convert votes to fractions of how many maps agree on each adjacency.
-        5. Consensus thresholding: keep only edges agreed upon by at least min_consensus fraction of maps.
-        6. Connected-components labeling: group pixels into consensus clusters using the surviving edges.
-        7. Sort clusters by size and label noise pixels as -1.
+        Algorithm Overview:
+            1. Collapse time in each clustering map: mark a pixel as "clustered" if it is ever assigned to a cluster at any time.
+            2. For each clustering, obtain the spatial footprint of each cluster. Optionally, restrict to the top N clusters.
+            3. For each cluster, increment votes for each pair of adjacent (connected) pixels within that cluster.
+            4. Accumulate edge votes across all clusterings, then normalize by the number of clustering maps.
+            5. Retain only those edges (pixel adjacencies) present in at least `min_consensus` fraction of clusterings.
+            6. Construct an undirected sparse graph with surviving edges; run connected components labeling.
+            7. Relabel clusters in order of descending size for interpretability; assign -1 to isolated (noise) pixels.
+            8. Compute, for each pixel, the mean strength (consistency) of its incident consensus edges.
 
-        Detailed steps:
-        1) **Select inputs**: if `cluster_vars` is None, use all available in
-        `self.td.cluster_vars`. Read grid dims `(time, y, x)` from the first map.
+        Notes:
+            * Adjacency can be 4- or 8-connected; 8-neighborhood is default for spatial coherence.
+            * Consensus clusters represent regions whose internal edges are repeatedly co-clustered
+              across the inputs and may be chained via single-link paths.
+            * Large, non-compact clusters can form if consensus is too lenient; increase `min_consensus` or
+              apply additional filtering for tighter components if needed.
+            * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
 
-        2) **Initialize containers**:
-        - Build a flattened index array `I[y, x] -> {0..y*x-1}` for graph nodes.
+        Example:
+            >>> ds, summary_df = obj.cluster_consensus_spatial(
+                    cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7, neighbor_connectivity=8)
 
-        3) **Per-map spatial footprints & edge votes**:
-        For each `cvar` in `cluster_vars`:
-            a) Read labels `L(time, y, x)`.
-            b) Get the set of cluster IDs (optionally keep only `top_n_clusters`).
-            c) For each cluster ID `cid`:
-                - Form the **2D footprint** `mask2d(y, x) = (L == cid).any(axis=time)`.
-                - For every pair of **adjacent True pixels** in `mask2d`
-                    (left-right and up-down), add one **vote** to the corresponding
-                    edge `(i, j)` of the co-association graph.
-
-        Remark: Edge votes are **accumulated across maps and clusters**.
-
-        4) **Normalize edge weights**:
-        Convert the vote counts to **fractions** by dividing by the number of
-        maps `M = len(cluster_vars)`, so each edge weight `w_ij ∈ [0, 1]`.
-
-        5) **Consensus thresholding**:
-        Keep only edges with `w_ij >= min_consensus`. Remove all others,
-        producing a sparse, undirected graph of “sufficiently agreed” adjacencies.
-
-        6) **Connected components**:
-        Binarize the remaining adjacency and run `connected_components` to assign
-        a component ID to every pixel. Pixels with zero surviving degree are set
-        to `-1` (noise / unassigned).
-
-        7) **Label normalization (optional for readability)**:
-        Reassign component IDs in descending order of component size so that
-        the largest consensus region gets label 0, the next largest 1, etc.
-
-        8) **Finalize arrays**:
-        - Return the 2D label map `(y, x)`.
-
-        ----------------
-        Interpretation
-        ----------------
-        - A consensus component represents a spatial region whose **internal edges**
-        (adjacent pixel pairs) are repeatedly co-clustered across the input maps.
-        - Large regions can form via **single-link chaining**: a sequence of
-        locally agreed edges may connect areas never jointly present in any
-        single map. If undesirable, consider raising `min_consensus`, masking
-        by a minimum `occurrence_rate`, using 8-neighborhood, or applying a
-        post-processing bridge filter (e.g., k-core >= 2).
-
-        -------------------
-        Computational notes
-        -------------------
-        - Time and memory scale with the number of pixels (nodes) and
-        the number of adjacency relations (edges). Using local (4- or 8-neighbor)
-        connectivity keeps the graph sparse and the algorithm fast.
-        - Graph operations are done in scipy sparse format (COO/CSR).
-        - Although the consensus is purely spatial, the output `consensus_clusters`
-        is repeated along the time dimension to maintain compatibility
-        with the original data structure `(time, y, x)`.
-
-        --------------------------
-        Relation to tipping analysis
-        --------------------------
-        This procedure yields **robust, spatially coherent regions** that persist
-        across clustering choices/variables. Such regions form natural units for
-        aggregating resilience metrics (e.g., critical slowing down indicators) and
-        for mapping candidate tipping domains with reduced sensitivity to any
-        single clustering configuration.
+        Raises:
+            ValueError: If neighbor_connectivity is not 4 or 8.
+            AssertionError: If no cluster_vars are found.
         """
         # Get list of cluster variables if not provided
         if cluster_vars is None:
@@ -317,9 +251,22 @@ class Aggregation:
         def add_adjacent_true_pairs(
             mask2d: np.ndarray, edge_set: set[tuple[int, int]], use_eight: bool
         ) -> None:
-            """Add undirected neighbor edges for True cells on a 2D mask (y,x), deduplicated per map.
+            """Adds undirected neighbor edges for True cells in a 2D mask.
 
-            If `use_eight` is True, include diagonal neighbors (8-neighborhood). Otherwise, only 4-neighborhood.
+            For each cell in a 2D boolean mask, this function adds undirected edges between
+            all pairs of adjacent True cells to the provided edge set. Adjacency is determined
+            by 4- or 8-connected neighborhoods.
+
+            Args:
+                mask2d (np.ndarray): A 2D boolean array indicating active cells (True).
+                edge_set (set[tuple[int, int]]): A set to which undirected edge tuples (i, j)
+                    will be added, where i and j are flattened pixel indices. Edges are deduplicated
+                    such that (i, j) and (j, i) are treated as the same.
+                use_eight (bool): If True, consider diagonally adjacent neighbors (8-connectivity).
+                    If False, only include horizontal and vertical neighbors (4-connectivity).
+
+            Returns:
+                None
             """
             # Horizontal neighbors
             common = mask2d[:, :-1] & mask2d[:, 1:]
@@ -355,6 +302,33 @@ class Aggregation:
             labels2d: xr.DataArray,
             consistency2d: xr.DataArray,
         ) -> pd.DataFrame:
+            """Builds a summary DataFrame of cluster statistics from 2D label and consistency arrays.
+
+            Computes descriptive statistics for spatial clusters, including mean consistency,
+            cluster size, spatial centroids, transition-time statistics, and model spread.
+
+            Args:
+                labels2d (xr.DataArray): A 2D array containing integer cluster labels for each spatial cell.
+                    Cells labeled as -1 are considered noise and ignored.
+                consistency2d (xr.DataArray): A 2D array of consistency scores for each spatial cell.
+
+            Returns:
+                pd.DataFrame: A DataFrame with one row per cluster (excluding noise), containing columns:
+                    - cluster_id (int): The cluster label.
+                    - mean_consistency (float): Mean consistency score within the cluster.
+                    - size (int): Number of cells belonging to the cluster.
+                    - mean_<spatial_dim_0> (float): Mean location in the first spatial dimension.
+                    - mean_<spatial_dim_1> (float): Mean location in the second spatial dimension.
+                    - mean_transition_time (float): Mean transition time averaged across models and spatial cells.
+                    - std_transition_time (float): Standard deviation of transition times across models.
+                    - mean_within_model_spread (float): Mean spatial spread of transition times within models.
+                    - std_within_model_spread (float): Standard deviation of within-model spread across models.
+
+            Notes:
+                - If all cells are noise (i.e., all labels are -1), an empty DataFrame with the proper columns is returned.
+                - Transition-time and spread statistics are filled with NaN if unavailable.
+
+            """
             sd0, sd1 = spatial_dims
             dim = labels2d.name if labels2d.name else "cluster"
             cluster_map = labels2d.where(labels2d != -1)

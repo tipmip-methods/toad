@@ -168,6 +168,10 @@ class Aggregation:
         neighbor_connectivity: int = 8,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """
+        This function implements a consensus aggregation closely related to evidence accumulation clustering (EAC) from [Fred+Jain2005]_,
+        but reformulated for spatial grid data. Instead of dense all-pairs co-association, we accumulate "votes" only between spatially neighboring cells,
+        yielding a scalable sparse adjacency graph from which consensus regions are formed.
+
         Builds a spatial consensus map from multiple clustering results by collapsing time within each input,
         constructing a pixel-adjacency co-association graph, thresholding by agreement, and labeling the resulting
         connected components.

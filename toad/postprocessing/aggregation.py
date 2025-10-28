@@ -249,8 +249,15 @@ class Aggregation:
         N = y_len * x_len
         flat_idx_2d = np.arange(N, dtype=np.int64).reshape((y_len, x_len))
 
-        # Store coordinates for output arrays
-        coords_spatial = {d: sample[d] for d in spatial_dims}
+        # Store coordinates for output arrays (include 2D coords like latitude/longitude)
+        coords_spatial = {
+            name: coord
+            for name, coord in sample.coords.items()
+            if (len(coord.dims) > 0) and set(coord.dims).issubset(spatial_dims)
+        }
+        # Ensure the index coordinates for each spatial dim are present
+        for d in spatial_dims:
+            coords_spatial.setdefault(d, sample[d])
 
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []

@@ -248,213 +248,6 @@ class Aggregation:
         # Store coordinates for output arrays
         coords_spatial = {d: sample[d] for d in spatial_dims}
 
-        def add_adjacent_true_pairs(
-            mask2d: np.ndarray, edge_set: set[tuple[int, int]], use_eight: bool
-        ) -> None:
-            """Adds undirected neighbor edges for True cells in a 2D mask.
-
-            For each cell in a 2D boolean mask, this function adds undirected edges between
-            all pairs of adjacent True cells to the provided edge set. Adjacency is determined
-            by 4- or 8-connected neighborhoods.
-
-            Args:
-                mask2d (np.ndarray): A 2D boolean array indicating active cells (True).
-                edge_set (set[tuple[int, int]]): A set to which undirected edge tuples (i, j)
-                    will be added, where i and j are flattened pixel indices. Edges are deduplicated
-                    such that (i, j) and (j, i) are treated as the same.
-                use_eight (bool): If True, consider diagonally adjacent neighbors (8-connectivity).
-                    If False, only include horizontal and vertical neighbors (4-connectivity).
-
-            Returns:
-                None
-            """
-            # Horizontal neighbors
-            common = mask2d[:, :-1] & mask2d[:, 1:]
-            if common.any():
-                a = flat_idx_2d[:, :-1][common].ravel()
-                b = flat_idx_2d[:, 1:][common].ravel()
-                for i, j in zip(a.tolist(), b.tolist()):
-                    edge_set.add((i, j) if i < j else (j, i))
-            # Vertical neighbors
-            common = mask2d[:-1, :] & mask2d[1:, :]
-            if common.any():
-                a = flat_idx_2d[:-1, :][common].ravel()
-                b = flat_idx_2d[1:, :][common].ravel()
-                for i, j in zip(a.tolist(), b.tolist()):
-                    edge_set.add((i, j) if i < j else (j, i))
-            if use_eight:
-                # Diagonal neighbors: top-left to bottom-right
-                common = mask2d[:-1, :-1] & mask2d[1:, 1:]
-                if common.any():
-                    a = flat_idx_2d[:-1, :-1][common].ravel()
-                    b = flat_idx_2d[1:, 1:][common].ravel()
-                    for i, j in zip(a.tolist(), b.tolist()):
-                        edge_set.add((i, j) if i < j else (j, i))
-                # Diagonal neighbors: top-right to bottom-left
-                common = mask2d[:-1, 1:] & mask2d[1:, :-1]
-                if common.any():
-                    a = flat_idx_2d[:-1, 1:][common].ravel()
-                    b = flat_idx_2d[1:, :-1][common].ravel()
-                    for i, j in zip(a.tolist(), b.tolist()):
-                        edge_set.add((i, j) if i < j else (j, i))
-
-        def _build_summary_df(
-            labels2d: xr.DataArray,
-            consistency2d: xr.DataArray,
-        ) -> pd.DataFrame:
-            """Builds a summary DataFrame of cluster statistics from 2D label and consistency arrays.
-
-            Computes descriptive statistics for spatial clusters, including mean consistency,
-            cluster size, spatial centroids, transition-time statistics, and model spread.
-
-            Args:
-                labels2d (xr.DataArray): A 2D array containing integer cluster labels for each spatial cell.
-                    Cells labeled as -1 are considered noise and ignored.
-                consistency2d (xr.DataArray): A 2D array of consistency scores for each spatial cell.
-
-            Returns:
-                pd.DataFrame: A DataFrame with one row per cluster (excluding noise), containing columns:
-                    - cluster_id (int): The cluster label.
-                    - mean_consistency (float): Mean consistency score within the cluster.
-                    - size (int): Number of cells belonging to the cluster.
-                    - mean_<spatial_dim_0> (float): Mean location in the first spatial dimension.
-                    - mean_<spatial_dim_1> (float): Mean location in the second spatial dimension.
-                    - mean_transition_time (float): Mean transition time averaged across models and spatial cells.
-                    - std_transition_time (float): Standard deviation of transition times across models.
-                    - mean_within_model_spread (float): Mean spatial spread of transition times within models.
-                    - std_within_model_spread (float): Standard deviation of within-model spread across models.
-
-            Notes:
-                - If all cells are noise (i.e., all labels are -1), an empty DataFrame with the proper columns is returned.
-                - Transition-time and spread statistics are filled with NaN if unavailable.
-
-            """
-            sd0, sd1 = spatial_dims
-            dim = labels2d.name if labels2d.name else "cluster"
-            cluster_map = labels2d.where(labels2d != -1)
-
-            if np.all(labels2d.values == -1):
-                cols = [
-                    "mean_consistency",
-                    "size",
-                    f"mean_{sd0}",
-                    f"mean_{sd1}",
-                    "mean_transition_time",
-                    "std_transition_time",
-                    "mean_within_model_spread",
-                    "std_within_model_spread",
-                ]
-                return pd.DataFrame({c: [] for c in cols})
-
-            # === Base metrics from xarray groupby ===
-            mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
-            cluster_sizes = (
-                xr.ones_like(cluster_map)
-                .where(cluster_map.notnull())
-                .groupby(cluster_map)
-                .sum(skipna=True)
-            )
-            space_dim0_mean = (
-                self.td.data[sd0]
-                .where(cluster_map >= 0)
-                .groupby(cluster_map)
-                .mean(skipna=True)
-            )
-            space_dim1_mean = (
-                self.td.data[sd1]
-                .where(cluster_map >= 0)
-                .groupby(cluster_map)
-                .mean(skipna=True)
-            )
-
-            df = pd.DataFrame(
-                {
-                    "cluster_id": mean_consistency[dim].values.astype(int),
-                    "mean_consistency": mean_consistency.values.astype(np.float32),
-                    "size": cluster_sizes.values.astype(np.int32),
-                    f"mean_{sd0}": space_dim0_mean.values.astype(np.float32),
-                    f"mean_{sd1}": space_dim1_mean.values.astype(np.float32),
-                }
-            )
-
-            # === Transition-time metrics (vectorized, readable) ===
-            # Build per-model transition-time maps (threshold=0 selects all transitions)
-            transition_time_maps = []
-            for cluster_var in self.td.cluster_vars:
-                shift_var = self.td.data[cluster_var].shifts_variable
-                transition_time_maps.append(
-                    self.td.cluster_stats(shift_var).time.compute_transition_time(
-                        shift_threshold=0.0
-                    )
-                )
-
-            if len(transition_time_maps) == 0:
-                # No models available: return NaNs for transition-time statistics
-                df_transitions = pd.DataFrame(
-                    {
-                        "cluster_id": df["cluster_id"].values.astype(int),
-                        "mean_transition_time": np.nan,
-                        "std_transition_time": np.nan,
-                        "mean_within_model_spread": np.nan,
-                        "std_within_model_spread": np.nan,
-                    }
-                )
-            else:
-                # Stack models into a single array along a named 'cluster_var' axis
-                cluster_var_index = pd.Index(self.td.cluster_vars, name="cluster_var")
-                transition_time_stack = xr.concat(
-                    transition_time_maps, dim=cluster_var_index
-                )
-
-                # For each cluster id: compute per-model spatial mean/std (reduces 'y','x')
-                per_cluster_per_model_mean = transition_time_stack.groupby(
-                    cluster_map
-                ).mean(skipna=True)
-                per_cluster_per_model_std = transition_time_stack.groupby(
-                    cluster_map
-                ).std(skipna=True)
-
-                # Aggregate across models for each cluster id
-                mean_transition_time = per_cluster_per_model_mean.mean(
-                    dim="cluster_var", skipna=True
-                )
-                std_transition_time_by = per_cluster_per_model_mean.std(
-                    dim="cluster_var", skipna=True
-                )
-                mean_within_model_spread = per_cluster_per_model_std.mean(
-                    dim="cluster_var", skipna=True
-                )
-                std_within_model_spread = per_cluster_per_model_std.std(
-                    dim="cluster_var", skipna=True
-                )
-
-                # Build DataFrame with the same grouping dimension as above
-                group_dim = mean_consistency.dims[0]
-                df_transitions = pd.DataFrame(
-                    {
-                        "cluster_id": mean_transition_time[group_dim].values.astype(
-                            int
-                        ),
-                        "mean_transition_time": mean_transition_time.values.astype(
-                            np.float32
-                        ),
-                        "std_transition_time": std_transition_time_by.values.astype(
-                            np.float32
-                        ),
-                        "mean_within_model_spread": mean_within_model_spread.values.astype(
-                            np.float32
-                        ),
-                        "std_within_model_spread": std_within_model_spread.values.astype(
-                            np.float32
-                        ),
-                    }
-                )
-
-            # Merge side-by-side
-            df = df.merge(df_transitions, on="cluster_id", how="left")
-
-            return df
-
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
 
@@ -475,7 +268,9 @@ class Aggregation:
             # For each cluster, find adjacent cells that were ever in it
             for cid in unique_ids:
                 mask2d = (labels == cid).any(axis=0)  # (Y, X)
-                add_adjacent_true_pairs(mask2d, map_edges, neighbor_connectivity == 8)
+                add_adjacent_true_pairs(
+                    mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
+                )
 
             if map_edges:
                 r, c = zip(*map_edges)
@@ -502,7 +297,9 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_df = _build_summary_df(da_consensus_labels, da_consistency)
+            summary_df = build_consensus_summary_df(
+                da_consensus_labels, da_consistency, self.td, spatial_dims
+            )
             return ds_out, summary_df
 
         # Create sparse adjacency matrix
@@ -545,7 +342,9 @@ class Aggregation:
                     "consensus_consistency": da_consistency,
                 }
             )
-            summary_df = _build_summary_df(da_consensus_labels, da_consistency)
+            summary_df = build_consensus_summary_df(
+                da_consensus_labels, da_consistency, self.td, spatial_dims
+            )
             return ds_out, summary_df
 
         # Compute per-node average edge weight
@@ -604,7 +403,9 @@ class Aggregation:
             }
         )
 
-        summary_df = _build_summary_df(da_consensus_labels, da_consistency)
+        summary_df = build_consensus_summary_df(
+            da_consensus_labels, da_consistency, self.td, spatial_dims
+        )
         return ds_out, summary_df
 
 
@@ -653,3 +454,205 @@ def precompute_spatial_memberships(td, cluster_vars):
             lookup[(cvar, cid)] = set(flat_idxs)
 
     return lookup
+
+
+def add_adjacent_true_pairs(
+    mask2d: np.ndarray,
+    edge_set: set[tuple[int, int]],
+    flat_idx_2d: np.ndarray,
+    use_eight: bool,
+) -> None:
+    """Adds undirected neighbor edges for True cells in a 2D mask.
+
+    For each cell in a 2D boolean mask, this function adds undirected edges between
+    all pairs of adjacent True cells to the provided edge set. Adjacency is determined
+    by 4- or 8-connected neighborhoods.
+
+    Args:
+        mask2d (np.ndarray): A 2D boolean array indicating active cells (True).
+        edge_set (set[tuple[int, int]]): A set to which undirected edge tuples (i, j)
+            will be added, where i and j are flattened pixel indices. Edges are deduplicated
+            such that (i, j) and (j, i) are treated as the same.
+        flat_idx_2d (np.ndarray): A 2D array of flattened indices, shape (y_len, x_len).
+        use_eight (bool): If True, consider diagonally adjacent neighbors (8-connectivity).
+            If False, only include horizontal and vertical neighbors (4-connectivity).
+
+    Returns:
+        None
+    """
+    # Horizontal neighbors
+    common = mask2d[:, :-1] & mask2d[:, 1:]
+    if common.any():
+        a = flat_idx_2d[:, :-1][common].ravel()
+        b = flat_idx_2d[:, 1:][common].ravel()
+        for i, j in zip(a.tolist(), b.tolist()):
+            edge_set.add((i, j) if i < j else (j, i))
+    # Vertical neighbors
+    common = mask2d[:-1, :] & mask2d[1:, :]
+    if common.any():
+        a = flat_idx_2d[:-1, :][common].ravel()
+        b = flat_idx_2d[1:, :][common].ravel()
+        for i, j in zip(a.tolist(), b.tolist()):
+            edge_set.add((i, j) if i < j else (j, i))
+    if use_eight:
+        # Diagonal neighbors: top-left to bottom-right
+        common = mask2d[:-1, :-1] & mask2d[1:, 1:]
+        if common.any():
+            a = flat_idx_2d[:-1, :-1][common].ravel()
+            b = flat_idx_2d[1:, 1:][common].ravel()
+            for i, j in zip(a.tolist(), b.tolist()):
+                edge_set.add((i, j) if i < j else (j, i))
+        # Diagonal neighbors: top-right to bottom-left
+        common = mask2d[:-1, 1:] & mask2d[1:, :-1]
+        if common.any():
+            a = flat_idx_2d[:-1, 1:][common].ravel()
+            b = flat_idx_2d[1:, :-1][common].ravel()
+            for i, j in zip(a.tolist(), b.tolist()):
+                edge_set.add((i, j) if i < j else (j, i))
+
+
+def build_consensus_summary_df(
+    labels2d: xr.DataArray,
+    consistency2d: xr.DataArray,
+    td,
+    spatial_dims: Tuple[str, str],
+) -> pd.DataFrame:
+    """Builds a summary DataFrame of cluster statistics from 2D label and consistency arrays.
+
+    Computes descriptive statistics for spatial clusters, including mean consistency,
+    cluster size, spatial centroids, transition-time statistics, and model spread.
+
+    Args:
+        labels2d (xr.DataArray): A 2D array containing integer cluster labels for each spatial cell.
+            Cells labeled as -1 are considered noise and ignored.
+        consistency2d (xr.DataArray): A 2D array of consistency scores for each spatial cell.
+        td: TOAD object containing data and cluster variables.
+        spatial_dims (Tuple[str, str]): Tuple of (dim0, dim1) spatial dimension names.
+
+    Returns:
+        pd.DataFrame: A DataFrame with one row per cluster (excluding noise), containing columns:
+            - cluster_id (int): The cluster label.
+            - mean_consistency (float): Mean consistency score within the cluster.
+            - size (int): Number of cells belonging to the cluster.
+            - mean_<spatial_dim_0> (float): Mean location in the first spatial dimension.
+            - mean_<spatial_dim_1> (float): Mean location in the second spatial dimension.
+            - mean_transition_time (float): Mean transition time averaged across models and spatial cells.
+            - std_transition_time (float): Standard deviation of transition times across models.
+            - mean_within_model_spread (float): Mean spatial spread of transition times within models.
+            - std_within_model_spread (float): Standard deviation of within-model spread across models.
+
+    Notes:
+        - If all cells are noise (i.e., all labels are -1), an empty DataFrame with the proper columns is returned.
+        - Transition-time and spread statistics are filled with NaN if unavailable.
+    """
+    sd0, sd1 = spatial_dims
+    dim = labels2d.name if labels2d.name else "cluster"
+    cluster_map = labels2d.where(labels2d != -1)
+
+    if np.all(labels2d.values == -1):
+        cols = [
+            "mean_consistency",
+            "size",
+            f"mean_{sd0}",
+            f"mean_{sd1}",
+            "mean_transition_time",
+            "std_transition_time",
+            "mean_within_model_spread",
+            "std_within_model_spread",
+        ]
+        return pd.DataFrame({c: [] for c in cols})
+
+    # === Base metrics from xarray groupby ===
+    mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
+    cluster_sizes = (
+        xr.ones_like(cluster_map)
+        .where(cluster_map.notnull())
+        .groupby(cluster_map)
+        .sum(skipna=True)
+    )
+    space_dim0_mean = (
+        td.data[sd0].where(cluster_map >= 0).groupby(cluster_map).mean(skipna=True)
+    )
+    space_dim1_mean = (
+        td.data[sd1].where(cluster_map >= 0).groupby(cluster_map).mean(skipna=True)
+    )
+
+    df = pd.DataFrame(
+        {
+            "cluster_id": mean_consistency[dim].values.astype(int),
+            "mean_consistency": mean_consistency.values.astype(np.float32),
+            "size": cluster_sizes.values.astype(np.int32),
+            f"mean_{sd0}": space_dim0_mean.values.astype(np.float32),
+            f"mean_{sd1}": space_dim1_mean.values.astype(np.float32),
+        }
+    )
+
+    # === Transition-time metrics (vectorized, readable) ===
+    # Build per-model transition-time maps (threshold=0 selects all transitions)
+    transition_time_maps = []
+    for cluster_var in td.cluster_vars:
+        shift_var = td.data[cluster_var].shifts_variable
+        transition_time_maps.append(
+            td.cluster_stats(shift_var).time.compute_transition_time(
+                shift_threshold=0.0
+            )
+        )
+
+    if len(transition_time_maps) == 0:
+        # No models available: return NaNs for transition-time statistics
+        df_transitions = pd.DataFrame(
+            {
+                "cluster_id": df["cluster_id"].values.astype(int),
+                "mean_transition_time": np.nan,
+                "std_transition_time": np.nan,
+                "mean_within_model_spread": np.nan,
+                "std_within_model_spread": np.nan,
+            }
+        )
+    else:
+        # Stack models into a single array along a named 'cluster_var' axis
+        cluster_var_index = pd.Index(td.cluster_vars, name="cluster_var")
+        transition_time_stack = xr.concat(transition_time_maps, dim=cluster_var_index)
+
+        # For each cluster id: compute per-model spatial mean/std (reduces 'y','x')
+        per_cluster_per_model_mean = transition_time_stack.groupby(cluster_map).mean(
+            skipna=True
+        )
+        per_cluster_per_model_std = transition_time_stack.groupby(cluster_map).std(
+            skipna=True
+        )
+
+        # Aggregate across models for each cluster id
+        mean_transition_time = per_cluster_per_model_mean.mean(
+            dim="cluster_var", skipna=True
+        )
+        std_transition_time_by = per_cluster_per_model_mean.std(
+            dim="cluster_var", skipna=True
+        )
+        mean_within_model_spread = per_cluster_per_model_std.mean(
+            dim="cluster_var", skipna=True
+        )
+        std_within_model_spread = per_cluster_per_model_std.std(
+            dim="cluster_var", skipna=True
+        )
+
+        # Build DataFrame with the same grouping dimension as above
+        group_dim = mean_consistency.dims[0]
+        df_transitions = pd.DataFrame(
+            {
+                "cluster_id": mean_transition_time[group_dim].values.astype(int),
+                "mean_transition_time": mean_transition_time.values.astype(np.float32),
+                "std_transition_time": std_transition_time_by.values.astype(np.float32),
+                "mean_within_model_spread": mean_within_model_spread.values.astype(
+                    np.float32
+                ),
+                "std_within_model_spread": std_within_model_spread.values.astype(
+                    np.float32
+                ),
+            }
+        )
+
+    # Merge side-by-side
+    df = df.merge(df_transitions, on="cluster_id", how="left")
+
+    return df

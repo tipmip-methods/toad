@@ -352,67 +352,112 @@ class Aggregation:
                         edge_set.add((i, j) if i < j else (j, i))
 
         def _build_summary_df(
-            labels2d: xr.DataArray, consistency2d: xr.DataArray
+            labels2d: xr.DataArray,
+            consistency2d: xr.DataArray,
         ) -> pd.DataFrame:
-            """Compute 1D per-cluster summary variables and return as a DataFrame.
-
-            Returns a DataFrame with columns:
-            - mean_consistency
-            - size
-            - mean_{space_dim0}
-            - mean_{space_dim1}
-            and index cluster_id.
-            """
-            cluster_map = labels2d.where(labels2d != -1)
             sd0, sd1 = spatial_dims
-            dim = cluster_map.name if cluster_map.name else "cluster"
-            cname = "cluster_id"
+            dim = labels2d.name if labels2d.name else "cluster"
+            cluster_map = labels2d.where(labels2d != -1)
 
-            # If no clusters present, return empty DataFrame
             if np.all(labels2d.values == -1):
-                cols = ["mean_consistency", "size", f"mean_{sd0}", f"mean_{sd1}"]
+                cols = [
+                    "mean_consistency",
+                    "size",
+                    f"mean_{sd0}",
+                    f"mean_{sd1}",
+                    "mean_transition_time",
+                    "std_transition_time",
+                    "mean_within_model_spread",
+                    "std_within_model_spread",
+                ]
                 return pd.DataFrame({c: [] for c in cols})
 
-            mean_consistency = (
-                consistency2d.groupby(cluster_map)
-                .mean(skipna=True)
-                .rename({dim: cname})
-                .astype(np.float32)
-            )
+            # === Base metrics from xarray groupby ===
+            mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
             cluster_sizes = (
-                xr.full_like(cluster_map, 1, dtype=np.int32)
+                xr.ones_like(cluster_map)
                 .where(cluster_map.notnull())
                 .groupby(cluster_map)
                 .sum(skipna=True)
-                .rename({dim: cname})
-                .astype(np.int32)
             )
             space_dim0_mean = (
                 self.td.data[sd0]
                 .where(cluster_map >= 0)
                 .groupby(cluster_map)
                 .mean(skipna=True)
-                .rename({dim: cname})
-                .astype(np.float32)
             )
             space_dim1_mean = (
                 self.td.data[sd1]
                 .where(cluster_map >= 0)
                 .groupby(cluster_map)
                 .mean(skipna=True)
-                .rename({dim: cname})
-                .astype(np.float32)
             )
 
-            ds = xr.Dataset(
+            df = pd.DataFrame(
                 {
-                    "mean_consistency": mean_consistency,
-                    "size": cluster_sizes,
-                    f"mean_{sd0}": space_dim0_mean,
-                    f"mean_{sd1}": space_dim1_mean,
+                    "cluster_id": mean_consistency[dim].values.astype(int),
+                    "mean_consistency": mean_consistency.values.astype(np.float32),
+                    "size": cluster_sizes.values.astype(np.int32),
+                    f"mean_{sd0}": space_dim0_mean.values.astype(np.float32),
+                    f"mean_{sd1}": space_dim1_mean.values.astype(np.float32),
                 }
             )
-            return ds.to_dataframe().reset_index()
+
+            # === Transition-time metrics ===
+            transition_maps = []
+            for cvar in self.td.cluster_vars:
+                svar = self.td.data[cvar].shifts_variable
+                transition_maps += [
+                    self.td.cluster_stats(svar).time.compute_transition_time(
+                        shift_threshold=0.1
+                    )
+                ]
+
+            results = []
+            cluster_ids = df["cluster_id"].values
+
+            for cluster_id in cluster_ids:
+                mask = labels2d == cluster_id
+                maps = [m.where(mask) for m in transition_maps]
+                stack = xr.concat(maps, dim="cluster_var")
+
+                if stack.notnull().sum() == 0:
+                    results.append(
+                        {
+                            "cluster_id": int(cluster_id),
+                            "mean_transition_time": 0,
+                            "std_transition_time": 0,
+                            "mean_within_model_spread": 0,
+                            "std_within_model_spread": 0,
+                        }
+                    )
+
+                # spatial mean for each model
+                mean_per_model = stack.mean(dim=self.td.space_dims, skipna=True)
+
+                mean_transition_time = mean_per_model.mean(skipna=True).item()
+                std_transition_time = mean_per_model.std(skipna=True).item()
+
+                std_per_model = stack.std(dim=self.td.space_dims, skipna=True)
+                mean_within_model_spread = std_per_model.mean(skipna=True).item()
+                std_within_model_spread = std_per_model.std(skipna=True).item()
+
+                results.append(
+                    {
+                        "cluster_id": int(cluster_id),
+                        "mean_transition_time": mean_transition_time,
+                        "std_transition_time": std_transition_time,
+                        "mean_within_model_spread": mean_within_model_spread,
+                        "std_within_model_spread": std_within_model_spread,
+                    }
+                )
+
+            df_transitions = pd.DataFrame(results)
+
+            # Merge side-by-side
+            df = df.merge(df_transitions, on="cluster_id", how="left")
+
+            return df
 
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
@@ -484,13 +529,6 @@ class Aggregation:
         csr.data = np.where(mask_keep, csr.data, 0).astype(csr.data.dtype, copy=False)
         csr.eliminate_zeros()
 
-        # Compute per-node average edge weight
-        node_sum = np.array(csr.sum(axis=1)).ravel()
-        node_deg = np.array(csr.count_nonzero(axis=1)).ravel().astype(np.float32)
-        consensus_consistency = np.divide(
-            node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
-        ).reshape((y_len, x_len))
-
         # If no edges remain after thresholding, return all noise
         if csr.nnz == 0:
             da_consensus_labels = xr.DataArray(
@@ -500,7 +538,7 @@ class Aggregation:
                 name="consensus_clusters",
             )
             da_consistency = xr.DataArray(
-                consensus_consistency,
+                np.full((y_len, x_len), 0, dtype=np.float32),
                 coords=coords_spatial,
                 dims=spatial_dims,
                 name="consensus_consistency",
@@ -513,6 +551,13 @@ class Aggregation:
             )
             summary_df = _build_summary_df(da_consensus_labels, da_consistency)
             return ds_out, summary_df
+
+        # Compute per-node average edge weight
+        node_sum = np.array(csr.sum(axis=1)).ravel()
+        node_deg = np.array(csr.count_nonzero(axis=1)).ravel().astype(np.float32)
+        consensus_consistency = np.divide(
+            node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
+        ).reshape((y_len, x_len))
 
         # Find connected components in thresholded graph
         bin_adj = csr.copy()
@@ -562,6 +607,7 @@ class Aggregation:
                 "consensus_consistency": da_consistency,
             }
         )
+
         summary_df = _build_summary_df(da_consensus_labels, da_consistency)
         return ds_out, summary_df
 

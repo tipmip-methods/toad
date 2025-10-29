@@ -1,3 +1,4 @@
+import logging
 from itertools import combinations
 from typing import List, Tuple
 
@@ -9,7 +10,11 @@ from scipy.sparse.csgraph import connected_components
 from sklearn.neighbors import NearestNeighbors
 
 from toad.clustering import sorted_cluster_labels
+from toad.regridding.base import BaseRegridder
+from toad.regridding.healpix import HealPixRegridder
 from toad.utils import detect_latlon_names, get_unique_variable_name
+
+logger = logging.getLogger("TOAD")
 
 
 class Aggregation:
@@ -167,6 +172,7 @@ class Aggregation:
         min_consensus: float = 0.5,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
+        regridder: BaseRegridder | None = None,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """
         This function implements a consensus aggregation closely related to evidence accumulation clustering (EAC) from [Fred+Jain2005]_,
@@ -188,6 +194,7 @@ class Aggregation:
             top_n_clusters (int or None): If set, only top N largest clusters (per clustering) are used when voting for edges.
                 If None, all clusters are included.
             neighbor_connectivity (int): Neighborhood connectivity for spatial adjacency, either 4 (Von Neumann) or 8 (Moore, default).
+            regridder (BaseRegridder | None): If you used a custom regridder, you need to provide it here. Defaults to None, if reguarl lat/lon data, HealPixRegridder will be used automatically.
 
         Returns:
             Tuple[xr.Dataset, pd.DataFrame]:
@@ -267,9 +274,12 @@ class Aggregation:
         has_latlon = lat_name is not None and lon_name is not None
 
         # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
-        # is_latlon_dims = has_latlon and (self.td.space_dims == [lat_name, lon_name])
+        is_latlon_dims = has_latlon and (self.td.space_dims == [lat_name, lon_name])
 
-        # use knn if dataset has lat/lon and is a regular 1D lat/lon grid
+        # Recast naming for readability
+        regrid_enabled = is_latlon_dims
+
+        # use knn if dataset has lat/lon
         if has_latlon:
             lat = sample[lat_name].values
             lon = sample[lon_name].values
@@ -278,10 +288,15 @@ class Aggregation:
             if lat.ndim == 1 and lon.ndim == 1:
                 lon, lat = np.meshgrid(lon, lat)
 
-            # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
-            knn_rows, knn_cols = build_knn_edges_from_latlon(lat, lon, k=8)
+            if regrid_enabled:
+                knn_rows, knn_cols, hp_index_flat = build_knn_edges_from_regridder(
+                    lat, lon, k=8, regridder=regridder
+                )
+            else:
+                # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
+                knn_rows, knn_cols = build_knn_edges_from_latlon(lat, lon, k=8)
+
             use_knn = True
-            print("Using KNN for adjacency")
         else:
             # fallback to index-based adjacency
             print("Using index-based adjacency")
@@ -292,38 +307,62 @@ class Aggregation:
 
         # Process each clustering
         for cvar in cluster_vars:
-            labels = self.td.data[cvar].values  # (T, Y, X)
+            if regrid_enabled:
+                # collapse time to 2D mask
+                labels3d = self.td.data[cvar].values
+                labels_2d = (labels3d >= 0).any(axis=0)  # (Y,X), boolean
 
-            # Get unique cluster IDs, optionally taking only top N largest
-            unique_ids = self.td.get_cluster_ids(cvar)
-            if unique_ids.size == 0:
-                continue
-            if top_n_clusters is not None and top_n_clusters > 0:
-                unique_ids = unique_ids[:top_n_clusters]
+                mask_flat_orig = labels_2d.ravel()  # original grid mask
 
-            # Per-map deduplication of edges
-            map_edges: set[tuple[int, int]] = set()
+                # Convert mask to HealPix indexing
+                # hp_index_flat maps original pixels → HealPix pixels
+                # Build boolean mask *indexed by HealPix ID*
+                max_pix = hp_index_flat.max()
+                mask_hp = np.zeros(max_pix + 1, dtype=bool)
 
-            # For each cluster, find adjacent cells that were ever in it
-            for cid in unique_ids:
-                mask2d = (labels == cid).any(axis=0)  # (Y, X)
+                mask_hp_index = hp_index_flat[mask_flat_orig]
+                mask_hp[np.unique(mask_hp_index)] = True
 
-                if use_knn:
-                    # cluster footprint mask
-                    mask_flat = (labels == cid).any(axis=0).ravel()
+                # Now adjacency check purely in hp_index space
+                both = mask_hp[knn_rows] & mask_hp[knn_cols]
+                rows = knn_rows[both]
+                cols = knn_cols[both]
 
-                    both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
-                    for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
-                        map_edges.add((int(i), int(j)))
-                else:
-                    add_adjacent_true_pairs(
-                        mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
-                    )
+                # Append unique (i<j)
+                edge_rows.extend(rows.tolist())
+                edge_cols.extend(cols.tolist())
+            else:
+                labels = self.td.data[cvar].values  # (T, Y, X)
 
-            if map_edges:
-                r, c = zip(*map_edges)
-                edge_rows.extend(r)
-                edge_cols.extend(c)
+                # Get unique cluster IDs, optionally taking only top N largest
+                unique_ids = self.td.get_cluster_ids(cvar)
+                if unique_ids.size == 0:
+                    continue
+                if top_n_clusters is not None and top_n_clusters > 0:
+                    unique_ids = unique_ids[:top_n_clusters]
+
+                # Per-map deduplication of edges
+                map_edges: set[tuple[int, int]] = set()
+
+                # build adjacency edges for each cluster footprint
+                for cid in unique_ids:
+                    mask2d = (labels == cid).any(axis=0)  # (Y, X)
+
+                    if use_knn:
+                        # cluster footprint mask
+                        mask_flat = (labels == cid).any(axis=0).ravel()
+                        both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
+                        for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
+                            map_edges.add((int(i), int(j)))
+                    else:
+                        add_adjacent_true_pairs(
+                            mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
+                        )
+
+                if map_edges:
+                    r, c = zip(*map_edges)
+                    edge_rows.extend(r)
+                    edge_cols.extend(c)
 
         # If no edges found, return all cells as noise
         if len(edge_rows) == 0:
@@ -351,13 +390,19 @@ class Aggregation:
             return ds_out, summary_df
 
         # Create sparse adjacency matrix
-        rows = np.array(edge_rows, dtype=np.int64)
-        cols = np.array(edge_cols, dtype=np.int64)
-        data = np.ones(len(rows), dtype=np.float32)
-        M = len(cluster_vars)
+        if regrid_enabled:
+            N_hp = mask_hp.size  # number of healpix pixels
+            coo = coo_matrix(
+                (np.ones(len(edge_rows)), (edge_rows, edge_cols)), shape=(N_hp, N_hp)
+            )
+        else:
+            # Convert to normalized adjacency matrix (fraction of maps supporting each undirected edge)
+            rows = np.array(edge_rows, dtype=np.int64)
+            cols = np.array(edge_cols, dtype=np.int64)
+            data = np.ones(len(rows), dtype=np.float32)
+            coo = coo_matrix((data, (rows, cols)), shape=(N, N))
 
-        # Convert to normalized adjacency matrix (fraction of maps supporting each undirected edge)
-        coo = coo_matrix((data, (rows, cols)), shape=(N, N))
+        M = len(cluster_vars)
         csr = coo.tocsr()
         csr.sum_duplicates()
         csr.data = np.divide(csr.data, float(M))
@@ -370,7 +415,7 @@ class Aggregation:
         csr.data = np.where(mask_keep, csr.data, 0).astype(csr.data.dtype, copy=False)
         csr.eliminate_zeros()
 
-        # If no edges remain after thresholding, return all noise
+        # If no edges remain after thresholding, return all noise / TODO: fix for regrid_enabled
         if csr.nnz == 0:
             da_consensus_labels = xr.DataArray(
                 np.full((y_len, x_len), -1, dtype=np.int32),
@@ -398,9 +443,20 @@ class Aggregation:
         # Compute per-node average edge weight
         node_sum = np.array(csr.sum(axis=1)).ravel()
         node_deg = np.array(csr.count_nonzero(axis=1)).ravel().astype(np.float32)
-        consensus_consistency = np.divide(
-            node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
-        ).reshape((y_len, x_len))
+
+        # TODO fix for regrid_enabled
+        if regrid_enabled:
+            consistency_hp = np.divide(
+                node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
+            )
+
+            # map back to original grid
+            consistency_orig = consistency_hp[hp_index_flat]  # shape: (N_orig,)
+            consensus_consistency = consistency_orig.reshape(lat.shape)  # shape: (Y, X)
+        else:
+            consensus_consistency = np.divide(
+                node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
+            ).reshape((y_len, x_len))
 
         # Find connected components in thresholded graph
         bin_adj = csr.copy()
@@ -411,9 +467,17 @@ class Aggregation:
         )
 
         # Reshape labels back to 2D and mark isolated points as noise
-        labels_2d = labels_flat.reshape((y_len, x_len))
-        deg = np.array(bin_adj.getnnz(axis=1)).reshape((y_len, x_len))
-        labels_2d[deg == 0] = -1
+        if regrid_enabled:
+            labels_flat_orig = labels_flat[hp_index_flat]  # shape (N,)
+            labels_2d = labels_flat_orig.reshape(lat.shape)  # restored (Y,X)
+            deg_hp = np.array(bin_adj.getnnz(axis=1))
+            deg_orig = deg_hp[hp_index_flat]
+            deg_2d = deg_orig.reshape(lat.shape)
+            labels_2d[deg_2d == 0] = -1
+        else:
+            labels_2d = labels_flat.reshape((y_len, x_len))
+            deg = np.array(bin_adj.getnnz(axis=1)).reshape((y_len, x_len))
+            labels_2d[deg == 0] = -1
 
         # Sort cluster labels by size
         flat = labels_2d.flatten()
@@ -573,58 +637,110 @@ def build_knn_edges_from_latlon(
     lat2d: np.ndarray,
     lon2d: np.ndarray,
     k: int = 8,
-    mask2d: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Build undirected edges using K-nearest neighbors on a sphere.
 
     Args:
-        lat2d, lon2d: 2D arrays with spatial dims matching data.
-        k: number of neighbors to connect per point (approx connectivity).
-        mask2d: boolean mask for valid cells (optional).
+        lat2d, lon2d: 2D arrays of latitude and longitude.
+        k: number of neighbors per point.
 
     Returns:
         rows_full, cols_full: arrays of flat indices for undirected edges.
     """
-    H, W = lat2d.shape
-
-    # Treat only valid cells
-    if mask2d is None:
-        active = np.ones((H, W), dtype=bool)
-    else:
-        active = mask2d
-
-    flat_full = np.arange(H * W, dtype=np.int64).reshape(H, W)
-    flat_active = flat_full[active]
-
-    N = flat_active.size
+    N = lat2d.size  # Total number of spatial points (pixels)
     if N == 0:
-        print("No active cells found")
+        # If there are no points, return empty edge arrays
         return np.array([], np.int64), np.array([], np.int64)
 
-    xyz = _latlon_to_unit_xyz(lat2d[active], lon2d[active])  # (N,3)
+    flat_idx = np.arange(N, dtype=np.int64)
+    xyz = _latlon_to_unit_xyz(lat2d.ravel(), lon2d.ravel())
 
-    # Fit KNN (k+1 includes self; we drop that)
-    nn = NearestNeighbors(
-        n_neighbors=min(k + 1, N), algorithm="auto", metric="euclidean"
-    )
+    # Create a NearestNeighbors model to find k+1 nearest neighbors (including self)
+    nn = NearestNeighbors(n_neighbors=min(k + 1, N))
     nn.fit(xyz)
-    _, nbrs = nn.kneighbors(xyz)  # (N, k+1)
+    _, nbrs = nn.kneighbors(xyz)  # For each point, get indices of closest (k+1) points
 
-    # Build undirected edges
-    rows = np.repeat(np.arange(N, dtype=np.int64), nbrs.shape[1] - 1)
-    cols = nbrs[:, 1:].ravel()  # skip self
+    # For each source point, repeat its index k times (exclude self)
+    rows = np.repeat(flat_idx, nbrs.shape[1] - 1)
+    # Flatten the neighbors (excluding self which is first in nbrs) to form destination indices
+    cols = nbrs[:, 1:].ravel()
 
-    # Ensure i<j to dedupe
-    keep = rows < cols
-    rows = rows[keep]
-    cols = cols[keep]
+    # Mask to keep only pairs (i, j) where i < j, to ensure each undirected edge appears only once
+    mask = rows < cols
+    return rows[mask], cols[mask]
 
-    # Map compact active indices back to full grid
-    rows_full = flat_active[rows]
-    cols_full = flat_active[cols]
 
-    return rows_full, cols_full
+def build_knn_edges_from_regridder(
+    lat2d: np.ndarray,
+    lon2d: np.ndarray,
+    k: int = 8,
+    regridder: BaseRegridder | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build undirected edges between spatial cells using K-nearest neighbors,
+    after regridding the original (lat, lon) grid to a regularized grid (e.g., HealPix).
+
+    This method is typically used for regular or near-regular lat/lon grids to regrid to
+    a uniform spherical representation before building adjacency relationships.
+
+    Args:
+        lat2d (np.ndarray): 2D array of latitude values (degrees).
+        lon2d (np.ndarray): 2D array of longitude values (degrees).
+        k (int, optional): Number of nearest neighbors to use for each point (default is 8).
+        regridder (BaseRegridder or None, optional): An object implementing a `map_orig_to_regrid`
+            method, used to map original (lat, lon) points to indices in the regridded space.
+            If None, uses HealPixRegridder.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]:
+            Two 1D arrays (knn_rows, knn_cols) of equal length, each containing flat integer indices
+            denoting undirected edges between neighboring spatial cells in the regridded space.
+            Only unique unordered pairs (i < j) are included.
+            Arrays will be empty if there are no spatial points.
+    """
+
+    N = lat2d.size  # Total number of spatial points (pixels)
+    if N == 0:
+        # If there are no points, return empty edge arrays
+        return np.array([], np.int64), np.array([], np.int64)
+
+    # Flatten original grid
+    coords_latlon_flat = np.column_stack([lat2d.ravel(), lon2d.ravel()])  # (N,2)
+
+    # create regridder if not provided
+    if regridder is None:
+        regridder = HealPixRegridder()
+
+    # Map each original pixel to HealPix pixel
+    hp_index_flat = regridder.map_orig_to_regrid(coords_latlon_flat)  # (N,)
+
+    # Build KNN adjacency once in regridder space (HealPix space)
+    # Convert (lat, lon) coordinates to 3D unit sphere (Cartesian) coordinates for KNN on a sphere
+    xyz = _latlon_to_unit_xyz(coords_latlon_flat[:, 0], coords_latlon_flat[:, 1])
+
+    # Initialize and fit a NearestNeighbors model (KNN, k+1 including self) using the 3D coordinates
+    nn = NearestNeighbors(n_neighbors=min(k + 1, N)).fit(xyz)
+
+    # Compute the nearest neighbors for each point (returns indices for each point's KNN)
+    _, nbrs = nn.kneighbors(xyz)
+
+    # For each source point, repeat its index (k times, skipping self), used for building edges
+    knn_rows = np.repeat(np.arange(len(xyz)), nbrs.shape[1] - 1)
+
+    # Flatten the neighbor indices (excluding self) to form the destination points in edges
+    knn_cols = nbrs[:, 1:].ravel()
+
+    # Boolean mask to keep only unordered pairs (i < j), so each edge is included only once (undirected graph)
+    keep = knn_rows < knn_cols
+
+    # Map source indices from the original grid to their HealPix regridded indices and apply mask
+    knn_rows = hp_index_flat[knn_rows[keep]]
+
+    # Map destination indices from the original grid to their HealPix regridded indices and apply mask
+    knn_cols = hp_index_flat[knn_cols[keep]]
+
+    return knn_rows, knn_cols, hp_index_flat
 
 
 def build_consensus_summary_df(

@@ -6,9 +6,10 @@ import pandas as pd
 import xarray as xr
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
+from sklearn.neighbors import NearestNeighbors
 
 from toad.clustering import sorted_cluster_labels
-from toad.utils import get_unique_variable_name
+from toad.utils import detect_latlon_names, get_unique_variable_name
 
 
 class Aggregation:
@@ -259,6 +260,33 @@ class Aggregation:
         for d in spatial_dims:
             coords_spatial.setdefault(d, sample[d])
 
+        # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
+        lat_name, lon_name = detect_latlon_names(self.td.data)
+
+        # check if dataset has lat/lon (as dims, or coords, or variables)
+        has_latlon = lat_name is not None and lon_name is not None
+
+        # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
+        # is_latlon_dims = has_latlon and (self.td.space_dims == [lat_name, lon_name])
+
+        # use knn if dataset has lat/lon and is a regular 1D lat/lon grid
+        if has_latlon:
+            lat = sample[lat_name].values
+            lon = sample[lon_name].values
+
+            # if lat/lon are 1D, convert to 2D to keep consistent with 2D grids, i.e. irregular such as lat(i, j) and lon(i, j)
+            if lat.ndim == 1 and lon.ndim == 1:
+                lon, lat = np.meshgrid(lon, lat)
+
+            # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
+            knn_rows, knn_cols = build_knn_edges_from_latlon(lat, lon, k=8)
+            use_knn = True
+            print("Using KNN for adjacency")
+        else:
+            # fallback to index-based adjacency
+            print("Using index-based adjacency")
+            use_knn = False
+
         # Lists to store graph edges between adjacent cells
         edge_rows, edge_cols = [], []
 
@@ -279,9 +307,18 @@ class Aggregation:
             # For each cluster, find adjacent cells that were ever in it
             for cid in unique_ids:
                 mask2d = (labels == cid).any(axis=0)  # (Y, X)
-                add_adjacent_true_pairs(
-                    mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
-                )
+
+                if use_knn:
+                    # cluster footprint mask
+                    mask_flat = (labels == cid).any(axis=0).ravel()
+
+                    both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
+                    for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
+                        map_edges.add((int(i), int(j)))
+                else:
+                    add_adjacent_true_pairs(
+                        mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
+                    )
 
             if map_edges:
                 r, c = zip(*map_edges)
@@ -520,6 +557,74 @@ def add_adjacent_true_pairs(
             b = flat_idx_2d[1:, :-1][common].ravel()
             for i, j in zip(a.tolist(), b.tolist()):
                 edge_set.add((i, j) if i < j else (j, i))
+
+
+def _latlon_to_unit_xyz(lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
+    """Convert (lat, lon) in degrees to unit sphere Cartesian coords."""
+    lat = np.deg2rad(lat_deg)
+    lon = np.deg2rad(lon_deg)
+    x = np.cos(lat) * np.cos(lon)
+    y = np.cos(lat) * np.sin(lon)
+    z = np.sin(lat)
+    return np.stack([x, y, z], axis=-1)
+
+
+def build_knn_edges_from_latlon(
+    lat2d: np.ndarray,
+    lon2d: np.ndarray,
+    k: int = 8,
+    mask2d: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build undirected edges using K-nearest neighbors on a sphere.
+
+    Args:
+        lat2d, lon2d: 2D arrays with spatial dims matching data.
+        k: number of neighbors to connect per point (approx connectivity).
+        mask2d: boolean mask for valid cells (optional).
+
+    Returns:
+        rows_full, cols_full: arrays of flat indices for undirected edges.
+    """
+    H, W = lat2d.shape
+
+    # Treat only valid cells
+    if mask2d is None:
+        active = np.ones((H, W), dtype=bool)
+    else:
+        active = mask2d
+
+    flat_full = np.arange(H * W, dtype=np.int64).reshape(H, W)
+    flat_active = flat_full[active]
+
+    N = flat_active.size
+    if N == 0:
+        print("No active cells found")
+        return np.array([], np.int64), np.array([], np.int64)
+
+    xyz = _latlon_to_unit_xyz(lat2d[active], lon2d[active])  # (N,3)
+
+    # Fit KNN (k+1 includes self; we drop that)
+    nn = NearestNeighbors(
+        n_neighbors=min(k + 1, N), algorithm="auto", metric="euclidean"
+    )
+    nn.fit(xyz)
+    _, nbrs = nn.kneighbors(xyz)  # (N, k+1)
+
+    # Build undirected edges
+    rows = np.repeat(np.arange(N, dtype=np.int64), nbrs.shape[1] - 1)
+    cols = nbrs[:, 1:].ravel()  # skip self
+
+    # Ensure i<j to dedupe
+    keep = rows < cols
+    rows = rows[keep]
+    cols = cols[keep]
+
+    # Map compact active indices back to full grid
+    rows_full = flat_active[rows]
+    cols_full = flat_active[cols]
+
+    return rows_full, cols_full
 
 
 def build_consensus_summary_df(

@@ -7,12 +7,20 @@ import pandas as pd
 import xarray as xr
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
-from sklearn.neighbors import NearestNeighbors
 
+# from sklearn.neighbors import NearestNeighbors  # unused here; kept in utils
 from toad.clustering import sorted_cluster_labels
 from toad.regridding.base import BaseRegridder
-from toad.regridding.healpix import HealPixRegridder
+
+# from toad.regridding.healpix import HealPixRegridder  # unused here; used in utils
 from toad.utils import detect_latlon_names, get_unique_variable_name
+from toad.utils.cluster_consensus_utils import (
+    _add_adjacent_true_pairs,
+    _build_empty_consensus,
+    build_consensus_summary_df,
+    build_knn_edges_from_latlon,
+    build_knn_edges_from_regridder,
+)
 
 logger = logging.getLogger("TOAD")
 
@@ -355,7 +363,7 @@ class Aggregation:
                         for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
                             map_edges.add((int(i), int(j)))
                     else:
-                        add_adjacent_true_pairs(
+                        _add_adjacent_true_pairs(
                             mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
                         )
 
@@ -366,28 +374,9 @@ class Aggregation:
 
         # If no edges found, return all cells as noise
         if len(edge_rows) == 0:
-            da_consensus_labels = xr.DataArray(
-                np.full((y_len, x_len), -1, dtype=np.int32),
-                coords=coords_spatial,
-                dims=spatial_dims,
-                name="consensus_clusters",
+            return _build_empty_consensus(
+                self.td, y_len, x_len, coords_spatial, spatial_dims
             )
-            da_consistency = xr.DataArray(
-                np.full((y_len, x_len), 0, dtype=np.float32),
-                coords=coords_spatial,
-                dims=spatial_dims,
-                name="consensus_consistency",
-            )
-            ds_out = xr.Dataset(
-                {
-                    "consensus_clusters": da_consensus_labels,
-                    "consensus_consistency": da_consistency,
-                }
-            )
-            summary_df = build_consensus_summary_df(
-                da_consensus_labels, da_consistency, self.td, spatial_dims
-            )
-            return ds_out, summary_df
 
         # Create sparse adjacency matrix
         if regrid_enabled:
@@ -417,34 +406,14 @@ class Aggregation:
 
         # If no edges remain after thresholding, return all noise / TODO: fix for regrid_enabled
         if csr.nnz == 0:
-            da_consensus_labels = xr.DataArray(
-                np.full((y_len, x_len), -1, dtype=np.int32),
-                coords=coords_spatial,
-                dims=spatial_dims,
-                name="consensus_clusters",
+            return _build_empty_consensus(
+                self.td, y_len, x_len, coords_spatial, spatial_dims
             )
-            da_consistency = xr.DataArray(
-                np.full((y_len, x_len), 0, dtype=np.float32),
-                coords=coords_spatial,
-                dims=spatial_dims,
-                name="consensus_consistency",
-            )
-            ds_out = xr.Dataset(
-                {
-                    "consensus_clusters": da_consensus_labels,
-                    "consensus_consistency": da_consistency,
-                }
-            )
-            summary_df = build_consensus_summary_df(
-                da_consensus_labels, da_consistency, self.td, spatial_dims
-            )
-            return ds_out, summary_df
 
         # Compute per-node average edge weight
         node_sum = np.array(csr.sum(axis=1)).ravel()
         node_deg = np.array(csr.count_nonzero(axis=1)).ravel().astype(np.float32)
 
-        # TODO fix for regrid_enabled
         if regrid_enabled:
             consistency_hp = np.divide(
                 node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
@@ -516,7 +485,7 @@ class Aggregation:
         )
 
         summary_df = build_consensus_summary_df(
-            da_consensus_labels, da_consistency, self.td, spatial_dims
+            self.td, da_consensus_labels, da_consistency, spatial_dims
         )
         return ds_out, summary_df
 
@@ -566,325 +535,3 @@ def precompute_spatial_memberships(td, cluster_vars):
             lookup[(cvar, cid)] = set(flat_idxs)
 
     return lookup
-
-
-def add_adjacent_true_pairs(
-    mask2d: np.ndarray,
-    edge_set: set[tuple[int, int]],
-    flat_idx_2d: np.ndarray,
-    use_eight: bool,
-) -> None:
-    """Adds undirected neighbor edges for True cells in a 2D mask.
-
-    For each cell in a 2D boolean mask, this function adds undirected edges between
-    all pairs of adjacent True cells to the provided edge set. Adjacency is determined
-    by 4- or 8-connected neighborhoods.
-
-    Args:
-        mask2d (np.ndarray): A 2D boolean array indicating active cells (True).
-        edge_set (set[tuple[int, int]]): A set to which undirected edge tuples (i, j)
-            will be added, where i and j are flattened pixel indices. Edges are deduplicated
-            such that (i, j) and (j, i) are treated as the same.
-        flat_idx_2d (np.ndarray): A 2D array of flattened indices, shape (y_len, x_len).
-        use_eight (bool): If True, consider diagonally adjacent neighbors (8-connectivity).
-            If False, only include horizontal and vertical neighbors (4-connectivity).
-
-    Returns:
-        None
-    """
-    # Horizontal neighbors
-    common = mask2d[:, :-1] & mask2d[:, 1:]
-    if common.any():
-        a = flat_idx_2d[:, :-1][common].ravel()
-        b = flat_idx_2d[:, 1:][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-    # Vertical neighbors
-    common = mask2d[:-1, :] & mask2d[1:, :]
-    if common.any():
-        a = flat_idx_2d[:-1, :][common].ravel()
-        b = flat_idx_2d[1:, :][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-    if use_eight:
-        # Diagonal neighbors: top-left to bottom-right
-        common = mask2d[:-1, :-1] & mask2d[1:, 1:]
-        if common.any():
-            a = flat_idx_2d[:-1, :-1][common].ravel()
-            b = flat_idx_2d[1:, 1:][common].ravel()
-            for i, j in zip(a.tolist(), b.tolist()):
-                edge_set.add((i, j) if i < j else (j, i))
-        # Diagonal neighbors: top-right to bottom-left
-        common = mask2d[:-1, 1:] & mask2d[1:, :-1]
-        if common.any():
-            a = flat_idx_2d[:-1, 1:][common].ravel()
-            b = flat_idx_2d[1:, :-1][common].ravel()
-            for i, j in zip(a.tolist(), b.tolist()):
-                edge_set.add((i, j) if i < j else (j, i))
-
-
-def _latlon_to_unit_xyz(lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
-    """Convert (lat, lon) in degrees to unit sphere Cartesian coords."""
-    lat = np.deg2rad(lat_deg)
-    lon = np.deg2rad(lon_deg)
-    x = np.cos(lat) * np.cos(lon)
-    y = np.cos(lat) * np.sin(lon)
-    z = np.sin(lat)
-    return np.stack([x, y, z], axis=-1)
-
-
-def build_knn_edges_from_latlon(
-    lat2d: np.ndarray,
-    lon2d: np.ndarray,
-    k: int = 8,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Build undirected edges using K-nearest neighbors on a sphere.
-
-    Args:
-        lat2d, lon2d: 2D arrays of latitude and longitude.
-        k: number of neighbors per point.
-
-    Returns:
-        rows_full, cols_full: arrays of flat indices for undirected edges.
-    """
-    N = lat2d.size  # Total number of spatial points (pixels)
-    if N == 0:
-        # If there are no points, return empty edge arrays
-        return np.array([], np.int64), np.array([], np.int64)
-
-    flat_idx = np.arange(N, dtype=np.int64)
-    xyz = _latlon_to_unit_xyz(lat2d.ravel(), lon2d.ravel())
-
-    # Create a NearestNeighbors model to find k+1 nearest neighbors (including self)
-    nn = NearestNeighbors(n_neighbors=min(k + 1, N))
-    nn.fit(xyz)
-    _, nbrs = nn.kneighbors(xyz)  # For each point, get indices of closest (k+1) points
-
-    # For each source point, repeat its index k times (exclude self)
-    rows = np.repeat(flat_idx, nbrs.shape[1] - 1)
-    # Flatten the neighbors (excluding self which is first in nbrs) to form destination indices
-    cols = nbrs[:, 1:].ravel()
-
-    # Mask to keep only pairs (i, j) where i < j, to ensure each undirected edge appears only once
-    mask = rows < cols
-    return rows[mask], cols[mask]
-
-
-def build_knn_edges_from_regridder(
-    lat2d: np.ndarray,
-    lon2d: np.ndarray,
-    k: int = 8,
-    regridder: BaseRegridder | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Build undirected edges between spatial cells using K-nearest neighbors,
-    after regridding the original (lat, lon) grid to a regularized grid (e.g., HealPix).
-
-    This method is typically used for regular or near-regular lat/lon grids to regrid to
-    a uniform spherical representation before building adjacency relationships.
-
-    Args:
-        lat2d (np.ndarray): 2D array of latitude values (degrees).
-        lon2d (np.ndarray): 2D array of longitude values (degrees).
-        k (int, optional): Number of nearest neighbors to use for each point (default is 8).
-        regridder (BaseRegridder or None, optional): An object implementing a `map_orig_to_regrid`
-            method, used to map original (lat, lon) points to indices in the regridded space.
-            If None, uses HealPixRegridder.
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray]:
-            Two 1D arrays (knn_rows, knn_cols) of equal length, each containing flat integer indices
-            denoting undirected edges between neighboring spatial cells in the regridded space.
-            Only unique unordered pairs (i < j) are included.
-            Arrays will be empty if there are no spatial points.
-    """
-
-    N = lat2d.size  # Total number of spatial points (pixels)
-    if N == 0:
-        # If there are no points, return empty edge arrays
-        return np.array([], np.int64), np.array([], np.int64)
-
-    # Flatten original grid
-    coords_latlon_flat = np.column_stack([lat2d.ravel(), lon2d.ravel()])  # (N,2)
-
-    # create regridder if not provided
-    if regridder is None:
-        regridder = HealPixRegridder()
-
-    # Map each original pixel to HealPix pixel
-    hp_index_flat = regridder.map_orig_to_regrid(coords_latlon_flat)  # (N,)
-
-    # Build KNN adjacency once in regridder space (HealPix space)
-    # Convert (lat, lon) coordinates to 3D unit sphere (Cartesian) coordinates for KNN on a sphere
-    xyz = _latlon_to_unit_xyz(coords_latlon_flat[:, 0], coords_latlon_flat[:, 1])
-
-    # Initialize and fit a NearestNeighbors model (KNN, k+1 including self) using the 3D coordinates
-    nn = NearestNeighbors(n_neighbors=min(k + 1, N)).fit(xyz)
-
-    # Compute the nearest neighbors for each point (returns indices for each point's KNN)
-    _, nbrs = nn.kneighbors(xyz)
-
-    # For each source point, repeat its index (k times, skipping self), used for building edges
-    knn_rows = np.repeat(np.arange(len(xyz)), nbrs.shape[1] - 1)
-
-    # Flatten the neighbor indices (excluding self) to form the destination points in edges
-    knn_cols = nbrs[:, 1:].ravel()
-
-    # Boolean mask to keep only unordered pairs (i < j), so each edge is included only once (undirected graph)
-    keep = knn_rows < knn_cols
-
-    # Map source indices from the original grid to their HealPix regridded indices and apply mask
-    knn_rows = hp_index_flat[knn_rows[keep]]
-
-    # Map destination indices from the original grid to their HealPix regridded indices and apply mask
-    knn_cols = hp_index_flat[knn_cols[keep]]
-
-    return knn_rows, knn_cols, hp_index_flat
-
-
-def build_consensus_summary_df(
-    labels2d: xr.DataArray,
-    consistency2d: xr.DataArray,
-    td,
-    spatial_dims: Tuple[str, str],
-) -> pd.DataFrame:
-    """Builds a summary DataFrame of cluster statistics from 2D label and consistency arrays.
-
-    Computes descriptive statistics for spatial clusters, including mean consistency,
-    cluster size, spatial centroids, transition-time statistics, and model spread.
-
-    Args:
-        labels2d (xr.DataArray): A 2D array containing integer cluster labels for each spatial cell.
-            Cells labeled as -1 are considered noise and ignored.
-        consistency2d (xr.DataArray): A 2D array of consistency scores for each spatial cell.
-        td: TOAD object containing data and cluster variables.
-        spatial_dims (Tuple[str, str]): Tuple of (dim0, dim1) spatial dimension names.
-
-    Returns:
-        pd.DataFrame: A DataFrame with one row per cluster (excluding noise), containing columns:
-            - cluster_id (int): The cluster label.
-            - mean_consistency (float): Mean consistency score within the cluster.
-            - size (int): Number of cells belonging to the cluster.
-            - mean_<spatial_dim_0> (float): Mean location in the first spatial dimension.
-            - mean_<spatial_dim_1> (float): Mean location in the second spatial dimension.
-            - mean_transition_time (float): Mean transition time averaged across models and spatial cells.
-            - std_transition_time (float): Standard deviation of transition times across models.
-            - mean_within_model_spread (float): Mean spatial spread of transition times within models.
-            - std_within_model_spread (float): Standard deviation of within-model spread across models.
-
-    Notes:
-        - If all cells are noise (i.e., all labels are -1), an empty DataFrame with the proper columns is returned.
-        - Transition-time and spread statistics are filled with NaN if unavailable.
-    """
-    sd0, sd1 = spatial_dims
-    dim = labels2d.name if labels2d.name else "cluster"
-    cluster_map = labels2d.where(labels2d != -1)
-
-    if np.all(labels2d.values == -1):
-        cols = [
-            "mean_consistency",
-            "size",
-            f"mean_{sd0}",
-            f"mean_{sd1}",
-            "mean_transition_time",
-            "std_transition_time",
-            "mean_within_model_spread",
-            "std_within_model_spread",
-        ]
-        return pd.DataFrame({c: [] for c in cols})
-
-    # === Base metrics from xarray groupby ===
-    mean_consistency = consistency2d.groupby(cluster_map).mean(skipna=True)
-    cluster_sizes = (
-        xr.ones_like(cluster_map)
-        .where(cluster_map.notnull())
-        .groupby(cluster_map)
-        .sum(skipna=True)
-    )
-    space_dim0_mean = (
-        td.data[sd0].where(cluster_map >= 0).groupby(cluster_map).mean(skipna=True)
-    )
-    space_dim1_mean = (
-        td.data[sd1].where(cluster_map >= 0).groupby(cluster_map).mean(skipna=True)
-    )
-
-    df = pd.DataFrame(
-        {
-            "cluster_id": mean_consistency[dim].values.astype(int),
-            "mean_consistency": mean_consistency.values.astype(np.float32),
-            "size": cluster_sizes.values.astype(np.int32),
-            f"mean_{sd0}": space_dim0_mean.values.astype(np.float32),
-            f"mean_{sd1}": space_dim1_mean.values.astype(np.float32),
-        }
-    )
-
-    # === Transition-time metrics (vectorized, readable) ===
-    # Build per-model transition-time maps (threshold=0 selects all transitions)
-    transition_time_maps = []
-    for cluster_var in td.cluster_vars:
-        shift_var = td.data[cluster_var].shifts_variable
-        transition_time_maps.append(
-            td.cluster_stats(shift_var).time.compute_transition_time(
-                shift_threshold=0.0
-            )
-        )
-
-    if len(transition_time_maps) == 0:
-        # No models available: return NaNs for transition-time statistics
-        df_transitions = pd.DataFrame(
-            {
-                "cluster_id": df["cluster_id"].values.astype(int),
-                "mean_transition_time": np.nan,
-                "std_transition_time": np.nan,
-                "mean_within_model_spread": np.nan,
-                "std_within_model_spread": np.nan,
-            }
-        )
-    else:
-        # Stack models into a single array along a named 'cluster_var' axis
-        cluster_var_index = pd.Index(td.cluster_vars, name="cluster_var")
-        transition_time_stack = xr.concat(transition_time_maps, dim=cluster_var_index)
-
-        # For each cluster id: compute per-model spatial mean/std (reduces 'y','x')
-        per_cluster_per_model_mean = transition_time_stack.groupby(cluster_map).mean(
-            skipna=True
-        )
-        per_cluster_per_model_std = transition_time_stack.groupby(cluster_map).std(
-            skipna=True
-        )
-
-        # Aggregate across models for each cluster id
-        mean_transition_time = per_cluster_per_model_mean.mean(
-            dim="cluster_var", skipna=True
-        )
-        std_transition_time_by = per_cluster_per_model_mean.std(
-            dim="cluster_var", skipna=True
-        )
-        mean_within_model_spread = per_cluster_per_model_std.mean(
-            dim="cluster_var", skipna=True
-        )
-        std_within_model_spread = per_cluster_per_model_std.std(
-            dim="cluster_var", skipna=True
-        )
-
-        # Build DataFrame with the same grouping dimension as above
-        group_dim = mean_consistency.dims[0]
-        df_transitions = pd.DataFrame(
-            {
-                "cluster_id": mean_transition_time[group_dim].values.astype(int),
-                "mean_transition_time": mean_transition_time.values.astype(np.float32),
-                "std_transition_time": std_transition_time_by.values.astype(np.float32),
-                "mean_within_model_spread": mean_within_model_spread.values.astype(
-                    np.float32
-                ),
-                "std_within_model_spread": std_within_model_spread.values.astype(
-                    np.float32
-                ),
-            }
-        )
-
-    # Merge side-by-side
-    df = df.merge(df_transitions, on="cluster_id", how="left")
-
-    return df

@@ -17,13 +17,13 @@ from toad.regridding.base import BaseRegridder
 from toad.utils import detect_latlon_names, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
     _add_adjacent_true_pairs,
-    _build_empty_consensus,
+    _build_consensus_summary_df,
+    _build_empty_consensus_summary_df,
+    _build_knn_edges_from_latlon,
+    _build_knn_edges_from_regridder,
     _compute_weighted_consensus,
     _knn_edges_from_mask,
     _native_edges_from_mask,
-    build_consensus_summary_df,
-    build_knn_edges_from_latlon,
-    build_knn_edges_from_regridder,
 )
 
 logger = logging.getLogger("TOAD")
@@ -219,6 +219,10 @@ class Aggregation:
                     * mean_consistency
                     * size
                     * mean_{space_dim0}, mean_{space_dim1} (average spatial coordinates for the cluster)
+                    * mean_mean_shift_time: Central estimate of when the cluster transitions, averaged over space and models.
+                    * std_mean_shift_time: Model-to-model variation in the average shift time of the cluster.
+                    * mean_std_shift_time: Average spatial spread of shift timing within each model.
+                    * std_std_shift_time: How much models differ in their spatial coherence of the transition (e.g., abrupt vs gradual spread).
 
         Algorithm Overview:
             1. Collapse time in each clustering map: mark a pixel as "clustered" if it is ever assigned to a cluster at any time.
@@ -301,12 +305,12 @@ class Aggregation:
                 lon, lat = np.meshgrid(lon, lat)
 
             if regrid_enabled:
-                knn_rows, knn_cols, hp_index_flat = build_knn_edges_from_regridder(
+                knn_rows, knn_cols, hp_index_flat = _build_knn_edges_from_regridder(
                     lat, lon, k=8, regridder=regridder
                 )
             else:
                 # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
-                knn_rows, knn_cols = build_knn_edges_from_latlon(lat, lon, k=8)
+                knn_rows, knn_cols = _build_knn_edges_from_latlon(lat, lon, k=8)
 
             use_knn = True
         else:
@@ -394,7 +398,7 @@ class Aggregation:
 
         # If no edges found, return all cells as noise
         if len(rows_V) == 0:
-            return _build_empty_consensus(
+            return _build_empty_consensus_summary_df(
                 self.td, y_len, x_len, coords_spatial, spatial_dims
             )
 
@@ -406,7 +410,7 @@ class Aggregation:
 
         # If no edges remain after thresholding, return all noise / TODO: fix for regrid_enabled
         if W.nnz == 0:
-            return _build_empty_consensus(
+            return _build_empty_consensus_summary_df(
                 self.td, y_len, x_len, coords_spatial, spatial_dims
             )
 
@@ -484,7 +488,7 @@ class Aggregation:
             }
         )
 
-        summary_df = build_consensus_summary_df(
+        summary_df = _build_consensus_summary_df(
             self.td, da_consensus_labels, da_consistency, spatial_dims
         )
         return ds_out, summary_df

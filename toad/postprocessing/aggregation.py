@@ -186,69 +186,97 @@ class Aggregation:
         neighbor_connectivity: int = 8,
         regridder: BaseRegridder | None = None,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
-        """
-        This function implements a consensus aggregation closely related to evidence accumulation clustering (EAC) from [Fred+Jain2005]_,
-        but reformulated for spatial grid data. Instead of dense all-pairs co-association, we accumulate "votes" only between spatially neighboring cells,
-        yielding a scalable sparse adjacency graph from which consensus regions are formed.
+        """Build a spatial consensus clustering from multiple clustering results.
 
-        Builds a spatial consensus map from multiple clustering results by collapsing time within each input,
-        constructing a pixel-adjacency co-association graph, thresholding by agreement, and labeling the resulting
-        connected components.
+        Implements a consensus aggregation method closely related to evidence accumulation clustering (EAC)
+        from [Fred+Jain2005]_, but reformulated for spatial grid data. Instead of dense all-pairs
+        co-association, we accumulate "votes" only between spatially neighboring cells, yielding a
+        scalable sparse adjacency graph from which consensus regions are formed.
 
-        The function produces robust, spatially coherent regions that persist across clustering choices/variables
-        by combining clusterings through a graph-based consensus method.
+        The method produces robust, spatially coherent regions that persist across clustering
+        choices/variables by combining clusterings through a graph-based consensus approach.
 
         Args:
-            cluster_vars (List[str] or None): List of clustering variable names to include in the consensus.
+            cluster_vars: List of clustering variable names to include in the consensus.
                 If None, uses all cluster variables in self.td.cluster_vars.
-            min_consensus (float): Minimum fraction (in [0,1]) of clusterings that must support an edge
-                (pixel adjacency) for it to be included in the consensus graph (equal or larger than). Higher values = stricter consensus.
-            top_n_clusters (int or None): If set, only top N largest clusters (per clustering) are used when voting for edges.
-                If None, all clusters are included.
-            neighbor_connectivity (int): Neighborhood connectivity for spatial adjacency, either 4 (Von Neumann) or 8 (Moore, default).
-            regridder (BaseRegridder | None): If you used a custom regridder, you need to provide it here. Defaults to None, if reguarl lat/lon data, HealPixRegridder will be used automatically.
+            min_consensus: Minimum fraction (in [0,1]) of clusterings that must support an edge
+                (pixel adjacency) for it to be included in the consensus graph. Higher values =
+                stricter consensus. Default: 0.5.
+            top_n_clusters: If set, only top N largest clusters (per clustering) are used when
+                voting for edges. If None, all clusters are included. Default: None.
+            neighbor_connectivity: Neighborhood connectivity for spatial adjacency, either 4
+                (Von Neumann) or 8 (Moore). Default: 8.
+            regridder: Optional custom regridder. If None and data has regular lat/lon dimensions,
+                HealPixRegridder will be used automatically. Default: None.
 
         Returns:
-            Tuple[xr.Dataset, pd.DataFrame]:
-                - xr.Dataset with:
-                    * clusters (int32, shape: (y, x)): Consensus cluster/component labels; -1 indicates noise or unassigned.
-                    * consistency (float32, shape: (y, x)): Local mean of co-association edge weights around each pixel,
-                      reflecting neighborhood agreement across input cluster maps.
-                - pd.DataFrame: One row per consensus cluster with columns:
-                    * cluster_id
-                    * mean_consistency
-                    * size
-                    * mean_{space_dim0}, mean_{space_dim1} (average spatial coordinates for the cluster)
-                    * mean_mean_shift_time: Central estimate of when the cluster transitions, averaged over space and models.
-                    * std_mean_shift_time: Model-to-model variation in the average shift time of the cluster.
-                    * mean_std_shift_time: Average spatial spread of shift timing within each model.
-                    * std_std_shift_time: How much models differ in their spatial coherence of the transition (e.g., abrupt vs gradual spread).
+            Tuple[xr.Dataset, pd.DataFrame]: A tuple containing:
 
-        Algorithm Overview:
-            1. Collapse time in each clustering map: mark a pixel as "clustered" if it is ever assigned to a cluster at any time.
-            2. For each clustering, obtain the spatial footprint of each cluster. Optionally, restrict to the top N clusters.
-            3. For each cluster, increment votes for each pair of adjacent (connected) pixels within that cluster.
-            4. Accumulate edge votes across all clusterings, then normalize by the number of clustering maps.
-            5. Retain only those edges (pixel adjacencies) present in at least `min_consensus` fraction of clusterings (equal or larger than).
-            6. Construct an undirected sparse graph with surviving edges; run connected components labeling.
-            7. Relabel clusters in order of descending size for interpretability; assign -1 to isolated (noise) pixels.
-            8. Compute, for each pixel, the mean strength (consistency) of its incident consensus edges.
+            Dataset with two variables:
+                - ``clusters`` (int32, shape (y, x)): Consensus cluster/component labels.
+                  Values >= 0 indicate cluster membership; -1 indicates noise/unassigned.
+                - ``consistency`` (float32, shape (y, x)): Local mean of co-association edge
+                  weights around each pixel, reflecting neighborhood agreement across input
+                  cluster maps.
+
+            DataFrame with one row per consensus cluster, containing:
+                - ``cluster_id`` (int32): Cluster identifier.
+                - ``mean_consistency`` (float32): Mean consistency score for the cluster.
+                - ``size`` (int32): Number of spatial grid cells in the cluster.
+                - ``mean_{space_dim0}`` (float32): Average spatial coordinate for first dimension.
+                - ``mean_{space_dim1}`` (float32): Average spatial coordinate for second dimension.
+                - ``mean_mean_shift_time`` (float32): Central estimate of transition time,
+                  averaged over space and clusterings.
+                - ``std_mean_shift_time`` (float32): Variation in average shift time across
+                  clusterings.
+                - ``mean_std_shift_time`` (float32): Average spatial spread of shift timing.
+                - ``std_std_shift_time`` (float32): Variation in spatial coherence across
+                  clusterings.
 
         Notes:
+            The algorithm proceeds as follows:
+
+            1. Collapse time in each clustering map: mark a pixel as "clustered" if it is ever
+               assigned to a cluster at any time.
+            2. For each clustering, obtain the spatial footprint of each cluster. Optionally,
+               restrict to the top N clusters.
+            3. For each cluster, increment votes for each pair of adjacent (connected) pixels
+               within that cluster.
+            4. Accumulate edge votes across all clusterings, then normalize by the number of
+               clustering maps.
+            5. Retain only those edges (pixel adjacencies) present in at least `min_consensus`
+               fraction of clusterings.
+            6. Construct an undirected sparse graph with surviving edges; run connected components
+               labeling.
+            7. Relabel clusters in order of descending size for interpretability; assign -1 to
+               isolated (noise) pixels.
+            8. Compute, for each pixel, the mean strength (consistency) of its incident consensus
+               edges.
+
+            Additional implementation details:
+
             * Adjacency can be 4- or 8-connected; 8-neighborhood is default for spatial coherence.
             * Consensus clusters represent regions whose internal edges are repeatedly co-clustered
               across the inputs and may be chained via single-link paths.
-            * Large, non-compact clusters can form if consensus is too lenient; increase `min_consensus` or
-              apply additional filtering for tighter components if needed.
+            * Large, non-compact clusters can form if consensus is too lenient; increase
+              `min_consensus` or apply additional filtering for tighter components if needed.
             * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
 
         Example:
-            >>> ds, summary_df = obj.cluster_consensus(
-                    cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7)
+            >>> ds, summary_df = td.aggregation().cluster_consensus(
+            ...     cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7
+            ... )
+            >>> ds.clusters.plot()  # Visualize consensus clusters
+            >>> summary_df.head()  # View cluster statistics
 
         Raises:
             ValueError: If neighbor_connectivity is not 4 or 8.
             AssertionError: If no cluster_vars are found.
+
+        See Also:
+            Evidence accumulation clustering (EAC) method from Fred & Jain (2005). This
+            implementation uses spatial adjacency instead of dense all-pairs co-association
+            for scalability.
         """
         # Get list of cluster variables if not provided
         if cluster_vars is None:

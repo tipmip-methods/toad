@@ -352,39 +352,38 @@ class Aggregation:
         rows_V, cols_V = [], []
         rows_A, cols_A = [], []
 
-        # Preallocate HealPix mask for reuse across clusterings (if using regridding)
+        # Preallocate reusable arrays (if using regridding)
         if regrid_enabled:
             mask_hp = np.zeros(N_hp, dtype=bool)
+            valid_hp = np.ones(N_hp, dtype=bool)
+        else:
+            # Preallocate availability mask for non-regrid case (same shape every iteration)
+            present_mask2d = np.ones((y_len, x_len), dtype=bool)
 
         # Process each clustering
         for cvar in cluster_vars:
+            # Get cluster IDs, optionally filter to top N largest (shared logic)
+            unique_ids = self.td.get_cluster_ids(cvar)
+            if unique_ids.size == 0:
+                continue
+            if top_n_clusters is not None and top_n_clusters > 0:
+                unique_ids = unique_ids[:top_n_clusters]
+
             if regrid_enabled:
                 labels3d = self.td.data[cvar].values  # (T, Y, X)
-
-                # Get cluster IDs, optionally filter to top N largest
-                unique_ids = self.td.get_cluster_ids(cvar)
-                if unique_ids.size == 0:
-                    continue
-                if top_n_clusters is not None and top_n_clusters > 0:
-                    unique_ids = unique_ids[:top_n_clusters]
 
                 # Build 2D mask: pixels in any of the selected clusters at any time
                 labels_2d = np.logical_or.reduce(
                     [(labels3d == cid).any(axis=0) for cid in unique_ids]
                 )  # (Y,X), boolean
 
-                mask_flat_orig = labels_2d.ravel()  # original grid mask
-
                 # Convert mask to HealPix indexing
                 # hp_index_flat maps original pixels → HealPix pixels
                 # Reuse preallocated mask, fill with False for this iteration
                 mask_hp.fill(False)
+                mask_hp[np.unique(hp_index_flat[labels_2d.ravel()])] = True
 
-                mask_hp_index = hp_index_flat[mask_flat_orig]
-                mask_hp[np.unique(mask_hp_index)] = True
-
-                # Availability: assume all HP pixels valid (replace with real mask if available)
-                valid_hp = np.ones(N_hp, dtype=bool)
+                # Availability: all HP pixels valid (same every iteration)
                 rA, cA = _knn_edges_from_mask(valid_hp, knn_rows, knn_cols)
                 rows_A.extend(rA)
                 cols_A.extend(cA)
@@ -396,13 +395,6 @@ class Aggregation:
             else:
                 labels = self.td.data[cvar].values  # (T, Y, X)
 
-                # Get unique cluster IDs, optionally taking only top N largest
-                unique_ids = self.td.get_cluster_ids(cvar)
-                if unique_ids.size == 0:
-                    continue
-                if top_n_clusters is not None and top_n_clusters > 0:
-                    unique_ids = unique_ids[:top_n_clusters]
-
                 # Per-map deduplication of edges (votes)
                 map_edges_V: set[tuple[int, int]] = set()
 
@@ -411,8 +403,8 @@ class Aggregation:
                     mask2d = (labels == cid).any(axis=0)  # (Y, X)
 
                     if use_knn:
-                        # cluster footprint mask
-                        mask_flat = (labels == cid).any(axis=0).ravel()
+                        # cluster footprint mask (reuse mask2d computation)
+                        mask_flat = mask2d.ravel()
                         both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
                         for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
                             map_edges_V.add((int(i), int(j)))
@@ -427,7 +419,7 @@ class Aggregation:
                     cols_V.extend(c)
 
                 # Availability per map (all pixels valid → all adjacency edges)
-                present_mask2d = np.ones_like(labels[0, :, :], dtype=bool)
+                # present_mask2d preallocated before loop since it's the same every iteration
                 if use_knn:
                     rA, cA = _knn_edges_from_mask(
                         present_mask2d.ravel(), knn_rows, knn_cols
@@ -496,9 +488,7 @@ class Aggregation:
             labels_2d[deg == 0] = -1
 
         # Sort cluster labels by size
-        flat = labels_2d.flatten()
-        flat_sorted = sorted_cluster_labels(flat)
-        labels_2d = flat_sorted.reshape((y_len, x_len))
+        labels_2d = sorted_cluster_labels(labels_2d.flatten()).reshape(labels_2d.shape)
 
         # Create output DataArrays
         da_consensus_labels = xr.DataArray(

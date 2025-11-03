@@ -308,6 +308,8 @@ class Aggregation:
                 knn_rows, knn_cols, hp_index_flat = _build_knn_edges_from_regridder(
                     lat, lon, k=8, regridder=regridder
                 )
+                # Compute HealPix pixel count once for consistency
+                N_hp = hp_index_flat.max() + 1
             else:
                 # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
                 knn_rows, knn_cols = _build_knn_edges_from_latlon(lat, lon, k=8)
@@ -334,14 +336,13 @@ class Aggregation:
                 # Convert mask to HealPix indexing
                 # hp_index_flat maps original pixels → HealPix pixels
                 # Build boolean mask *indexed by HealPix ID*
-                max_pix = hp_index_flat.max()
-                mask_hp = np.zeros(max_pix + 1, dtype=bool)
+                mask_hp = np.zeros(N_hp, dtype=bool)
 
                 mask_hp_index = hp_index_flat[mask_flat_orig]
                 mask_hp[np.unique(mask_hp_index)] = True
 
                 # Availability: assume all HP pixels valid (replace with real mask if available)
-                valid_hp = np.ones(mask_hp.size, dtype=bool)
+                valid_hp = np.ones(N_hp, dtype=bool)
                 rA, cA = _knn_edges_from_mask(valid_hp, knn_rows, knn_cols)
                 rows_A.extend(rA)
                 cols_A.extend(cA)
@@ -403,7 +404,7 @@ class Aggregation:
             )
 
         # Build weighted consensus
-        shape = (mask_hp.size, mask_hp.size) if regrid_enabled else (N, N)
+        shape = (N_hp, N_hp) if regrid_enabled else (N, N)
         W = _compute_weighted_consensus(
             rows_V, cols_V, rows_A, cols_A, shape, min_consensus
         )

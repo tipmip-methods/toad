@@ -16,7 +16,17 @@ def _add_adjacent_true_pairs(
     flat_idx_2d: np.ndarray,
     use_eight: bool,
 ) -> None:
-    """Adds undirected neighbor edges for True cells in a 2D mask."""
+    """Adds undirected neighbor edges for True cells in a 2D mask.
+
+    Modifies edge_set in-place by adding edges between adjacent True cells.
+    Uses 4-connectivity (Von Neumann) by default, or 8-connectivity (Moore) if use_eight=True.
+
+    Args:
+        mask2d: 2D boolean array indicating valid cells.
+        edge_set: Set to which edges will be added (modified in-place).
+        flat_idx_2d: 2D array of flattened indices for each grid cell.
+        use_eight: If True, include diagonal neighbors (8-connectivity); else only horizontal/vertical (4-connectivity).
+    """
     # Horizontal neighbors
     common = mask2d[:, :-1] & mask2d[:, 1:]
     if common.any():
@@ -63,7 +73,17 @@ def _build_knn_edges_from_latlon(
     lon2d: np.ndarray,
     k: int = 8,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Build undirected edges using K-nearest neighbors on a sphere."""
+    """Build undirected edges using K-nearest neighbors on a sphere.
+
+    Args:
+        lat2d: 2D array of latitude values.
+        lon2d: 2D array of longitude values.
+        k: Number of nearest neighbors to consider (default: 8).
+
+    Returns:
+        Tuple of two arrays (rows, cols) representing undirected edges, where
+        rows[i] and cols[i] are the indices of connected grid cells (i < j for all edges).
+    """
     N = lat2d.size
     if N == 0:
         return np.array([], np.int64), np.array([], np.int64)
@@ -88,7 +108,20 @@ def _build_knn_edges_from_regridder(
     k: int = 8,
     regridder: BaseRegridder | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build undirected edges using KNN after mapping to a regularized grid (e.g., HealPix)."""
+    """Build undirected edges using KNN after mapping to a regularized grid (e.g., HealPix).
+
+    Args:
+        lat2d: 2D array of latitude values.
+        lon2d: 2D array of longitude values.
+        k: Number of nearest neighbors to consider (default: 8).
+        regridder: Optional regridder instance. If None, uses HealPixRegridder.
+
+    Returns:
+        Tuple of three arrays:
+        - knn_rows: HealPix pixel indices for edge source nodes.
+        - knn_cols: HealPix pixel indices for edge target nodes.
+        - hp_index_flat: Mapping from original grid cells to HealPix pixel indices.
+    """
     N = lat2d.size
     if N == 0:
         return (
@@ -128,27 +161,37 @@ def _build_empty_consensus_summary_df(
     """Construct empty consensus outputs (all noise, zero consistency).
 
     Used for early returns when no edges or surviving edges exist.
+
+    Args:
+        td: TOAD object containing clustering results.
+        y_len: Length of first spatial dimension.
+        x_len: Length of second spatial dimension.
+        coords_spatial: Dictionary of spatial coordinates.
+        spatial_dims: Tuple of spatial dimension names.
+
+    Returns:
+        Tuple of (Dataset, DataFrame) with empty consensus results (all pixels marked as noise).
     """
     da_consensus_labels = xr.DataArray(
         np.full((y_len, x_len), -1, dtype=np.int32),
         coords=coords_spatial,
         dims=spatial_dims,
-        name="consensus_clusters",
+        name="clusters",
     )
     da_consistency = xr.DataArray(
         np.full((y_len, x_len), 0, dtype=np.float32),
         coords=coords_spatial,
         dims=spatial_dims,
-        name="consensus_consistency",
+        name="consistency",
     )
     ds_out = xr.Dataset(
         {
-            "consensus_clusters": da_consensus_labels,
-            "consensus_consistency": da_consistency,
+            "clusters": da_consensus_labels,
+            "consistency": da_consistency,
         }
     )
     summary_df = _build_consensus_summary_df(
-        da_consensus_labels, da_consistency, td, spatial_dims
+        td, da_consensus_labels, da_consistency, spatial_dims
     )
     return ds_out, summary_df
 
@@ -159,7 +202,18 @@ def _build_consensus_summary_df(
     consistency2d: xr.DataArray,
     spatial_dims: Tuple[str, str],
 ) -> pd.DataFrame:
-    """Build a summary DataFrame of cluster statistics from 2D label and consistency arrays."""
+    """Build a summary DataFrame of cluster statistics from 2D label and consistency arrays.
+
+    Args:
+        td: TOAD object containing clustering results.
+        labels2d: 2D DataArray of consensus cluster labels (-1 for noise).
+        consistency2d: 2D DataArray of consensus consistency scores.
+        spatial_dims: Tuple of spatial dimension names.
+
+    Returns:
+        DataFrame with one row per consensus cluster, containing statistics like
+        cluster_id, mean_consistency, size, spatial means, and transition time metrics.
+    """
     sd0, sd1 = spatial_dims
     dim = labels2d.name if labels2d.name else "cluster"
     cluster_map = labels2d.where(labels2d != -1)
@@ -262,7 +316,17 @@ def _build_consensus_summary_df(
 def _knn_edges_from_mask(
     mask_bool_flat: np.ndarray, knn_rows: np.ndarray, knn_cols: np.ndarray
 ) -> tuple[list[int], list[int]]:
-    """Return undirected KNN edges where both endpoints are True in mask_bool_flat."""
+    """Return undirected KNN edges where both endpoints are True in mask_bool_flat.
+
+    Args:
+        mask_bool_flat: Boolean array indicating valid nodes.
+        knn_rows: Array of edge source node indices.
+        knn_cols: Array of edge target node indices.
+
+    Returns:
+        Tuple of two lists (rows, cols) representing undirected edges where both
+        endpoints are True in the mask (i < j for all edges).
+    """
     both = mask_bool_flat[knn_rows] & mask_bool_flat[knn_cols]
     if not np.any(both):
         return [], []
@@ -276,7 +340,17 @@ def _knn_edges_from_mask(
 def _native_edges_from_mask(
     mask2d: np.ndarray, flat_idx_2d: np.ndarray, use_eight: bool
 ) -> tuple[list[int], list[int]]:
-    """Return undirected native adjacency edges (4/8) where mask2d is True."""
+    """Return undirected native adjacency edges (4/8) where mask2d is True.
+
+    Args:
+        mask2d: 2D boolean array indicating valid cells.
+        flat_idx_2d: 2D array of flattened indices for each grid cell.
+        use_eight: If True, use 8-connectivity (Moore neighborhood); else 4-connectivity (Von Neumann).
+
+    Returns:
+        Tuple of two lists (rows, cols) representing undirected adjacency edges
+        between True cells in the mask (i < j for all edges).
+    """
     edges: set[tuple[int, int]] = set()
     _add_adjacent_true_pairs(mask2d, edges, flat_idx_2d, use_eight)
     if not edges:
@@ -293,7 +367,20 @@ def _compute_weighted_consensus(
     shape: tuple[int, int],
     min_consensus: float,
 ):
-    """Build V, A CSR matrices, compute W=V/A on V support, threshold by min_consensus (equal or larger than)."""
+    """Build V, A CSR matrices, compute W=V/A on V support, threshold by min_consensus.
+
+    Args:
+        rows_V: Row indices for vote edges.
+        cols_V: Column indices for vote edges.
+        rows_A: Row indices for availability edges.
+        cols_A: Column indices for availability edges.
+        shape: Shape tuple (n_nodes, n_nodes) for the sparse matrices.
+        min_consensus: Minimum consensus threshold (in [0,1]). Edges with weight >= min_consensus are kept.
+
+    Returns:
+        Sparse CSR matrix W containing weighted consensus scores, thresholded by min_consensus.
+        W[i,j] = V[i,j] / A[i,j] for edges present in V, zero otherwise if below threshold.
+    """
     V = coo_matrix(
         (
             np.ones(len(rows_V), dtype=np.float32),

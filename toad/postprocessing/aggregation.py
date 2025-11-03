@@ -178,7 +178,7 @@ class Aggregation:
             name="Jaccard similarity",
         )
 
-    def cluster_consensus_spatial(
+    def cluster_consensus(
         self,
         cluster_vars: List[str] | None = None,
         min_consensus: float = 0.5,
@@ -211,8 +211,8 @@ class Aggregation:
         Returns:
             Tuple[xr.Dataset, pd.DataFrame]:
                 - xr.Dataset with:
-                    * consensus_clusters (int32, shape: (y, x)): Consensus cluster/component labels; -1 indicates noise or unassigned.
-                    * consensus_consistency (float32, shape: (y, x)): Local mean of co-association edge weights around each pixel,
+                    * clusters (int32, shape: (y, x)): Consensus cluster/component labels; -1 indicates noise or unassigned.
+                    * consistency (float32, shape: (y, x)): Local mean of co-association edge weights around each pixel,
                       reflecting neighborhood agreement across input cluster maps.
                 - pd.DataFrame: One row per consensus cluster with columns:
                     * cluster_id
@@ -243,8 +243,8 @@ class Aggregation:
             * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
 
         Example:
-            >>> ds, summary_df = obj.cluster_consensus_spatial(
-                    cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7, neighbor_connectivity=8)
+            >>> ds, summary_df = obj.cluster_consensus(
+                    cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7)
 
         Raises:
             ValueError: If neighbor_connectivity is not 4 or 8.
@@ -317,7 +317,6 @@ class Aggregation:
             use_knn = True
         else:
             # fallback to index-based adjacency
-            print("Using index-based adjacency")
             use_knn = False
 
         # Collect per-map edges for numerator (votes) and denominator (availability)
@@ -436,9 +435,9 @@ class Aggregation:
 
             # map back to original grid
             consistency_orig = consistency_hp[hp_index_flat]  # shape: (N_orig,)
-            consensus_consistency = consistency_orig.reshape(lat.shape)  # shape: (Y, X)
+            consistency = consistency_orig.reshape(lat.shape)  # shape: (Y, X)
         else:
-            consensus_consistency = np.divide(
+            consistency = np.divide(
                 node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
             ).reshape((y_len, x_len))
 
@@ -473,7 +472,7 @@ class Aggregation:
             labels_2d,
             coords=coords_spatial,
             dims=spatial_dims,
-            name="consensus_clusters",
+            name="clusters",
         )
         da_consensus_labels.attrs.update(
             {
@@ -486,16 +485,16 @@ class Aggregation:
         )
 
         da_consistency = xr.DataArray(
-            consensus_consistency,
+            consistency,
             coords=coords_spatial,
             dims=spatial_dims,
-            name="consensus_consistency",
+            name="consistency",
         )
 
         ds_out = xr.Dataset(
             {
-                "consensus_clusters": da_consensus_labels,
-                "consensus_consistency": da_consistency,
+                "clusters": da_consensus_labels,
+                "consistency": da_consistency,
             }
         )
 

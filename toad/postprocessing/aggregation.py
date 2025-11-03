@@ -327,9 +327,19 @@ class Aggregation:
         # Process each clustering
         for cvar in cluster_vars:
             if regrid_enabled:
-                # collapse time to 2D mask
-                labels3d = self.td.data[cvar].values
-                labels_2d = (labels3d >= 0).any(axis=0)  # (Y,X), boolean
+                labels3d = self.td.data[cvar].values  # (T, Y, X)
+
+                # Get cluster IDs, optionally filter to top N largest
+                unique_ids = self.td.get_cluster_ids(cvar)
+                if unique_ids.size == 0:
+                    continue
+                if top_n_clusters is not None and top_n_clusters > 0:
+                    unique_ids = unique_ids[:top_n_clusters]
+
+                # Build 2D mask: pixels in any of the selected clusters at any time
+                labels_2d = np.logical_or.reduce(
+                    [(labels3d == cid).any(axis=0) for cid in unique_ids]
+                )  # (Y,X), boolean
 
                 mask_flat_orig = labels_2d.ravel()  # original grid mask
 

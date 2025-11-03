@@ -58,7 +58,7 @@ def _latlon_to_unit_xyz(lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
     return np.stack([x, y, z], axis=-1)
 
 
-def build_knn_edges_from_latlon(
+def _build_knn_edges_from_latlon(
     lat2d: np.ndarray,
     lon2d: np.ndarray,
     k: int = 8,
@@ -82,7 +82,7 @@ def build_knn_edges_from_latlon(
     return rows[mask], cols[mask]
 
 
-def build_knn_edges_from_regridder(
+def _build_knn_edges_from_regridder(
     lat2d: np.ndarray,
     lon2d: np.ndarray,
     k: int = 8,
@@ -118,7 +118,7 @@ def build_knn_edges_from_regridder(
     return knn_rows, knn_cols, hp_index_flat
 
 
-def _build_empty_consensus(
+def _build_empty_consensus_summary_df(
     td,
     y_len: int,
     x_len: int,
@@ -147,13 +147,13 @@ def _build_empty_consensus(
             "consensus_consistency": da_consistency,
         }
     )
-    summary_df = build_consensus_summary_df(
+    summary_df = _build_consensus_summary_df(
         da_consensus_labels, da_consistency, td, spatial_dims
     )
     return ds_out, summary_df
 
 
-def build_consensus_summary_df(
+def _build_consensus_summary_df(
     td,
     labels2d: xr.DataArray,
     consistency2d: xr.DataArray,
@@ -170,10 +170,10 @@ def build_consensus_summary_df(
             "size",
             f"mean_{sd0}",
             f"mean_{sd1}",
-            "mean_transition_time",
-            "std_transition_time",
-            "mean_within_model_spread",
-            "std_within_model_spread",
+            "mean_mean_shift_time",
+            "std_mean_shift_time",
+            "mean_std_shift_time",
+            "std_std_shift_time",
         ]
         return pd.DataFrame({c: [] for c in cols})
 
@@ -214,10 +214,10 @@ def build_consensus_summary_df(
         df_transitions = pd.DataFrame(
             {
                 "cluster_id": df["cluster_id"].values.astype(int),
-                "mean_transition_time": np.nan,
-                "std_transition_time": np.nan,
-                "mean_within_model_spread": np.nan,
-                "std_within_model_spread": np.nan,
+                "mean_mean_shift_time": np.nan,
+                "std_mean_shift_time": np.nan,
+                "mean_std_shift_time": np.nan,
+                "std_std_shift_time": np.nan,
             }
         )
     else:
@@ -231,31 +231,27 @@ def build_consensus_summary_df(
             skipna=True
         )
 
-        mean_transition_time = per_cluster_per_model_mean.mean(
+        mean_mean_shift_time = per_cluster_per_model_mean.mean(
             dim="cluster_var", skipna=True
         )
-        std_transition_time_by = per_cluster_per_model_mean.std(
+        std_mean_shift_time_by = per_cluster_per_model_mean.std(
             dim="cluster_var", skipna=True
         )
-        mean_within_model_spread = per_cluster_per_model_std.mean(
+        mean_std_shift_time = per_cluster_per_model_std.mean(
             dim="cluster_var", skipna=True
         )
-        std_within_model_spread = per_cluster_per_model_std.std(
+        std_std_shift_time = per_cluster_per_model_std.std(
             dim="cluster_var", skipna=True
         )
 
         group_dim = mean_consistency.dims[0]
         df_transitions = pd.DataFrame(
             {
-                "cluster_id": mean_transition_time[group_dim].values.astype(int),
-                "mean_transition_time": mean_transition_time.values.astype(np.float32),
-                "std_transition_time": std_transition_time_by.values.astype(np.float32),
-                "mean_within_model_spread": mean_within_model_spread.values.astype(
-                    np.float32
-                ),
-                "std_within_model_spread": std_within_model_spread.values.astype(
-                    np.float32
-                ),
+                "cluster_id": mean_mean_shift_time[group_dim].values.astype(int),
+                "mean_mean_shift_time": mean_mean_shift_time.values.astype(np.float32),
+                "std_mean_shift_time": std_mean_shift_time_by.values.astype(np.float32),
+                "mean_std_shift_time": mean_std_shift_time.values.astype(np.float32),
+                "std_std_shift_time": std_std_shift_time.values.astype(np.float32),
             }
         )
 

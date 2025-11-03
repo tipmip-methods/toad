@@ -395,8 +395,7 @@ def _compute_weighted_consensus(
         ),
         shape=shape,
     ).tocsr()
-    V.sum_duplicates()
-    A.sum_duplicates()
+    # Note: tocsr() already sums duplicates, so sum_duplicates() is not needed
     V = V.maximum(V.T)
     A = A.maximum(A.T)
     V_idx = V.nonzero()

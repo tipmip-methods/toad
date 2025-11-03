@@ -337,7 +337,8 @@ class Aggregation:
                     lat, lon, k=8, regridder=regridder
                 )
                 # Compute HealPix pixel count once for consistency
-                N_hp = hp_index_flat.max() + 1
+                # Note: hp_index_flat should never be empty if regridding succeeded
+                N_hp = int(hp_index_flat.max()) + 1
             else:
                 # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
                 knn_rows, knn_cols = _build_knn_edges_from_latlon(lat, lon, k=8)
@@ -350,6 +351,10 @@ class Aggregation:
         # Collect per-map edges for numerator (votes) and denominator (availability)
         rows_V, cols_V = [], []
         rows_A, cols_A = [], []
+
+        # Preallocate HealPix mask for reuse across clusterings (if using regridding)
+        if regrid_enabled:
+            mask_hp = np.zeros(N_hp, dtype=bool)
 
         # Process each clustering
         for cvar in cluster_vars:
@@ -372,8 +377,8 @@ class Aggregation:
 
                 # Convert mask to HealPix indexing
                 # hp_index_flat maps original pixels → HealPix pixels
-                # Build boolean mask *indexed by HealPix ID*
-                mask_hp = np.zeros(N_hp, dtype=bool)
+                # Reuse preallocated mask, fill with False for this iteration
+                mask_hp.fill(False)
 
                 mask_hp_index = hp_index_flat[mask_flat_orig]
                 mask_hp[np.unique(mask_hp_index)] = True
@@ -446,7 +451,7 @@ class Aggregation:
             rows_V, cols_V, rows_A, cols_A, shape, min_consensus
         )
 
-        # If no edges remain after thresholding, return all noise / TODO: fix for regrid_enabled
+        # If no edges remain after thresholding, return all noise
         if W.nnz == 0:
             return _build_empty_consensus_summary_df(
                 self.td, y_len, x_len, coords_spatial, spatial_dims

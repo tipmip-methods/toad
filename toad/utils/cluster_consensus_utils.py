@@ -3,6 +3,7 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
+from scipy.sparse import coo_matrix
 from sklearn.neighbors import NearestNeighbors
 
 from toad.regridding.base import BaseRegridder
@@ -260,3 +261,67 @@ def build_consensus_summary_df(
 
     df = df.merge(df_transitions, on="cluster_id", how="left")
     return df
+
+
+def _knn_edges_from_mask(
+    mask_bool_flat: np.ndarray, knn_rows: np.ndarray, knn_cols: np.ndarray
+) -> tuple[list[int], list[int]]:
+    """Return undirected KNN edges where both endpoints are True in mask_bool_flat."""
+    both = mask_bool_flat[knn_rows] & mask_bool_flat[knn_cols]
+    if not np.any(both):
+        return [], []
+    r = knn_rows[both]
+    c = knn_cols[both]
+    # ensure i<j for undirected
+    m = r < c
+    return r[m].tolist(), c[m].tolist()
+
+
+def _native_edges_from_mask(
+    mask2d: np.ndarray, flat_idx_2d: np.ndarray, use_eight: bool
+) -> tuple[list[int], list[int]]:
+    """Return undirected native adjacency edges (4/8) where mask2d is True."""
+    edges: set[tuple[int, int]] = set()
+    _add_adjacent_true_pairs(mask2d, edges, flat_idx_2d, use_eight)
+    if not edges:
+        return [], []
+    r, c = zip(*edges)
+    return list(r), list(c)
+
+
+def _compute_weighted_consensus(
+    rows_V: list[int],
+    cols_V: list[int],
+    rows_A: list[int],
+    cols_A: list[int],
+    shape: tuple[int, int],
+    min_consensus: float,
+):
+    """Build V, A CSR matrices, compute W=V/A on V support, threshold by min_consensus (equal or larger than)."""
+    V = coo_matrix(
+        (
+            np.ones(len(rows_V), dtype=np.float32),
+            (np.array(rows_V, dtype=np.int64), np.array(cols_V, dtype=np.int64)),
+        ),
+        shape=shape,
+    ).tocsr()
+    A = coo_matrix(
+        (
+            np.ones(len(rows_A), dtype=np.float32),
+            (np.array(rows_A, dtype=np.int64), np.array(cols_A, dtype=np.int64)),
+        ),
+        shape=shape,
+    ).tocsr()
+    V.sum_duplicates()
+    A.sum_duplicates()
+    V = V.maximum(V.T)
+    A = A.maximum(A.T)
+    V_idx = V.nonzero()
+    A_on_V = A[V_idx].A1
+    with np.errstate(divide="ignore", invalid="ignore"):
+        W = V.copy()
+        W.data = np.divide(V.data, A_on_V, out=np.zeros_like(V.data), where=A_on_V > 0)
+    mask_keep = W.data >= float(min_consensus)
+    W.data = np.where(mask_keep, W.data, 0).astype(W.data.dtype, copy=False)
+    W.eliminate_zeros()
+    return W

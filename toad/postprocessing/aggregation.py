@@ -5,7 +5,8 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.sparse import coo_matrix
+
+# from scipy.sparse import coo_matrix  # only used in utils helpers
 from scipy.sparse.csgraph import connected_components
 
 # from sklearn.neighbors import NearestNeighbors  # unused here; kept in utils
@@ -17,6 +18,9 @@ from toad.utils import detect_latlon_names, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
     _add_adjacent_true_pairs,
     _build_empty_consensus,
+    _compute_weighted_consensus,
+    _knn_edges_from_mask,
+    _native_edges_from_mask,
     build_consensus_summary_df,
     build_knn_edges_from_latlon,
     build_knn_edges_from_regridder,
@@ -198,7 +202,7 @@ class Aggregation:
             cluster_vars (List[str] or None): List of clustering variable names to include in the consensus.
                 If None, uses all cluster variables in self.td.cluster_vars.
             min_consensus (float): Minimum fraction (in [0,1]) of clusterings that must support an edge
-                (pixel adjacency) for it to be included in the consensus graph. Higher values = stricter consensus.
+                (pixel adjacency) for it to be included in the consensus graph (equal or larger than). Higher values = stricter consensus.
             top_n_clusters (int or None): If set, only top N largest clusters (per clustering) are used when voting for edges.
                 If None, all clusters are included.
             neighbor_connectivity (int): Neighborhood connectivity for spatial adjacency, either 4 (Von Neumann) or 8 (Moore, default).
@@ -221,7 +225,7 @@ class Aggregation:
             2. For each clustering, obtain the spatial footprint of each cluster. Optionally, restrict to the top N clusters.
             3. For each cluster, increment votes for each pair of adjacent (connected) pixels within that cluster.
             4. Accumulate edge votes across all clusterings, then normalize by the number of clustering maps.
-            5. Retain only those edges (pixel adjacencies) present in at least `min_consensus` fraction of clusterings.
+            5. Retain only those edges (pixel adjacencies) present in at least `min_consensus` fraction of clusterings (equal or larger than).
             6. Construct an undirected sparse graph with surviving edges; run connected components labeling.
             7. Relabel clusters in order of descending size for interpretability; assign -1 to isolated (noise) pixels.
             8. Compute, for each pixel, the mean strength (consistency) of its incident consensus edges.
@@ -310,8 +314,9 @@ class Aggregation:
             print("Using index-based adjacency")
             use_knn = False
 
-        # Lists to store graph edges between adjacent cells
-        edge_rows, edge_cols = [], []
+        # Collect per-map edges for numerator (votes) and denominator (availability)
+        rows_V, cols_V = [], []
+        rows_A, cols_A = [], []
 
         # Process each clustering
         for cvar in cluster_vars:
@@ -331,14 +336,16 @@ class Aggregation:
                 mask_hp_index = hp_index_flat[mask_flat_orig]
                 mask_hp[np.unique(mask_hp_index)] = True
 
-                # Now adjacency check purely in hp_index space
-                both = mask_hp[knn_rows] & mask_hp[knn_cols]
-                rows = knn_rows[both]
-                cols = knn_cols[both]
+                # Availability: assume all HP pixels valid (replace with real mask if available)
+                valid_hp = np.ones(mask_hp.size, dtype=bool)
+                rA, cA = _knn_edges_from_mask(valid_hp, knn_rows, knn_cols)
+                rows_A.extend(rA)
+                cols_A.extend(cA)
 
-                # Append unique (i<j)
-                edge_rows.extend(rows.tolist())
-                edge_cols.extend(cols.tolist())
+                # Votes: both endpoints in footprint
+                rV, cV = _knn_edges_from_mask(mask_hp, knn_rows, knn_cols)
+                rows_V.extend(rV)
+                cols_V.extend(cV)
             else:
                 labels = self.td.data[cvar].values  # (T, Y, X)
 
@@ -349,10 +356,10 @@ class Aggregation:
                 if top_n_clusters is not None and top_n_clusters > 0:
                     unique_ids = unique_ids[:top_n_clusters]
 
-                # Per-map deduplication of edges
-                map_edges: set[tuple[int, int]] = set()
+                # Per-map deduplication of edges (votes)
+                map_edges_V: set[tuple[int, int]] = set()
 
-                # build adjacency edges for each cluster footprint
+                # build adjacency edges for each cluster footprint (votes)
                 for cid in unique_ids:
                     mask2d = (labels == cid).any(axis=0)  # (Y, X)
 
@@ -361,58 +368,51 @@ class Aggregation:
                         mask_flat = (labels == cid).any(axis=0).ravel()
                         both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
                         for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
-                            map_edges.add((int(i), int(j)))
+                            map_edges_V.add((int(i), int(j)))
                     else:
                         _add_adjacent_true_pairs(
-                            mask2d, map_edges, flat_idx_2d, neighbor_connectivity == 8
+                            mask2d, map_edges_V, flat_idx_2d, neighbor_connectivity == 8
                         )
 
-                if map_edges:
-                    r, c = zip(*map_edges)
-                    edge_rows.extend(r)
-                    edge_cols.extend(c)
+                if map_edges_V:
+                    r, c = zip(*map_edges_V)
+                    rows_V.extend(r)
+                    cols_V.extend(c)
+
+                # Availability per map (all pixels valid → all adjacency edges)
+                present_mask2d = np.ones_like(labels[0, :, :], dtype=bool)
+                if use_knn:
+                    rA, cA = _knn_edges_from_mask(
+                        present_mask2d.ravel(), knn_rows, knn_cols
+                    )
+                else:
+                    rA, cA = _native_edges_from_mask(
+                        present_mask2d, flat_idx_2d, neighbor_connectivity == 8
+                    )
+                rows_A.extend(rA)
+                cols_A.extend(cA)
 
         # If no edges found, return all cells as noise
-        if len(edge_rows) == 0:
+        if len(rows_V) == 0:
             return _build_empty_consensus(
                 self.td, y_len, x_len, coords_spatial, spatial_dims
             )
 
-        # Create sparse adjacency matrix
-        if regrid_enabled:
-            N_hp = mask_hp.size  # number of healpix pixels
-            coo = coo_matrix(
-                (np.ones(len(edge_rows)), (edge_rows, edge_cols)), shape=(N_hp, N_hp)
-            )
-        else:
-            # Convert to normalized adjacency matrix (fraction of maps supporting each undirected edge)
-            rows = np.array(edge_rows, dtype=np.int64)
-            cols = np.array(edge_cols, dtype=np.int64)
-            data = np.ones(len(rows), dtype=np.float32)
-            coo = coo_matrix((data, (rows, cols)), shape=(N, N))
-
-        M = len(cluster_vars)
-        csr = coo.tocsr()
-        csr.sum_duplicates()
-        csr.data = np.divide(csr.data, float(M))
-
-        # Symmetrize by taking maximum to ensure undirected adjacency
-        csr = csr.maximum(csr.T)
-
-        # Remove edges below consensus threshold
-        mask_keep = csr.data >= float(min_consensus)
-        csr.data = np.where(mask_keep, csr.data, 0).astype(csr.data.dtype, copy=False)
-        csr.eliminate_zeros()
+        # Build weighted consensus
+        shape = (mask_hp.size, mask_hp.size) if regrid_enabled else (N, N)
+        W = _compute_weighted_consensus(
+            rows_V, cols_V, rows_A, cols_A, shape, min_consensus
+        )
 
         # If no edges remain after thresholding, return all noise / TODO: fix for regrid_enabled
-        if csr.nnz == 0:
+        if W.nnz == 0:
             return _build_empty_consensus(
                 self.td, y_len, x_len, coords_spatial, spatial_dims
             )
 
         # Compute per-node average edge weight
-        node_sum = np.array(csr.sum(axis=1)).ravel()
-        node_deg = np.array(csr.count_nonzero(axis=1)).ravel().astype(np.float32)
+        node_sum = np.array(W.sum(axis=1)).ravel()
+        node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
 
         if regrid_enabled:
             consistency_hp = np.divide(
@@ -428,7 +428,7 @@ class Aggregation:
             ).reshape((y_len, x_len))
 
         # Find connected components in thresholded graph
-        bin_adj = csr.copy()
+        bin_adj = W.copy()
         bin_adj.data[:] = 1.0
         bin_adj = bin_adj.maximum(bin_adj.T)
         _, labels_flat = connected_components(

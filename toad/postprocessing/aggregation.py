@@ -117,7 +117,7 @@ class Aggregation:
         Interpretation:
         - A score near 1.0 means the cell consistently clusters with the same spatial
         neighborhood across different clustering setups.
-        - A score near 0.0 means the cell’s cluster context varies substantially.
+        - A score near 0.0 means the cell's cluster context varies substantially.
         - NaN is returned if the cell is unclustered (noise) in all clustering variables.
 
         Args:
@@ -185,6 +185,7 @@ class Aggregation:
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
         regridder: BaseRegridder | None = None,
+        k_neighbors: int = 8,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """Build a spatial consensus clustering from multiple clustering results.
 
@@ -204,10 +205,18 @@ class Aggregation:
                 stricter consensus. Default: 0.5.
             top_n_clusters: If set, only top N largest clusters (per clustering) are used when
                 voting for edges. If None, all clusters are included. Default: None.
-            neighbor_connectivity: Neighborhood connectivity for spatial adjacency, either 4
-                (Von Neumann) or 8 (Moore). Default: 8.
+            neighbor_connectivity: Neighborhood connectivity for spatial adjacency when lat/lon
+                coordinates are not available. Either 4 (Von Neumann, horizontal/vertical only)
+                or 8 (Moore, including diagonals). Default: 8. This parameter controls index-based
+                grid adjacency (not K-nearest neighbors) and is only used for grids without
+                geographic coordinates; for lat/lon grids, see `k_neighbors`.
             regridder: Optional custom regridder. If None and data has regular lat/lon dimensions,
                 HealPixRegridder will be used automatically. Default: None.
+            k_neighbors: Number of nearest neighbors to consider for lat/lon grids using
+                K-nearest neighbors on the sphere. Only applies when lat/lon coordinates are
+                available. Higher values provide more connectivity but may be less spatially
+                selective. Default: 8. For very high-resolution grids, consider increasing to
+                12-16; for coarse grids, 4-6 may suffice.
 
         Returns:
             Tuple[xr.Dataset, pd.DataFrame]: A tuple containing:
@@ -255,7 +264,14 @@ class Aggregation:
 
             Additional implementation details:
 
-            * Adjacency can be 4- or 8-connected; 8-neighborhood is default for spatial coherence.
+            * Adjacency method depends on grid type:
+              - For lat/lon grids: K-nearest neighbors on sphere using geodesic distance
+                (controlled by `k_neighbors`, default 8). This uses coordinate-based spatial
+                relationships rather than grid indices.
+              - For non-geographic grids: Index-based 4- or 8-connectivity using grid array
+                structure (controlled by `neighbor_connectivity`). This is not K-nearest
+                neighbors—it connects cells based on their position in the 2D array (horizontal,
+                vertical, and optionally diagonal neighbors in grid index space).
             * Consensus clusters represent regions whose internal edges are repeatedly co-clustered
               across the inputs and may be chained via single-link paths.
             * Large, non-compact clusters can form if consensus is too lenient; increase
@@ -334,18 +350,19 @@ class Aggregation:
 
             if regrid_enabled:
                 knn_rows, knn_cols, hp_index_flat = _build_knn_edges_from_regridder(
-                    lat, lon, k=8, regridder=regridder
+                    lat, lon, k=k_neighbors, regridder=regridder
                 )
                 # Compute HealPix pixel count once for consistency
                 # Note: hp_index_flat should never be empty if regridding succeeded
                 N_hp = int(hp_index_flat.max()) + 1
             else:
-                # k = 4 or 8 for regular-ish grids; 8-12 good for irregular
-                knn_rows, knn_cols = _build_knn_edges_from_latlon(lat, lon, k=8)
+                knn_rows, knn_cols = _build_knn_edges_from_latlon(
+                    lat, lon, k=k_neighbors
+                )
 
             use_knn = True
         else:
-            # fallback to index-based adjacency
+            # Fallback to index-based adjacency
             use_knn = False
 
         # Collect per-map edges for numerator (votes) and denominator (availability)
@@ -410,7 +427,10 @@ class Aggregation:
                             map_edges_V.add((int(i), int(j)))
                     else:
                         _add_adjacent_true_pairs(
-                            mask2d, map_edges_V, flat_idx_2d, neighbor_connectivity == 8
+                            mask2d,
+                            map_edges_V,
+                            flat_idx_2d,
+                            neighbor_connectivity == 8,
                         )
 
                 if map_edges_V:
@@ -503,6 +523,7 @@ class Aggregation:
                 "min_consensus": min_consensus,
                 "top_n_clusters": top_n_clusters,
                 "neighbor_connectivity": neighbor_connectivity,
+                "k_neighbors": k_neighbors,
                 "description": "Spatial consensus clusters (time-collapsed).",
             }
         )

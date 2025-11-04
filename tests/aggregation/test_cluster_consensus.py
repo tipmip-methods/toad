@@ -21,8 +21,8 @@ def setup_irregular_grid():
     """Setup and coarsen irregular grid data."""
     td = TOAD("tutorials/test_data/sea_ice_irregular_grid.nc", time_dim="time")
     td.data = td.data.isel(
-        i=slice(None, None, 4),
-        j=slice(None, None, 4),
+        i=slice(None, None, 2),
+        j=slice(None, None, 2),
         time=slice(None, None, 2),
     )
     return td
@@ -38,7 +38,7 @@ def setup_native_grid():
 def setup_regular_latlon_grid():
     """Setup and coarsen regular lat/lon grid data."""
     td = TOAD("tutorials/test_data/global_mean_summer_tas.nc", time_dim="time")
-    td.data = td.data.coarsen(lat=10, lon=10, time=3, boundary="trim").reduce(np.mean)
+    td.data = td.data.coarsen(lat=3, lon=3, time=3, boundary="trim").reduce(np.mean)
     return td
 
 
@@ -48,24 +48,24 @@ def setup_regular_latlon_grid():
         (
             setup_irregular_grid,
             [0.5, 1.0, 1.5, 2.0],
+            4,
             6,
-            8,  # Updated for scikit-learn 1.7.2+ (was 4-5, now consistently 7)
             1890.0,  # Typical value from [1910.7632, 1899.7142, 1887., 1873.4286]
             5.0,  # tolerance in years
         ),
         (
             setup_native_grid,
             [0.25, 0.5, 1.0, 1.5],
+            4,
             6,
-            8,  # Updated for scikit-learn 1.7.2+ (was 5-6, now consistently 7)
             7.5,  # Typical value from [1.9118391, 7.5021663, 7.4890475, 9.74135, 3.7066216, 2.5101]
             1.0,  # tolerance
         ),
         (
             setup_regular_latlon_grid,
             [0.5, 1.0, 1.5, 2.0],
-            8,
-            12,
+            35,
+            40,
             2028.0,  # Typical value from [2085., 2027.5714, 2085., 2028., 2028., 2029.5, 2030., 2028., 2026.5, 2026.5, 2028., 2026.5]
             10.0,  # tolerance in years
         ),
@@ -109,7 +109,6 @@ def test_cluster_consensus(
 
     # Drop any existing cluster variables
     td.data = td.data.drop_vars(td.cluster_vars, errors="ignore")
-    td.data = td.data.drop_vars(td.shift_vars, errors="ignore")
 
     # Compute shifts if not present
     if len(td.shift_vars) == 0:

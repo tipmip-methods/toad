@@ -64,8 +64,8 @@ def setup_regular_latlon_grid():
         (
             setup_regular_latlon_grid,
             [0.5, 1.0, 1.5, 2.0],
+            8,
             12,
-            14,
             2028.0,  # Typical value from [2085., 2027.5714, 2085., 2028., 2028., 2029.5, 2030., 2028., 2026.5, 2026.5, 2028., 2026.5]
             10.0,  # tolerance in years
         ),

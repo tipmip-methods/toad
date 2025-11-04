@@ -36,8 +36,8 @@ classifiers = [
 dependencies = [
     "numpy>=2.2.0,<2.3.0",  # Pin to NumPy 2.2.x to ensure consistent BLAS/LAPACK implementation across platforms
     "matplotlib",
-    "scipy>=0.17.0",    # to use lapack_driver of scipy.linalg.lstsq()
-    "scikit-learn",
+    "scipy>=1.15.0,<1.17.0",  # Python 3.10 gets 1.15.x, Python 3.11+ gets 1.16.x
+    "scikit-learn>=1.7.1,<1.8.0",  # Pin to scikit-learn 1.7.x for consistent HDBSCAN clustering results
     "xarray",
     "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
     "cartopy",

@@ -48,16 +48,16 @@ def setup_regular_latlon_grid():
         (
             setup_irregular_grid,
             [0.5, 1.0, 1.5, 2.0],
-            4,
-            5,
+            6,
+            8,  # Updated for scikit-learn 1.7.2+ (was 4-5, now consistently 7)
             1890.0,  # Typical value from [1910.7632, 1899.7142, 1887., 1873.4286]
             5.0,  # tolerance in years
         ),
         (
             setup_native_grid,
             [0.25, 0.5, 1.0, 1.5],
-            5,
             6,
+            8,  # Updated for scikit-learn 1.7.2+ (was 5-6, now consistently 7)
             7.5,  # Typical value from [1.9118391, 7.5021663, 7.4890475, 9.74135, 3.7066216, 2.5101]
             1.0,  # tolerance
         ),

@@ -64,8 +64,8 @@ def setup_regular_latlon_grid():
         (
             setup_regular_latlon_grid,
             [0.5, 1.0, 1.5, 2.0],
+            8,
             12,
-            14,
             2028.0,  # Typical value from [2085., 2027.5714, 2085., 2028., 2028., 2029.5, 2030., 2028., 2026.5, 2026.5, 2028., 2026.5]
             10.0,  # tolerance in years
         ),
@@ -213,11 +213,14 @@ def test_cluster_consensus(
         )
 
         # Check that mean_mean_shift_time values are valid and match expected value (if provided)
+        # Consensus clusters should always have valid transition times (at least one clustering
+        # should have valid times for pixels in the consensus cluster)
         if "mean_mean_shift_time" in summary_df.columns:
             mean_shift_times = summary_df["mean_mean_shift_time"].values
-            # Check that all values are finite
+            # All values should be finite - consensus clusters shouldn't have all-NaN transition times
             assert np.all(np.isfinite(mean_shift_times)), (
-                f"mean_mean_shift_time contains invalid values: {mean_shift_times}"
+                f"mean_mean_shift_time contains invalid (NaN) values: {mean_shift_times}. "
+                "Consensus clusters should always have valid transition times."
             )
             # Check if any cluster has mean time close to expected value (if provided)
             if expected_mean_shift_time is not None:

@@ -285,17 +285,28 @@ def _build_consensus_summary_df(
             skipna=True
         )
 
-        mean_mean_shift_time = per_cluster_per_model_mean.mean(
-            dim="cluster_var", skipna=True
+        # Average across clusterings using only finite values.
+        # NumPy 2.2.x handles NaN differently, so we explicitly filter NaN before computing stats
+        # This prevents warnings when computing std with insufficient data
+        mean_mean_shift_time = per_cluster_per_model_mean.where(
+            np.isfinite(per_cluster_per_model_mean)
+        ).mean(dim="cluster_var", skipna=True)
+
+        # Filter NaN before computing std to avoid "degrees of freedom <= 0" warnings
+        std_mean_shift_time_by = (
+            per_cluster_per_model_mean.where(np.isfinite(per_cluster_per_model_mean))
+            .std(dim="cluster_var", skipna=True)
+            .fillna(0.0)
         )
-        std_mean_shift_time_by = per_cluster_per_model_mean.std(
-            dim="cluster_var", skipna=True
+        mean_std_shift_time = (
+            per_cluster_per_model_std.where(np.isfinite(per_cluster_per_model_std))
+            .mean(dim="cluster_var", skipna=True)
+            .fillna(0.0)
         )
-        mean_std_shift_time = per_cluster_per_model_std.mean(
-            dim="cluster_var", skipna=True
-        )
-        std_std_shift_time = per_cluster_per_model_std.std(
-            dim="cluster_var", skipna=True
+        std_std_shift_time = (
+            per_cluster_per_model_std.where(np.isfinite(per_cluster_per_model_std))
+            .std(dim="cluster_var", skipna=True)
+            .fillna(0.0)
         )
 
         group_dim = mean_consistency.dims[0]

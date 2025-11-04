@@ -1,7 +1,5 @@
 import gc
-from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from sklearn.cluster import HDBSCAN  # type: ignore
@@ -132,32 +130,6 @@ def test_cluster_consensus(
     ds_consensus, summary_df = td.aggregation().cluster_consensus(
         min_consensus=0.8, top_n_clusters=5
     )
-
-    # Create plot with meaningful title based on configuration
-    setup_name = setup_func.__name__.replace("setup_", "")
-    title = (
-        f"Consensus Clusters - {setup_name}\n"
-        f"time_scale_factors={time_scale_factors}, "
-        f"min_consensus=0.8, top_n_clusters=5\n"
-        f"Found {len(np.unique(ds_consensus.clusters.values[ds_consensus.clusters.values >= 0]))} clusters"
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 8))
-    ds_consensus.clusters.plot(ax=ax)
-    ax.set_title(title, fontsize=12)
-    plt.tight_layout()
-
-    # Save plot to artifacts directory
-    artifacts_dir = Path("test_artifacts")
-    artifacts_dir.mkdir(exist_ok=True)
-
-    # Generate filename based on test configuration
-    # Use nodeid to get unique test identifier (includes parameters)
-    test_id = request.node.name.replace("[", "_").replace("]", "").replace(":", "_")
-    filename = f"consensus_clusters_{setup_name}_{test_id}.png"
-    filepath = artifacts_dir / filename
-    plt.savefig(filepath, dpi=150, bbox_inches="tight")
-    plt.close(fig)
 
     # Assert that the dataset contains valid clusters
     assert "clusters" in ds_consensus, "clusters not in output dataset"

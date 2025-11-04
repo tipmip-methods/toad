@@ -241,6 +241,11 @@ def compute_clusters(
 
     # ==================== SHIFT SELECTION ====================
     sh = td.data[shifts_variable]
+
+    # Create mask to exclude grid cells with all NaN values
+    # Grid cells that are all NaN across time should not be included in clustering
+    has_valid_data = ~sh.isnull().all(dim=td.time_dim)
+
     if shift_selection in ("local", "global"):
         mask_da = _compute_dts_peak_sign_mask(
             sh,
@@ -249,19 +254,19 @@ def compute_clusters(
             shift_selection=shift_selection,
         )
         if shift_direction == "both":
-            cond = mask_da != 0
+            cond = (mask_da != 0) & has_valid_data
         elif shift_direction == "positive":
-            cond = mask_da > 0
+            cond = (mask_da > 0) & has_valid_data
         else:  # "negative"
-            cond = mask_da < 0
+            cond = (mask_da < 0) & has_valid_data
     else:
         # shift_selection == "all": filter original magnitudes
         if shift_direction == "both":
-            cond = np.abs(sh) > shift_threshold
+            cond = (np.abs(sh) > shift_threshold) & has_valid_data
         elif shift_direction == "positive":
-            cond = sh > shift_threshold
+            cond = (sh > shift_threshold) & has_valid_data
         else:
-            cond = sh < -shift_threshold
+            cond = (sh < -shift_threshold) & has_valid_data
 
     # boolean → indices (tuple: (t_idx, *space_idx))
     cond_vals = np.asarray(cond.data)

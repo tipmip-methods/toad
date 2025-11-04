@@ -72,9 +72,11 @@ def _peaks_local_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
 
         # Middle of the segment's max plateau
         max_idx = plat_start + (plat_end - plat_start) // 2
-        idxs[k] = max_idx
-        sgns[k] = np.int8(-1 if np.signbit(ts[max_idx]) else 1)
-        k += 1
+        # Verify peak exceeds threshold (safety check, should always be true)
+        if max_abs > thr:
+            idxs[k] = max_idx
+            sgns[k] = np.int8(-1 if np.signbit(ts[max_idx]) else 1)
+            k += 1
 
     return idxs[:k], sgns[:k]
 

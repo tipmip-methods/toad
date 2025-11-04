@@ -15,8 +15,11 @@ from toad.utils import _attrs, detect_latlon_names, is_regular_grid
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
     "north_pole": ccrs.NorthPolarStereo(),
+    "north_polar_stereo": ccrs.NorthPolarStereo(),
     "south_pole": ccrs.SouthPolarStereo(),
+    "south_polar_stereo": ccrs.SouthPolarStereo(),
     "global": ccrs.Robinson(),
+    "robinson": ccrs.Robinson(),
     "mollweide": ccrs.Mollweide(),
 }
 

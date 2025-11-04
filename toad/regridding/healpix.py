@@ -67,9 +67,7 @@ class HealPixRegridder(BaseRegridder):
 
         # Get unique lat/lon pairs and compute healpix indices once
         unique_coords = np.unique(coords[:, 1:], axis=0)  # unique lat/lon pairs
-        unique_hp_indices = self.latlon_to_healpix(
-            unique_coords[:, 0], unique_coords[:, 1]
-        )
+        unique_hp_indices = self.map_orig_to_regrid(unique_coords)
 
         # Create mapping from lat/lon to healpix index
         coord_to_hp = {
@@ -132,9 +130,7 @@ class HealPixRegridder(BaseRegridder):
         )
 
         # Calculate healpix indices for original points
-        hp_indices = self.latlon_to_healpix(
-            self.original_coords[:, 1], self.original_coords[:, 2]
-        )
+        hp_indices = self.map_orig_to_regrid(self.original_coords[:, 1:3])
 
         # Map back using time and healpix indices
         result = np.array(
@@ -145,3 +141,23 @@ class HealPixRegridder(BaseRegridder):
         )
 
         return result
+
+    def map_orig_to_regrid(self, coords_2d: np.ndarray) -> np.ndarray:
+        """
+        Map (lat, lon) to a HEALPix pixel index.
+        coords_2d must be array (N, 2): [(lat, lon), ...]
+        """
+        if coords_2d.shape[1] != 2:
+            raise ValueError("coords_2d must be (N, 2) = (lat, lon)")
+
+        lat = coords_2d[:, 0]
+        lon = coords_2d[:, 1]
+
+        # Ensure nside set — if None, infer from data resolution
+        if self.nside is None:
+            n_pixels = len(coords_2d)
+            order = 0.5 * np.log2(n_pixels / 12.0)
+            self.nside = 1 << int(np.ceil(order))
+
+        hp_pix = hp.ang2pix(self.nside, lon, lat, lonlat=True)
+        return hp_pix.astype(np.int64)

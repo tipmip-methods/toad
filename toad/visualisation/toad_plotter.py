@@ -879,8 +879,9 @@ class TOADPlotter:
             plot_mean: If True, plot the mean timeseries curve.
             plot_custom_iqr: Tuple of (start_percentile, end_percentile) for a custom IQR shaded area.
             alpha: Alpha transparency for the shaded IQR areas.
-            plot_shift_indicator: If True, plot horizontal lines indicating the cluster's
-                temporal start/end and 68% IQR duration.
+            plot_shift_indicator: If True, adds shaded regions that indicate the cluster's temporal extent (start/end),
+                and draws a vertical line marking the point of steepest change within the cluster (largest gradient of
+                the cluster median timeseries)
 
         Returns:
             Tuple of (figure, axes). Figure is None if ax was provided.
@@ -968,9 +969,13 @@ class TOADPlotter:
             if plot_shift_indicator:
                 start = self.td.cluster_stats(cluster_var).time.start(id)
                 end = self.td.cluster_stats(cluster_var).time.end(id)
-                median = self.td.cluster_stats(cluster_var).time.median(id)
+                largest_gradient = self.td.cluster_stats(
+                    cluster_var
+                ).time.steepest_gradient(id)
                 ax.axvspan(start, end, color=id_color, alpha=0.25, zorder=-100)
-                ax.axvline(median, ls="--", color="k", lw=1.0, zorder=100, alpha=0.25)
+                ax.axvline(
+                    largest_gradient, ls="--", color="k", lw=1.0, zorder=100, alpha=0.25
+                )
 
             if add_legend:
                 ax.legend(frameon=False)

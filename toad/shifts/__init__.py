@@ -101,14 +101,29 @@ def compute_shifts(
 
     # Combine masks to get valid cells (not constant and not all NaN)
     valid_mask = ~(constant_mask | nan_mask)
+    masked_data_array = data_array.where(valid_mask)
+
+    # Find valid cells that have any NaN in their time series
+    valid_cells_with_any_nan = (
+        masked_data_array.isnull().any(dim=td.time_dim) & valid_mask
+    )
+    n_cells_still_with_nan = valid_cells_with_any_nan.sum().item()
+    if n_cells_still_with_nan > 0:
+        logger.warning(
+            f"{n_cells_still_with_nan} valid grid cells contain one or more NaN values within their time series. Such grid cells will be skipped in the detection process."
+        )
+
+    # Exclude grid cells that still contain any NaN in their time series from further processing
+    fully_valid_mask = valid_mask & (~valid_cells_with_any_nan)
+    masked_data_array = data_array.where(fully_valid_mask)
 
     # Initialize output array with NaN values
     shifts = xr.full_like(data_array, fill_value=np.nan)
 
-    # Apply detector only to valid cells
+    # Apply detector only to fully valid cells (no all-NaNs, no constants, and no NaNs inside time series)
     valid_shifts = xr.apply_ufunc(
         method.fit_predict,
-        data_array.where(valid_mask),
+        masked_data_array,
         kwargs=dict(times_1d=td.numeric_time_values),
         input_core_dims=[[td.time_dim]],
         output_core_dims=[[td.time_dim]],
@@ -116,7 +131,7 @@ def compute_shifts(
     ).transpose(*data_array.dims)
 
     # Update only the valid cells in the output array
-    shifts = shifts.where(~valid_mask, valid_shifts)
+    shifts = shifts.where(~fully_valid_mask, valid_shifts)
 
     # Rename the output variable
     shifts = shifts.rename(output_label)

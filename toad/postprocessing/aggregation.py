@@ -104,6 +104,12 @@ class Aggregation:
         Evaluate the spatial consistency of cluster membership for each grid cell
         across multiple clustering variables (e.g., from different models).
 
+        **⚠️ Deprecated:** This function is conceptually superseded by `cluster_consensus()`.
+        The Jaccard-based cluster consistency metric is retained for backwards compatibility
+        but will be removed in a future release. The `consistency` field returned by
+        `cluster_consensus()` provides a more efficient and interpretable measure of local
+        co-association across runs.
+
         This function measures how stable the *spatial neighborhood* of each grid cell's
         cluster is across clustering variables, using the Jaccard similarity.
 

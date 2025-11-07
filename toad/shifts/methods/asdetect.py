@@ -230,12 +230,10 @@ def construct_detection_ts(
 
     assert lmin < lmax, "lmin must be smaller than lmax"
 
+    # return zeros if timeseries contains nan values
     if np.isnan(values_1d).any():
-        if ignore_nan_warnings:
-            return detection_ts
-        raise AssertionError(
-            "Input time series contains NaN values. Please remove them before running the detector."
-        )
+        # User is warned of this in the TOAD.compute_shifts() method
+        return detection_ts
 
     if segmentation == "original":
         for length in range(lmin, lmax + 1):

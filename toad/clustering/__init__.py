@@ -195,9 +195,7 @@ def compute_clusters(
         shifts_variable = shift_vars[0]
 
     if td.data[shifts_variable].ndim != 3:
-        raise ValueError(
-            "Shifts variable must be 3-dimensional"
-        )  # TODO: make it work for 2D data
+        raise ValueError("Shifts variable must be 3-dimensional")
 
     # we add neg sign manually to detect negative shift
     if shift_threshold < 0:

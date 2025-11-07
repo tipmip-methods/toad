@@ -80,7 +80,7 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level)
 
-        # TODO: move this check to compute_shifts and compute_clusters. To access preprocess methods we need to init toad with a dataset with more than 3 dimensions sometimes..
+        # TODO p1: move this check to compute_shifts and compute_clusters. To access preprocess methods we need to init toad with a dataset with more than 3 dimensions sometimes..
         # if len(self.data.dims) != 3:
         #     raise ValueError("Data must be 3-dimensional: time/forcing x space x space")
 
@@ -155,7 +155,6 @@ class TOAD:
 
     def _repr_html_(self):
         """Representation of the TOAD object in html with collapsible hierarchy."""
-        # TODO: maybe show method params here?
 
         # Generate a unique instance ID
         import uuid
@@ -407,7 +406,7 @@ class TOAD:
         """Access plotting methods."""
         return visualisation.TOADPlotter(self)
 
-    # TODO: delete this in favour of td.plot
+    # TODO p1: delete this in favour of td.plot
     def plotter(
         self,
         config: Optional[visualisation.PlotConfig] = None,
@@ -993,7 +992,7 @@ class TOAD:
 
         return result
 
-    def get_spatial_cluster_mask(  # TODO rename to get_cluster_mask_spatial
+    def get_spatial_cluster_mask(  # TODO p1: rename to get_cluster_mask_spatial
         self, var: str, cluster_id: Union[int, List[int]]
     ) -> xr.DataArray:
         """Returns a 2D boolean mask indicating which grid cells belonged to the specified cluster at any point in time.
@@ -1108,7 +1107,7 @@ class TOAD:
 
     def get_temporal_cluster_mask(
         self, var: str, cluster_id: int
-    ) -> xr.DataArray:  # TODO rename to get_cluster_mask_temporal
+    ) -> xr.DataArray:  # TODO p1: rename to get_cluster_mask_temporal
         """Calculate a temporal footprint indicating cluster presence at each timestep.
 
         For each timestep, returns a boolean mask indicating whether any grid cell belonged
@@ -1269,7 +1268,7 @@ class TOAD:
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Union[int, List[int]],  # TODO: rename to cluster_ids ?
+        cluster_id: Union[int, List[int]],  # TODO p1: rename to cluster_ids ?
         cluster_var: Optional[str] = None,
         aggregation: Literal[
             "raw", "mean", "sum", "std", "median", "percentile", "max", "min"
@@ -1328,7 +1327,7 @@ class TOAD:
         if normalize:
             if normalize == "first":
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
-                # TODO: this crashes
+                # TODO p1: this crashes
                 scalar = (
                     filtered.isel({self.time_dim: 0})
                     if len(filtered[self.time_dim]) > 0
@@ -1337,7 +1336,7 @@ class TOAD:
             elif normalize == "max":
                 scalar = float(data.max())
             elif normalize == "last":
-                # TODO: this crashes
+                # TODO p1: this crashes
                 filtered = data.where(data != 0).dropna(dim=self.time_dim)
                 scalar = (
                     filtered.isel({self.time_dim: -1})

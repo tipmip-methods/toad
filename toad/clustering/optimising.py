@@ -189,7 +189,7 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         else:
             # fmt: off
             # Map objective names to their corresponding scoring functions
-            # TODO: all the score functions are really slow and take ~90% of the optimisation time
+            # TODO p2: all the score functions are really slow and take ~90% of the optimisation time
             score_funcs = {
                 "median_heaviside":           lambda: np.median([td.cluster_stats(output_label).general.score_heaviside(cid, aggregation="median") for cid in cluster_ids[:10]]),
                 "mean_heaviside":               lambda: np.mean([td.cluster_stats(output_label).general.score_heaviside(cid, aggregation="mean") for cid in cluster_ids[:10]]),

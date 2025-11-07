@@ -93,7 +93,7 @@ class TOADPlotter:
         self,
         nrows: Literal[1] = 1,
         ncols: Literal[1] = 1,
-        projection: Optional[str] = None,
+        projection: Optional[str | ccrs.Projection] = None,
         config: Optional[PlotConfig] = None,
         figsize: Optional[Tuple[float, float]] = None,
         height_ratios: Optional[List[float]] = None,
@@ -104,7 +104,7 @@ class TOADPlotter:
         self,
         nrows: int,
         ncols: int = 1,
-        projection: Optional[str] = None,
+        projection: Optional[str | ccrs.Projection] = None,
         config: Optional[PlotConfig] = None,
         figsize: Optional[Tuple[float, float]] = None,
         height_ratios: Optional[List[float]] = None,
@@ -114,7 +114,7 @@ class TOADPlotter:
         self,
         nrows: int = 1,
         ncols: int = 1,
-        projection: Optional[str] = None,
+        projection: Optional[str | ccrs.Projection] = None,
         config: Optional[PlotConfig] = None,
         figsize: Optional[Tuple[float, float]] = None,
         height_ratios: Optional[List[float]] = None,
@@ -136,15 +136,19 @@ class TOADPlotter:
         config = config if config else self.default_config
         projection = projection if projection else config.projection
 
-        if projection not in _projection_map:
+        if isinstance(projection, str) and projection not in _projection_map:
             raise ValueError(
                 f"Invalid projection '{projection}'. Please choose between {list(_projection_map.keys())}"
             )
+        elif isinstance(projection, ccrs.Projection):
+            projection = projection
+        else:
+            projection = _projection_map[projection]
 
         if subplot_spec is not None:
             # Create map in existing figure using subplot_spec
             fig = plt.gcf()
-            ax = fig.add_subplot(subplot_spec, projection=_projection_map[projection])
+            ax = fig.add_subplot(subplot_spec, projection=projection)
             axs = ax
         else:
             # Create new figure with subplots
@@ -158,7 +162,7 @@ class TOADPlotter:
                 nrows,
                 ncols,
                 figsize=figsize,
-                subplot_kw={"projection": _projection_map[projection]},
+                subplot_kw={"projection": projection},
                 gridspec_kw=gridspec_kw if gridspec_kw else None,
             )
 
@@ -187,7 +191,7 @@ class TOADPlotter:
         axs: Union[np.ndarray, Axes],
         row: int,
         col: int,
-        projection: str,
+        projection: str | ccrs.Projection,
     ) -> Union[np.ndarray, Axes]:
         """
         Replace the subplot at the given row and column of axs with a map projection
@@ -203,7 +207,7 @@ class TOADPlotter:
             axs.shape[0],
             axs.shape[1],
             row * axs.shape[1] + col + 1,
-            projection=_projection_map[projection],
+            projection=projection,
         )
 
         # Return single Axes if input was single Axes
@@ -338,13 +342,18 @@ class TOADPlotter:
         """
         # Add continent shading
         if config.continent_shading:
+            # TODO p2: continent needs same resolution as coastlines
             ax.add_feature(
-                cfeature.LAND, facecolor=config.continent_shading_color, alpha=0.5
+                cfeature.LAND,
+                facecolor=config.continent_shading_color,
+                alpha=0.5,
             )
 
         if config.ocean_shading:
             ax.add_feature(
-                cfeature.OCEAN, facecolor=config.ocean_shading_color, alpha=0.5
+                cfeature.OCEAN,
+                facecolor=config.ocean_shading_color,
+                alpha=0.5,
             )
 
         ax.coastlines(
@@ -402,8 +411,8 @@ class TOADPlotter:
     def cluster_map(
         self,
         var: str | None = None,
-        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
-        projection: Optional[str] = None,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = range(10),
+        projection: Optional[str | ccrs.Projection] = None,
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
@@ -421,8 +430,8 @@ class TOADPlotter:
                         'temperature_cluster') or custom cluster variable name. If None, TOAD will attempt to infer which variable to use.
                 A ValueError is raised if the variable cannot be uniquely determined.
             cluster_ids: Single cluster ID or list of cluster IDs to plot.
-                         Defaults to all clusters (except -1) if None.
-            projection: Projection to use for the map. Uses default if None.
+                         Defaults to first 10 clusters (except -1) if None.
+            projection: Projection to use for the map. Uses default if None. Can be a string or a cartopy projection object.
             ax: Matplotlib axes to plot on. Creates new figure if None.
             color: Color for cluster visualization. Can be:
                 - A single color (str, hex, RGB tuple) to use for all clusters.
@@ -632,7 +641,7 @@ class TOADPlotter:
         cluster_ids: Union[List[int], np.ndarray, range] = range(5),
         ncols: int = 5,
         color: Optional[str] = None,
-        projection: Optional[str] = None,
+        projection: Optional[str | ccrs.Projection] = None,
         width: float = 12,
         row_height: float = 2.5,
         **kwargs: Any,
@@ -645,7 +654,7 @@ class TOADPlotter:
             cluster_ids: List, range, or array of cluster IDs to plot.
             ncols: Number of columns in the subplot grid.
             color: Single color to use for all cluster visualizations. Passed to `cluster_map`.
-            projection: Map projection to use for each subplot. Uses default if None.
+            projection: Map projection to use for each subplot. Uses default if None. Can be a string or a cartopy projection object.
             width: Total width of the figure in inches.
             row_height: Height of each row in the subplot grid in inches.
             **kwargs: Additional arguments passed down to `self.cluster_map` for each plot.
@@ -841,19 +850,20 @@ class TOADPlotter:
         mean_linewidth: float = 3,
         normalize: Optional[Literal["first", "max", "last"]] = None,
         add_legend: bool = True,
-        plot_range: bool = True,
-        plot_68iqr: bool = True,
-        plot_95iqr: bool = False,
-        plot_median: bool = True,
-        plot_mean: bool = False,
-        plot_custom_iqr: Optional[tuple[float, float]] = None,
+        plot_cluster_range: bool = True,
+        plot_cluster_68iqr: bool = True,
+        plot_cluster_95iqr: bool = False,
+        plot_cluster_median: bool = True,
+        plot_cluster_mean: bool = False,
+        plot_cluster_iqr: Optional[tuple[float, float]] = None,
         alpha: float = 0.4,
-        plot_shift_indicator: bool = True,
+        plot_shift_range: bool = True,
+        plot_largest_gradient: bool = True,
     ) -> tuple[Optional[matplotlib.figure.Figure], Axes]:
         """Plot aggregated time series statistics for one or multiple clusters.
 
-        TODO: make this function faster!!
-        TODO: merge this function with cluster_timeseries()
+        TODO p2: make this function faster!!
+        TODO p2: merge this function with cluster_timeseries()
 
         Plots median and/or mean lines along with shaded interquartile ranges (default: full range and 68% IQR).
         The shift indicator shows the temporal extent of each cluster by plotting horizontal lines at different shades:
@@ -872,14 +882,14 @@ class TOADPlotter:
             mean_linewidth: Linewidth for the mean curve.
             normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
             add_legend: If True, add a legend indicating cluster IDs.
-            plot_range: If True, plot the full range (min to max) as a shaded area.
-            plot_68iqr: If True, plot the 68% IQR (16th to 84th percentile) as a shaded area.
-            plot_95iqr: If True, plot the 95% IQR (2.5th to 97.5th percentile) as a shaded area.
-            plot_median: If True, plot the median timeseries curve.
-            plot_mean: If True, plot the mean timeseries curve.
-            plot_custom_iqr: Tuple of (start_percentile, end_percentile) for a custom IQR shaded area.
+            plot_cluster_range: If True, plot the full range (min to max) as a shaded area.
+            plot_cluster_68iqr: If True, plot the 68% IQR (16th to 84th percentile) as a shaded area.
+            plot_cluster_95iqr: If True, plot the 95% IQR (2.5th to 97.5th percentile) as a shaded area.
+            plot_cluster_median: If True, plot the median timeseries curve.
+            plot_cluster_mean: If True, plot the mean timeseries curve.
+            plot_cluster_iqr: Tuple of (start_percentile, end_percentile) for a custom IQR shaded area.
             alpha: Alpha transparency for the shaded IQR areas.
-            plot_shift_indicator: If True, adds shaded regions that indicate the cluster's temporal extent (start/end),
+            plot_shift_range: If True, adds shaded regions that indicate the cluster's temporal extent (start/end),
                 and draws a vertical line marking the point of steepest change within the cluster (largest gradient of
                 the cluster median timeseries)
 
@@ -931,19 +941,19 @@ class TOADPlotter:
                     alpha=alpha,
                 )
 
-            if plot_range:
+            if plot_cluster_range:
                 plot_iqr(0.00001, 0.999999)
 
-            if plot_68iqr:
+            if plot_cluster_68iqr:
                 plot_iqr(0.16, 0.84)
 
-            if plot_95iqr:
+            if plot_cluster_95iqr:
                 plot_iqr(0.025, 0.975)
 
-            if plot_custom_iqr:
-                plot_iqr(plot_custom_iqr[0], plot_custom_iqr[1])
+            if plot_cluster_iqr:
+                plot_iqr(plot_cluster_iqr[0], plot_cluster_iqr[1])
 
-            if plot_mean:
+            if plot_cluster_mean:
                 self.td.get_cluster_timeseries(
                     plot_var,
                     id,
@@ -957,7 +967,7 @@ class TOADPlotter:
                     label=f"id={id}",
                 )
 
-            if plot_median:
+            if plot_cluster_median:
                 self.td.get_cluster_timeseries(
                     plot_var,
                     id,
@@ -966,16 +976,22 @@ class TOADPlotter:
                     normalize=normalize,
                 ).plot(ax=ax, color=id_color, lw=median_linewidth, label=f"id={id}")
 
-            if plot_shift_indicator:
+            if plot_shift_range:
                 start = self.td.cluster_stats(cluster_var).time.start(id)
                 end = self.td.cluster_stats(cluster_var).time.end(id)
+                ax.axvspan(start, end, color=id_color, alpha=0.25, zorder=-100)
+
+            if plot_largest_gradient:
                 largest_gradient = self.td.cluster_stats(
                     cluster_var
                 ).time.steepest_gradient(id)
-                ax.axvspan(start, end, color=id_color, alpha=0.25, zorder=-100)
                 ax.axvline(
                     largest_gradient, ls="--", color="k", lw=1.0, zorder=100, alpha=0.25
                 )
+
+            # TODO p2: something like the max(median(_dts))
+            # if plot_detection_signal_peak:
+            #     self.td.shift_vars_for_var(cluster_var)
 
             if add_legend:
                 ax.legend(frameon=False)
@@ -999,9 +1015,6 @@ class TOADPlotter:
         When specific cluster_ids are provided, remaining clusters will be grouped together
         and shown as a single layer at the bottom of the plot.
         """
-        fig = None
-        if ax is None:
-            fig, ax = plt.subplots(figsize=figsize)
 
         # Use cluster_var for clustering but plot_var (or cluster_var if None) for visualization
         cluster_var = self.td._get_base_var_if_none(cluster_var)
@@ -1082,6 +1095,11 @@ class TOADPlotter:
                     f">{max_plotted_id}"
                 )  # Add label to the end
 
+        # Create figure and axes if not provided
+        fig = None
+        if ax is None:
+            fig, ax = plt.subplots(figsize=figsize)
+
         # Stack the areas for clusters
         ax.stackplot(
             series_list[0][self.td.time_dim].values,
@@ -1144,7 +1162,7 @@ class TOADPlotter:
         plot_var: str | None = None,
         ncols: int = 5,
         snapshots: int = 5,
-        projection: str | None = None,
+        projection: str | ccrs.Projection | None = None,
     ) -> Tuple[matplotlib.figure.Figure, np.ndarray]:
         """Plot spatial snapshots of a cluster's evolution over time.
 
@@ -1160,14 +1178,12 @@ class TOADPlotter:
                       Defaults to `cluster_var` if None.
             ncols: Number of columns in the subplot grid for the snapshots.
             snapshots: Number of time snapshots to plot across the cluster's duration.
-            projection: Map projection to use for the snapshot maps. Uses default if None.
+            projection: Map projection to use for the snapshot maps. Uses default if None. Can be a string or a cartopy projection object.
 
         Returns:
             Tuple[matplotlib.figure.Figure, np.ndarray]: The figure and the array of axes
             containing the snapshot plots.
         """
-
-        # TODO, I think this crashes if no clusters have been computed
 
         cluster_var = self.td._get_base_var_if_none(cluster_var)
 
@@ -1203,7 +1219,7 @@ class TOADPlotter:
         map_var: Optional[str] = None,
         timeseries_var: Optional[str] = None,
         plot_shifts: bool = False,
-        projection: Optional[str] = None,
+        projection: Optional[str | ccrs.Projection] = None,
         figsize: tuple = (12, 6),
         width_ratios: List[float] = [1, 1],
         height_ratios: Optional[List[float]] = None,
@@ -1230,7 +1246,7 @@ class TOADPlotter:
                      Defaults to `var` if None.
             timeseries_var: Variable name whose data to plot in the timeseries.
                             Defaults to base variable of the cluster variable.
-            projection: Map projection for the cluster map. Uses default if None.
+            projection: Map projection for the cluster map. Uses default if None. Can be a string or a cartopy projection object.
             figsize: Overall figure size (width, height) in inches.
             width_ratios: List of relative widths for map vs. timeseries section
                           (used in horizontal layout).

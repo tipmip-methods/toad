@@ -345,7 +345,7 @@ class Aggregation:
         # Recast naming for readability
         regrid_enabled = is_latlon_dims
 
-        # TODO: fix this bug: looks like we are getting circular clusters around the poles... not sure the regridder is working correctly.
+        # TODO p1: fix this bug: looks like we are getting circular clusters around the poles... not sure the regridder is working correctly.
         if regrid_enabled:
             logger.warning(
                 "There may be a bug here.. when using regridder, the consensus clusters may be incorrect."

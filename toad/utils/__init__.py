@@ -20,7 +20,7 @@ import xarray as xr
 
 from .synthetic_data import create_global_dataset
 
-# TODO remove functions that are not supposed to be public, and prefix with _
+# TODO p1: remove functions that are not supposed to be public, and prefix with _
 __all__ = [
     "create_global_dataset",
     "get_space_dims",

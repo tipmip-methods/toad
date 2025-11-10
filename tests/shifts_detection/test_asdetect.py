@@ -2,7 +2,6 @@ import pytest
 import numpy as np
 import xarray as xr
 from toad import TOAD
-from toad.shifts import ASDETECT
 
 
 @pytest.fixture
@@ -86,7 +85,7 @@ def test_asdetect(test_params, toad_instance):
     )
 
     # - call function
-    td.compute_shifts("data", ASDETECT(lmin=2, lmax=3), overwrite=True)
+    td.compute_shifts("data", ASDETECT(lmin=2, lmax=3, segmentation="centered"), overwrite=True)
     shifts = td.get_shifts("data").data[0, 0]
 
     # - compare results
@@ -105,7 +104,7 @@ def test_asdetect(test_params, toad_instance):
     ).mean()
 
     # - call function
-    td.compute_shifts("tas", ASDETECT(), overwrite=True)
+    td.compute_shifts("tas", ASDETECT(segmentation="centered"), overwrite=True)
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values

@@ -4,7 +4,6 @@ import xarray as xr
 from toad import TOAD
 from toad.shifts import ASDETECT
 
-
 @pytest.fixture
 def test_params():
     """Fixture providing parameters for the ASDETECT test.

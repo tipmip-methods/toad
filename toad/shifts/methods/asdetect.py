@@ -263,7 +263,10 @@ def construct_detection_ts(
         )
 
     # normalize detection time series by number of segment lengths used
-    detection_ts /= counter
+    if segmentation == "centered":
+        detection_ts /= lmax - lmin + 1
+    else:
+        detection_ts /= counter
 
     return detection_ts
 

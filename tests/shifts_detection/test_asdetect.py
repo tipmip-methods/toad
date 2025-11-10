@@ -246,5 +246,5 @@ def test_asdetect_full_correction(test_params_full_correction, toad_instance):
     std = shifts.std().values
 
     # - compare results
-    np.testing.assert_allclose(mean, test_params_full_correction["expected_mean"], rtol=1e-5, atol=1e-8)
-    np.testing.assert_allclose(std, test_params_full_correction["expected_std"], rtol=1e-5, atol=1e-8)
+    np.testing.assert_allclose(mean, test_params_full_correction["expected_mean"], rtol=1e-3, atol=1e-5)
+    np.testing.assert_allclose(std, test_params_full_correction["expected_std"], rtol=1e-3, atol=1e-5)

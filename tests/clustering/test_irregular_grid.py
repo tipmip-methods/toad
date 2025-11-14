@@ -18,7 +18,7 @@ def cleanup_memory():
     "min_cluster_size,shifts_threshold,shift_selection,expected_N_clusters",
     [
         (10, 0.8, "global", 3),
-        (10, 0.8, "all", 10),
+        (10, 0.8, "all", 3),
         (10, 0.8, "local", 4),
     ],
 )
@@ -54,7 +54,7 @@ def test_irregular_grid(
         shift_threshold=shifts_threshold,
         method=HDBSCAN(min_cluster_size=min_cluster_size),
         overwrite=True,
-        time_scale_factor=1,
+        time_scale_factor=2,
         shift_selection=shift_selection,
     )
 

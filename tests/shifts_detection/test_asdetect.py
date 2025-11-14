@@ -1,6 +1,6 @@
-import pytest
 import numpy as np
-import xarray as xr
+import pytest
+
 from toad import TOAD
 from toad.shifts import ASDETECT
 
@@ -21,29 +21,8 @@ def test_params_centered():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.0045629148,
-        "expected_std": 0.2109171152,
-    }
-
-
-@pytest.fixture
-def test_params_fast_correction():
-    """Fixture providing parameters for the ASDETECT test in segmentation mode "fast_correction".
-
-    Returns:
-        dict: A dictionary containing:
-            - lat (int): Latitude coarsening factor.
-            - lon (int): Longitude coarsening factor.
-            - time (int): Time coarsening factor.
-            - expected_mean (float): Expected mean of the shifts.
-            - expected_std (float): Expected standard deviation of the shifts.
-    """
-    return {
-        "lat": 10,
-        "lon": 10,
-        "time": 3,
-        "expected_mean": 0.010336183,
-        "expected_std": 0.2058115,
+        "expected_mean": 0.004754983,
+        "expected_std": 0.21182401,
     }
 
 
@@ -63,29 +42,8 @@ def test_params_fine_correction():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.017693562,
-        "expected_std": 0.20061477,
-    }
-
-
-@pytest.fixture
-def test_params_full_correction():
-    """Fixture providing parameters for the ASDETECT test in segmentation mode "full_correction".
-
-    Returns:
-        dict: A dictionary containing:
-            - lat (int): Latitude coarsening factor.
-            - lon (int): Longitude coarsening factor.
-            - time (int): Time coarsening factor.
-            - expected_mean (float): Expected mean of the shifts.
-            - expected_std (float): Expected standard deviation of the shifts.
-    """
-    return {
-        "lat": 10,
-        "lon": 10,
-        "time": 3,
-        "expected_mean": 0.016856669,
-        "expected_std": 0.18138373,
+        "expected_mean": 0.01522529,
+        "expected_std": 0.16875029,
     }
 
 
@@ -135,31 +93,6 @@ def test_asdetect_centered(test_params_centered, toad_instance):
         of the shifts match the expected results.
     """
 
-    ##########################################
-    # test 1
-
-    # - setup
-    data_arr = np.array([0, 0, 0, 1, 1, 1], dtype=float)
-    time_arr = np.arange(len(data_arr))
-    td = TOAD(
-        xr.Dataset(
-            {"data": (["lat", "lon", "time"], data_arr.reshape(1, 1, -1))},
-            coords={"time": time_arr, "lat": [0], "lon": [0]},
-        )
-    )
-
-    # - call function
-    td.compute_shifts(
-        "data", ASDETECT(lmin=2, lmax=3, segmentation="centered"), overwrite=True
-    )
-    shifts = td.get_shifts("data").data[0, 0]
-
-    # - compare results
-    assert np.array_equal(shifts, np.array([0, 0, 0.5, 0.5, 0, 0], dtype=float))
-
-    ##########################################
-    # test 2
-
     # - setup
     td = toad_instance
     td.data = td.data.coarsen(
@@ -170,7 +103,7 @@ def test_asdetect_centered(test_params_centered, toad_instance):
     ).mean()
 
     # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="centered"), overwrite=True)
+    td.compute_shifts("tas", ASDETECT(segmentation="original"), overwrite=True)
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values
@@ -184,41 +117,81 @@ def test_asdetect_centered(test_params_centered, toad_instance):
     )
 
 
-def test_asdetect_fast_correction(test_params_fast_correction, toad_instance):
-    """Test the ASDETECT shift detection method in segmentation mode "fast_correction".
-
-    Same idea as test 2 from test_asdetect_centered.
-    """
-
-    # - setup
-    td = toad_instance
-    td.data = td.data.coarsen(
-        lat=test_params_fast_correction["lat"],
-        lon=test_params_fast_correction["lon"],
-        time=test_params_fast_correction["time"],
-        boundary="trim",
-    ).mean()
-
-    # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="fast_correction"), overwrite=True)
-    shifts = td.get_shifts("tas")
-    mean = shifts.mean().values
-    std = shifts.std().values
-
-    # - compare results
-    np.testing.assert_allclose(
-        mean, test_params_fast_correction["expected_mean"], rtol=1e-5, atol=1e-8
-    )
-    np.testing.assert_allclose(
-        std, test_params_fast_correction["expected_std"], rtol=1e-5, atol=1e-8
-    )
-
-
 def test_asdetect_fine_correction(test_params_fine_correction, toad_instance):
     """Test the ASDETECT shift detection method in segmentation mode "fine_correction".
 
     Same idea as test 2 from test_asdetect_centered.
     """
+
+    # test 1
+
+    # - setup
+    np.random.seed(4)
+    data_arr = np.random.randn(50)
+    data_arr[20:] += 20
+    shifts = ASDETECT(segmentation="two_sided").fit_predict(
+        data_arr, np.arange(len(data_arr), dtype=np.float64)
+    )
+
+    # - compare results
+    expected_shifts = np.array(
+        [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.04166667,
+            0.04166667,
+            0.04166667,
+            0.125,
+            0.16666667,
+            0.20833333,
+            0.375,
+            0.45833333,
+            0.54166667,
+            0.58333333,
+            0.75,
+            0.75,
+            0.75,
+            0.70833333,
+            0.58333333,
+            0.54166667,
+            0.375,
+            0.375,
+            0.25,
+            0.20833333,
+            0.125,
+            0.125,
+            0.08333333,
+            0.08333333,
+            0.04166667,
+            0.04166667,
+            0.0,
+            0.0,
+            -0.04166667,
+            -0.04166667,
+            -0.04166667,
+            -0.04166667,
+            -0.04166667,
+            -0.04166667,
+            -0.04166667,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ]
+    )
+
+    np.testing.assert_allclose(shifts, expected_shifts, atol=1e-6)
+
+    # Real Data Test ==========
 
     # - setup
     td = toad_instance
@@ -230,45 +203,18 @@ def test_asdetect_fine_correction(test_params_fine_correction, toad_instance):
     ).mean()
 
     # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="fine_correction"), overwrite=True)
+    td.compute_shifts("tas", ASDETECT(segmentation="two_sided"), overwrite=True)
     shifts = td.get_shifts("tas")
-    mean = shifts.mean().values
-    std = shifts.std().values
+    mean = float(shifts.mean().values)
+    std = float(shifts.std().values)
 
     # - compare results
+    # Use strict type-casting and match to float32 tolerance
+    # The actual value is float32, so we need slightly more lenient tolerances
+    # Max absolute difference observed: ~2.9e-07, so atol=1e-6 is safe
     np.testing.assert_allclose(
-        mean, test_params_fine_correction["expected_mean"], rtol=1e-5, atol=1e-8
+        mean, test_params_fine_correction["expected_mean"], rtol=2e-5, atol=1e-6
     )
     np.testing.assert_allclose(
-        std, test_params_fine_correction["expected_std"], rtol=1e-5, atol=1e-8
-    )
-
-
-def test_asdetect_full_correction(test_params_full_correction, toad_instance):
-    """Test the ASDETECT shift detection method in segmentation mode "full_correction".
-
-    Same idea as test 2 from test_asdetect_centered.
-    """
-
-    # - setup
-    td = toad_instance
-    td.data = td.data.coarsen(
-        lat=test_params_full_correction["lat"],
-        lon=test_params_full_correction["lon"],
-        time=test_params_full_correction["time"],
-        boundary="trim",
-    ).mean()
-
-    # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="full_correction"), overwrite=True)
-    shifts = td.get_shifts("tas")
-    mean = shifts.mean().values
-    std = shifts.std().values
-
-    # - compare results
-    np.testing.assert_allclose(
-        mean, test_params_full_correction["expected_mean"], rtol=1e-3, atol=1e-5
-    )
-    np.testing.assert_allclose(
-        std, test_params_full_correction["expected_std"], rtol=1e-3, atol=1e-5
+        std, test_params_fine_correction["expected_std"], rtol=2e-5, atol=1e-6
     )

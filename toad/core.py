@@ -501,9 +501,9 @@ class TOAD:
         self,
         var: str | None = None,
         method: ClusterMixin | type = sklearn.cluster.HDBSCAN(),
-        shift_threshold: float = 0.8,
         shift_direction: Literal["both", "positive", "negative"] = "both",
         shift_selection: Literal["local", "global", "all"] = "local",
+        shift_threshold: float = 0.5,
         scaler: StandardScaler
         | MinMaxScaler
         | RobustScaler
@@ -540,7 +540,7 @@ class TOAD:
                 A ValueError is raised if the shifts variable cannot be uniquely determined.
             method: The clustering method to use. Choose methods from sklearn.cluster or create
                 your by inheriting from sklearn.base.ClusterMixin. Defaults to HDBSCAN().
-            shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
+            shift_threshold: The minimum magnitude a shift must reach to be included in clustering. Raising this threshold filters out less significant shifts and helps focus clustering on the most meaningful events, while reducing it will include more subtle (and potentially noisier) shifts. Default is 0.5, which effectively excludes most noise when using ASDETECT.
             shift_direction: The sign of the shift. Options are "both", "positive", "negative". Defaults to "both".
             shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
                 "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.

@@ -70,7 +70,7 @@ def compute_clusters(
     td: "TOAD",
     var: str,
     method: ClusterMixin | type,
-    shift_threshold: float = 0.8,
+    shift_threshold: float = 0.5,
     shift_direction: Literal["both", "positive", "negative"] = "both",
     shift_selection: Literal["local", "global", "all"] = "local",
     scaler: StandardScaler
@@ -78,7 +78,7 @@ def compute_clusters(
     | RobustScaler
     | MaxAbsScaler
     | None = StandardScaler(),
-    time_scale_factor: float = 1,
+    time_scale_factor: float = 1,  # TODO rename time_scale
     regridder: BaseRegridder | None = None,
     output_label_suffix: str = "",
     output_label: str | None = None,
@@ -107,7 +107,7 @@ def compute_clusters(
         td: TOAD object containing the data to cluster
         var: Name of the base variable or shifts variable to compute clusters for. If multiple shifts variables exist for the base variable, a ValueError is thrown, in which case you should specify the shifts variable name.
         method: The clustering method to use. Choose methods from `sklearn.cluster` or create your own by inheriting from `sklearn.base.ClusterMixin`.
-        shift_threshold: The threshold for the shift magnitude. Defaults to 0.8.
+        shift_threshold: The minimum magnitude a shift must reach to be included in clustering. Raising this threshold filters out less significant shifts and helps focus clustering on the most meaningful events, while reducing it will include more subtle (and potentially noisier) shifts. Default is 0.5, which effectively excludes most noise when using ASDETECT.
         shift_direction: The direction of the shift. Options are "both", "positive", "negative". Defaults to "both".
         shift_selection: How shift values are selected for clustering. All options respect shift_threshold and shift_direction:
             - "local": Finds peaks within individual shift episodes. Cluster only local maxima within each contiguous segment where abs(shift) > shift_threshold.

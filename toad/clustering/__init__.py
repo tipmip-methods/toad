@@ -40,7 +40,7 @@ from toad._version import __version__
 from toad.clustering.optimising import (
     _optimise_clusters,
     combined_spatial_nonlinearity,
-    default_hdbscan_optimisation_params,
+    default_optimisation_params,
 )
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
@@ -56,7 +56,7 @@ logger = logging.getLogger("TOAD")
 
 __all__ = [
     "compute_clusters",
-    "default_hdbscan_optimisation_params",
+    "default_optimisation_params",
     "combined_spatial_nonlinearity",
     "sorted_cluster_labels",
 ]
@@ -71,23 +71,23 @@ def compute_clusters(
     var: str,
     method: ClusterMixin | type,
     shift_threshold: float = 0.5,
-    shift_direction: Literal["both", "positive", "negative"] = "both",
-    shift_selection: Literal["local", "global", "all"] = "local",
+    shift_direction: Literal["both", "positive", "negative"] | str = "both",
+    shift_selection: Literal["local", "global", "all"] | str = "local",
     scaler: StandardScaler
     | MinMaxScaler
     | RobustScaler
     | MaxAbsScaler
     | None = StandardScaler(),
-    time_scale_factor: float = 1,  # TODO rename time_scale
+    time_scale_factor: float = 1,  # TODO p1: rename time_scale
     regridder: BaseRegridder | None = None,
     output_label_suffix: str = "",
     output_label: str | None = None,
     overwrite: bool = False,
     sort_by_size: bool = True,
     # Optimisation params
-    optimise: bool = False,
-    optimisation_params: dict = default_hdbscan_optimisation_params,
-    objective: Callable
+    optimise: bool = False,  # TODO p1: rename optimize
+    optimisation_params: dict = default_optimisation_params,
+    objective: Callable  # TODO p1: rename all opt params to optimize_x_param
     | Literal[
         "median_heaviside",
         "mean_heaviside",
@@ -95,7 +95,8 @@ def compute_clusters(
         "mean_spatial_autocorrelation",
         "mean_nonlinearity",
         "combined_spatial_nonlinearity",
-    ] = "combined_spatial_nonlinearity",
+    ]
+    | str = "combined_spatial_nonlinearity",
     n_trials: int = 50,
     direction: str = "maximize",
     log_level: int = optuna.logging.WARNING,
@@ -122,7 +123,7 @@ def compute_clusters(
         merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
         sort_by_size: Whether to reorder clusters by size. Defaults to True.
         optimise: Whether to optimise the clustering parameters. Defaults to False.
-        optimisation_params: Parameters for the optimisation. Defaults to default_hdbscan_optimisation_params.
+        optimisation_params: Parameters for the optimisation. Defaults to default_optimisation_params.
         objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
             - callable: Custom objective function taking (td, output_label) as arguments
             - "median_heaviside": Median heaviside score across clusters

@@ -24,11 +24,10 @@ class ClusterGeneralStats:
         self,
         cluster_id: int,
         return_score_fit: Literal[False] = False,
-        aggregation: Literal[
-            "mean", "sum", "std", "median", "percentile", "max", "min"
-        ] = "mean",
+        aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
+        | str = "mean",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] = None,
+        normalize: Optional[Literal["first", "max", "last"]] | str = None,
     ) -> float: ...
 
     @overload
@@ -36,20 +35,20 @@ class ClusterGeneralStats:
         self,
         cluster_id: int,
         return_score_fit: Literal[True],
-        aggregation: Literal[
-            "mean", "sum", "std", "median", "percentile", "max", "min"
-        ] = "mean",
+        aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
+        | str = "mean",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] = None,
+        normalize: Optional[Literal["first", "max", "last"]] | str = None,
     ) -> Tuple[float, np.ndarray]: ...
 
     def score_heaviside(
         self,
         cluster_id,
         return_score_fit=False,
-        aggregation="mean",
+        aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
+        | str = "mean",
         percentile=None,
-        normalize=None,
+        normalize: Optional[Literal["first", "max", "last"]] | str = None,
     ):
         """Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
 

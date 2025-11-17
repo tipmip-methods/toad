@@ -187,7 +187,7 @@ class Aggregation:
     def cluster_consensus(
         self,
         cluster_vars: List[str] | None = None,
-        min_consensus: float = 0.5,
+        min_consensus: float = 0.75,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
         regridder: BaseRegridder | None = None,

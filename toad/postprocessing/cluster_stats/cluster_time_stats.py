@@ -108,8 +108,15 @@ class ClusterTimeStats:
 
     def steepest_gradient(self, cluster_id) -> Union[float, cftime.datetime]:
         """Return the time of the steepest gradient of the median cluster timeseries"""
+        cluster_var = str(self.td.get_clusters(self.var).name)
+        base_var = str(self.td.get_base_var(self.var))
+
         ts = self.td.get_cluster_timeseries(
-            self.var, cluster_id, aggregation="median", keep_full_timeseries=True
+            base_var,
+            cluster_id,
+            cluster_var=cluster_var,
+            aggregation="median",
+            keep_full_timeseries=False,
         )
 
         # Check if all values are NaN before computing gradient
@@ -136,8 +143,16 @@ class ClusterTimeStats:
 
     def steepest_gradient_timestep(self, cluster_id) -> float:
         """Return the index of the steepest gradient of the mean cluster timeseries inside the cluster time bounds"""
+
+        cluster_var = str(self.td.get_clusters(self.var).name)
+        base_var = str(self.td.get_base_var(self.var))
+
         ts = self.td.get_cluster_timeseries(
-            self.var, cluster_id, aggregation="mean", keep_full_timeseries=False
+            base_var,
+            cluster_id,
+            cluster_var=cluster_var,
+            aggregation="median",
+            keep_full_timeseries=False,
         )
 
         # Check if all values are NaN before computing gradient
@@ -150,7 +165,7 @@ class ClusterTimeStats:
             return 0.0
 
         grad = ts.diff(self.td.time_dim)
-        return float(grad.argmin())
+        return int(grad.argmin())
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float

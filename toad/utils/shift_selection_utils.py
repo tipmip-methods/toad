@@ -192,8 +192,8 @@ def _compute_global_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
 def _compute_dts_peak_sign_mask(
     shifts: xr.DataArray,
     time_dim: str,
-    shift_threshold: float = 0.8,
-    shift_selection: Literal["local", "global"] = "local",
+    shift_threshold: float = 0.5,
+    shift_selection: Literal["local", "global"] | str = "local",
 ) -> xr.DataArray:
     """Computes a dense mask indicating peak signs in the shifts data.
 

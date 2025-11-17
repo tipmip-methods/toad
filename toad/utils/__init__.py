@@ -140,8 +140,8 @@ def detect_latlon_names(data: xr.Dataset) -> Tuple[Optional[str], Optional[str]]
     Returns:
         Tuple of (lat_name, lon_name). Either can be None if not found.
     """
-    lat_candidates = ["lat", "latitude"]
-    lon_candidates = ["lon", "longitude"]
+    lat_candidates = ["lat", "latitude", "nav_lat"]
+    lon_candidates = ["lon", "longitude", "nav_lon"]
 
     # Try coordinates first
     lat_name = next((n for n in lat_candidates if n in data.coords), None)

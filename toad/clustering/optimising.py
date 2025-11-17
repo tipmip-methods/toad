@@ -41,10 +41,9 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
     return float(weights[0] * score1 + weights[1] * score2)
 
 
-default_hdbscan_optimisation_params = dict(
+default_optimisation_params = dict(
     {
         "min_cluster_size": (10, 25),
-        "shift_threshold": (0.6, 0.95),
         "time_scale_factor": (0.5, 1.5),
     }
 )
@@ -151,6 +150,9 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         "optimisation_params cannot be empty. Example: optimisation_params={'min_cluster_size': (5, 15)}"
     )
 
+    # Print optimisation params
+    logger.info(f"Optimising {n_trials} trials with params: {optimisation_params}")
+
     score_computation_time = 0.0
 
     def objective_fn(trial) -> float:
@@ -225,8 +227,8 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
     logger.info(
         f"Ran {n_trials} trials in {t1 - t0:.2f} seconds. "
         f"Best (#{study.best_trial.number}): score {study.best_value:.4f}, "
-        f"params {study.best_params}."
-        f"Score computation time: {score_computation_time:.2f} seconds."
+        f"params {study.best_params}. "
+        # f"Score computation time: {score_computation_time:.2f} seconds." # score computation is slow...
     )
 
     # copy best params and pop shift_threshold and time_scale_factor if present, if not use the one from the kwargs

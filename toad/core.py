@@ -23,7 +23,7 @@ from toad import (
     visualisation,
 )
 from toad.clustering.optimising import (
-    default_hdbscan_optimisation_params,
+    default_optimisation_params,
 )
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
@@ -385,7 +385,7 @@ class TOAD:
         """Access preprocessing methods."""
         return preprocessing.Preprocess(self)
 
-    def cluster_stats(self, var: str) -> postprocessing.ClusterStats:
+    def cluster_stats(self, var: str | None = None) -> postprocessing.ClusterStats:
         """Access cluster statistical methods.
 
         Args:
@@ -395,6 +395,13 @@ class TOAD:
         Returns:
             ClusterStats object for analyzing cluster statistics.
         """
+
+        # attempt to infer var
+        var = (
+            var
+            if var
+            else str(self.get_clusters(self._get_base_var_if_none(None)).name)
+        )
         return postprocessing.ClusterStats(self, var)
 
     def aggregation(self) -> postprocessing.Aggregation:
@@ -500,9 +507,9 @@ class TOAD:
         self,
         var: str | None = None,
         method: ClusterMixin | type = sklearn.cluster.HDBSCAN(),
-        shift_direction: Literal["both", "positive", "negative"] = "both",
-        shift_selection: Literal["local", "global", "all"] = "local",
         shift_threshold: float = 0.5,
+        shift_direction: Literal["both", "positive", "negative"] | str = "both",
+        shift_selection: Literal["local", "global", "all"] | str = "local",
         scaler: StandardScaler
         | MinMaxScaler
         | RobustScaler
@@ -516,7 +523,7 @@ class TOAD:
         sort_by_size: bool = True,
         # optimisation related params
         optimise: bool = False,
-        optimisation_params: dict = default_hdbscan_optimisation_params,
+        optimisation_params: dict = default_optimisation_params,
         objective: Callable
         | Literal[
             "median_heaviside",
@@ -525,7 +532,8 @@ class TOAD:
             "mean_spatial_autocorrelation",
             "mean_nonlinearity",
             "combined_spatial_nonlinearity",
-        ] = "combined_spatial_nonlinearity",
+        ]
+        | str = "combined_spatial_nonlinearity",
         n_trials: int = 50,
         direction: str = "maximize",
         log_level: int = optuna.logging.WARNING,
@@ -559,7 +567,7 @@ class TOAD:
                 into the original dataset. Defaults to False.
             sort_by_size: Whether to reorder clusters by size. Defaults to True.
             optimise: Whether to optimise the clustering parameters. Defaults to False.
-            optimisation_params: Parameters for the optimisation. Defaults to default_hdbscan_optimisation_params.
+            optimisation_params: Parameters for the optimisation. Defaults to default_optimisation_params.
             objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
                 - callable: Custom objective function taking (td, output_label) as arguments
                 - "median_heaviside": Median heaviside score across clusters
@@ -657,7 +665,7 @@ class TOAD:
             # Define compression settings
             compression_settings = {
                 "zlib": True,
-                "complevel": 1,
+                "complevel": 4,
             }
 
             # Apply compression to both float and int data variables
@@ -815,7 +823,10 @@ class TOAD:
 
     def get_base_var(self, var: str) -> Optional[str]:
         """Get the base variable for a given variable."""
-        return self.data[var].attrs.get(_attrs.BASE_VARIABLE)
+        if var in self.base_vars:
+            return var
+        else:
+            return self.data[var].attrs.get(_attrs.BASE_VARIABLE)
 
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """Get shifts xr.DataArray for the specified variable.
@@ -1241,49 +1252,66 @@ class TOAD:
         Returns:
             Aggregated data. If method="raw", includes cell_xy dimension.
         """
+        # Check if data already has cell_xy dimension (e.g., when cluster_id=None)
+        if "cell_xy" in data.dims:
+            agg_dim = "cell_xy"
+        else:
+            agg_dim = self.space_dims
+
         if method == "mean":
-            return data.mean(dim=self.space_dims)
+            return data.mean(dim=agg_dim)
         elif method == "median":
-            return data.median(dim=self.space_dims)
+            return data.median(dim=agg_dim)
         elif method == "sum":
-            return data.sum(dim=self.space_dims)
+            return data.sum(dim=agg_dim)
         elif method == "std":
-            return data.std(dim=self.space_dims)
+            return data.std(dim=agg_dim)
         elif method == "max":
-            return data.max(dim=self.space_dims)
+            return data.max(dim=agg_dim)
         elif method == "min":
-            return data.min(dim=self.space_dims)
+            return data.min(dim=agg_dim)
         elif method == "percentile":
             if percentile is None:
                 raise ValueError(
                     "percentile argument required for percentile aggregation"
                 )
-            return data.quantile(percentile, dim=self.space_dims)
+            return data.quantile(percentile, dim=agg_dim)
         elif method == "raw":
-            result = data.stack(cell_xy=self.space_dims).transpose()
-            return result.dropna(dim="cell_xy", how="all")
+            if "cell_xy" in data.dims:
+                # Already in cell_xy format, just return as-is
+                return data.dropna(dim="cell_xy", how="all")
+            else:
+                # Stack spatial dimensions
+                result = data.stack(cell_xy=self.space_dims).transpose()
+                return result.dropna(dim="cell_xy", how="all")
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
 
+    # TODO p1: rename to get_trajectories
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Union[int, List[int]],  # TODO p1: rename to cluster_ids ?
+        cluster_id: Optional[
+            Union[int, List[int]]
+        ] = None,  # TODO p1: rename to cluster_ids ?
         cluster_var: Optional[str] = None,
         aggregation: Literal[
             "raw", "mean", "sum", "std", "median", "percentile", "max", "min"
-        ] = "raw",
+        ]
+        | str = "raw",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] = None,
+        normalize: Optional[Literal["first", "max", "last"]] | str = None,
         keep_full_timeseries: bool = True,
     ) -> xr.DataArray:
         """Get time series for cluster, optionally aggregated across space.
+
+        If cluster_id is None, returns all data from the dataset in timeseries format.
 
         Args:
             var: Variable name to extract time series from.
             cluster_var: Variable name to extract cluster ids from. Default to None and is
                 attempted to be inferred from var.
-            cluster_id: Single cluster ID or list of cluster IDs.
+            cluster_id: Single cluster ID, list of cluster IDs, or None to return all data.
             aggregation: How to aggregate spatial data:
                 - "mean": Average across space
                 - "median": Median across space
@@ -1300,25 +1328,46 @@ class TOAD:
                 - "last": Normalize by the last non-zero, non-nan timestep
                 - None: Do not normalize
             keep_full_timeseries: If True, returns full time series of cluster cells. If
-                False, only returns time series of cells when they were in the cluster.
+                False, values outside cluster bounds will be nan. Ignored when cluster_id is None.
 
         Returns:
-            The time series data for the specified cluster(s).
+            The time series data for the specified cluster(s), or all data if cluster_id is None.
         """
         cluster_var = cluster_var if cluster_var else var
 
-        if keep_full_timeseries:
+        # Handle case when cluster_id is None - return all data
+        if cluster_id is None:
+            data = self.data[var]
+            # Stack spatial dimensions to get timeseries format (same as cluster data format)
+            non_time_dims = [d for d in data.dims if d != self.time_dim]
+            if len(non_time_dims) > 0:
+                data = data.stack(cell_xy=non_time_dims).transpose(
+                    "cell_xy", self.time_dim
+                )
+                data = data.dropna(dim="cell_xy", how="all")
+            else:
+                # Already 1D timeseries, expand to match format
+                data = data.expand_dims("cell_xy")
+        else:
             # Handle unclustered case (-1)
             if is_equal_to(cluster_id, -1):
                 mask = self.get_permanent_unclustered_mask(cluster_var)
             else:
                 mask = self.get_spatial_cluster_mask(cluster_var, cluster_id)
-        else:
-            # Original behavior - only keep timesteps where cells are in cluster
-            mask = self.get_cluster_mask(cluster_var, cluster_id)
 
-        # Apply mask
-        data = self.data[var].where(mask)
+            # Apply mask
+            data = self.data[var].where(mask)
+
+            # Crop to cluster duration
+            if not keep_full_timeseries:
+                start_idx = self.cluster_stats(var).time.start_timestep(cluster_id)
+                end_idx = self.cluster_stats(var).time.end_timestep(cluster_id)
+                # Set values outside the [start_idx, end_idx) range to NaN along the time dimension
+                time_indices = np.arange(data.sizes[self.time_dim])
+                mask_in_range = (time_indices >= start_idx) & (time_indices < end_idx)
+                data = data.where(
+                    xr.DataArray(mask_in_range, dims=self.time_dim, name="time_mask")
+                )
 
         # First aggregate spatially
         data = self._aggregate_spatial(data, aggregation, percentile)

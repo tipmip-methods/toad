@@ -1,8 +1,17 @@
 from typing import Callable, Literal, Optional, Tuple, Union, overload
 
 import numpy as np
+import pandas as pd
 from scipy.cluster.hierarchy import inconsistent, linkage
 from scipy.spatial.distance import squareform
+
+# Dictionary mapping score names to their method names
+score_dictionary = {
+    "heaviside": "score_heaviside",
+    "consistency": "score_consistency",
+    "spatial_autocorrelation": "score_spatial_autocorrelation",
+    "nonlinearity": "score_nonlinearity",
+}
 
 
 class ClusterGeneralStats:
@@ -315,6 +324,186 @@ class ClusterGeneralStats:
 
         # Return normalized nonlinearity
         return float(rmse_cluster / avg_rmse_unclustered)
+
+    def score_overview(
+        self,
+        exclude_noise: bool = True,
+        shift_threshold: float = 0.0,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """Compute all available scores for every cluster and return as a pandas DataFrame.
+
+        This function computes all scoring methods defined in score_dictionary for each cluster
+        and returns the results in a structured DataFrame format, similar to the consensus summary.
+        Includes cluster size, spatial means, shift time statistics, and an aggregate score.
+
+        Args:
+            exclude_noise: Whether to exclude noise points (cluster ID -1). Defaults to True.
+            shift_threshold: Minimum shift threshold for computing transition times. Defaults to 0.0.
+            **kwargs: Additional keyword arguments passed to scoring methods. These will be
+                applied to all scoring methods that accept them. Common parameters include:
+                - aggregation: Aggregation method for methods that support it (default: "mean")
+                - percentile: Percentile value for percentile aggregation
+                - normalize: Normalization method for score_heaviside
+                - normalise_against_unclustered: Boolean for score_nonlinearity (default: False)
+
+        Returns:
+            pd.DataFrame: DataFrame with one row per cluster containing:
+                - cluster_id: Cluster identifier
+                - All score columns from score_dictionary
+                - size: Number of space-time grid cells in the cluster
+                - mean_{spatial_dim0}: Average spatial coordinate for first dimension
+                - mean_{spatial_dim1}: Average spatial coordinate for second dimension
+                - mean_shift_time: Mean transition time for the cluster
+                - std_shift_time: Standard deviation of transition times within the cluster
+                - aggregate_score: Product of all score values
+
+        Example:
+            >>> stats = td.cluster_stats(var="temperature")
+            >>> overview = stats.score_overview()
+            >>> print(overview)
+        """
+        # Get all cluster IDs
+        cluster_ids = self.td.get_cluster_ids(self.var, exclude_noise=exclude_noise)
+
+        if len(cluster_ids) == 0:
+            # Return empty DataFrame with expected columns
+            spatial_dims = self.td.space_dims
+            cols = (
+                ["cluster_id"]
+                + list(score_dictionary.keys())
+                + ["size", f"mean_{spatial_dims[0]}", f"mean_{spatial_dims[1]}"]
+                + ["mean_shift_time", "std_shift_time", "aggregate_score"]
+            )
+            return pd.DataFrame({c: [] for c in cols})
+
+        # Get spatial dimensions
+        spatial_dims = self.td.space_dims
+        sd0, sd1 = spatial_dims[0], spatial_dims[1]
+
+        # Initialize results dictionary
+        results = {"cluster_id": cluster_ids.tolist()}
+
+        # Compute each score for all clusters
+        score_columns = []
+        for score_name, method_name in score_dictionary.items():
+            method = getattr(self, method_name)
+            scores = []
+
+            for cluster_id in cluster_ids:
+                try:
+                    # Call method with cluster_id and any additional kwargs
+                    score = method(cluster_id, **kwargs)
+                    # Handle tuple returns (e.g., score_heaviside with return_score_fit=True)
+                    if isinstance(score, tuple):
+                        score = score[0]  # Take the first element (the score)
+                    scores.append(float(score))
+                except Exception:
+                    # If computation fails, store NaN
+                    scores.append(np.nan)
+
+            results[score_name] = scores
+            score_columns.append(score_name)
+
+        # Compute cluster size and spatial means
+        sizes = []
+        mean_sd0 = []
+        mean_sd1 = []
+
+        for cluster_id in cluster_ids:
+            # Get cluster mask (3D: time x space x space)
+            mask = self.td.get_cluster_mask(self.var, cluster_id)
+            # Size is total number of space-time cells
+            size = int(mask.sum().values)
+            sizes.append(size)
+
+            # Compute spatial means using 2D spatial mask (any time)
+            spatial_mask = mask.any(dim=self.td.time_dim)
+            if spatial_mask.sum() > 0:
+                # Get spatial coordinates
+                coords_sd0 = self.td.data[sd0].where(spatial_mask)
+                coords_sd1 = self.td.data[sd1].where(spatial_mask)
+                mean_sd0.append(float(coords_sd0.mean(skipna=True).values))
+                mean_sd1.append(float(coords_sd1.mean(skipna=True).values))
+            else:
+                mean_sd0.append(np.nan)
+                mean_sd1.append(np.nan)
+
+        results["size"] = sizes
+        results[f"mean_{sd0}"] = mean_sd0
+        results[f"mean_{sd1}"] = mean_sd1
+
+        # Compute shift time statistics
+        # Get shift variable for this cluster variable
+        try:
+            shift_var = self.td.data[self.var].attrs.get("shifts_variable")
+            if shift_var is None:
+                # Try to get shifts variable using the method
+                shift_var = self.td.get_shifts(self.var).name
+        except Exception:
+            shift_var = None
+
+        mean_shift_times = []
+        std_shift_times = []
+
+        if shift_var is not None:
+            try:
+                # Compute transition time map (2D spatial array)
+                transition_time_map = self.td.cluster_stats(
+                    shift_var
+                ).time.compute_transition_time(shift_threshold=shift_threshold)
+
+                for cluster_id in cluster_ids:
+                    # Get spatial mask for this cluster (2D boolean mask)
+                    cluster_mask_2d = self.td.get_spatial_cluster_mask(
+                        self.var, cluster_id
+                    )
+
+                    # Extract transition times for this cluster
+                    cluster_transition_times = transition_time_map.where(
+                        cluster_mask_2d
+                    ).values
+
+                    # Filter out NaN values
+                    valid_times = cluster_transition_times[
+                        np.isfinite(cluster_transition_times)
+                    ]
+
+                    if len(valid_times) > 0:
+                        mean_shift_times.append(float(np.mean(valid_times)))
+                        std_shift_times.append(float(np.std(valid_times)))
+                    else:
+                        mean_shift_times.append(np.nan)
+                        std_shift_times.append(np.nan)
+            except Exception:
+                # If computation fails, fill with NaN
+                mean_shift_times = [np.nan] * len(cluster_ids)
+                std_shift_times = [np.nan] * len(cluster_ids)
+        else:
+            # No shift variable available
+            mean_shift_times = [np.nan] * len(cluster_ids)
+            std_shift_times = [np.nan] * len(cluster_ids)
+
+        results["mean_shift_time"] = mean_shift_times
+        results["std_shift_time"] = std_shift_times
+
+        # Create DataFrame
+        df = pd.DataFrame(results)
+
+        # Compute aggregate_score as product of all scores
+        aggregate_scores = []
+        for idx in range(len(df)):
+            score_values = [df.loc[idx, col] for col in score_columns]
+            # Filter out NaN values before computing product
+            valid_scores = [s for s in score_values if not np.isnan(s)]
+            if len(valid_scores) > 0:
+                aggregate_scores.append(float(np.prod(valid_scores)))
+            else:
+                aggregate_scores.append(np.nan)
+
+        df["aggregate_score"] = aggregate_scores
+
+        return df
 
     def aggregate_cluster_scores(
         self,

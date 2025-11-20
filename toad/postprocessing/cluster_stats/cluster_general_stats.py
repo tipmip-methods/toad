@@ -36,7 +36,7 @@ class ClusterGeneralStats:
         aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
         | str = "mean",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
     ) -> float: ...
 
     @overload
@@ -47,7 +47,7 @@ class ClusterGeneralStats:
         aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
         | str = "mean",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
     ) -> Tuple[float, np.ndarray]: ...
 
     def score_heaviside(
@@ -57,7 +57,7 @@ class ClusterGeneralStats:
         aggregation: Literal["mean", "sum", "std", "median", "percentile", "max", "min"]
         | str = "mean",
         percentile=None,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
     ):
         """Evaluates how closely the spatially aggregated cluster time series resembles a perfect Heaviside function.
 
@@ -76,10 +76,9 @@ class ClusterGeneralStats:
                 - "min" - Minimum across space
             percentile: Percentile value between 0-1 when using percentile aggregation.
             normalize: How to normalize the data. Options are:
-                - "first" - Normalize by first non-zero, non-nan timestep
                 - "max" - Normalize by maximum value
-                - "last" - Normalize by last non-zero, non-nan timestep
-                - None - Do not normalize
+                - "max_each" - Normalize each trajectory by its own maximum value
+                - None: Do not normalize
 
         Returns:
             float: Cluster score between 0-1 if return_score_fit is False.

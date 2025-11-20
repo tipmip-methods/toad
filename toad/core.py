@@ -683,6 +683,7 @@ class TOAD:
             )
 
         self.data.to_netcdf(save_path)
+        self.logger.info(f"Saved TOAD dataset to {save_path}")
 
     # # ======================================================================
     # #               GET functions (postprocessing)

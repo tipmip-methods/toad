@@ -456,6 +456,7 @@ class TOADPlotter:
         cmap: Union[str, ListedColormap] = default_cmap,
         add_contour: bool = True,
         only_contour: bool = False,
+        contour_linewidth: float = 1.5,
         add_labels: bool = True,
         remaining_clusters_cmap: Optional[Union[str, Colormap]] = "jet",
         remaining_clusters_legend_pos: Optional[Tuple[float, float]] = None,
@@ -477,6 +478,7 @@ class TOADPlotter:
             cmap: Colormap for multiple clusters. Used only if color is None.
             add_contour: If True, add contour lines around clusters.
             only_contour: If True, only plot contour lines (no fill).
+            contour_linewidth: Linewidth for contour lines. Defaults to 1.5.
             add_labels: If True, add cluster ID labels using a geometrically
                         central point (`central_point_for_labeling`).
             remaining_clusters_cmap: Colormap for remaining clusters. Can be:
@@ -640,7 +642,7 @@ class TOADPlotter:
 
                 mask.plot.contour(
                     levels=1,
-                    linewidths=2,
+                    linewidths=contour_linewidth,
                     **plot_params,
                 )
 
@@ -825,7 +827,7 @@ class TOADPlotter:
         ax: Optional[Axes] = None,
         color: Optional[str] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
         add_legend: bool = True,
         # Individual trajectories
         plot_individual: bool = True,
@@ -892,7 +894,7 @@ class TOADPlotter:
             ax: Matplotlib axes to plot on. Creates new figure if None. Ignored if subplots=True or map=True.
             color: Single color to use for all plotted clusters. Overrides cmap.
             cmap: Colormap to use if plotting multiple clusters and color is None.
-            normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
+            normalize: Method to normalize timeseries ('max', 'max_each'). Defaults to None.
             add_legend: If True, add a legend indicating cluster IDs.
             plot_individual: If True, plot individual cell trajectories.
             max_trajectories: Maximum number of individual trajectories to plot (per cluster if
@@ -1228,6 +1230,7 @@ class TOADPlotter:
 
             # Plot shift duration (horizontal shading) - only for real clusters
             if plot_shift_duration and is_real_cluster:
+                # Add a bit more padding on top and bottom by using ymin and ymax arguments
                 current_ax.axvspan(
                     self.td.cluster_stats(var).time.start(id),
                     self.td.cluster_stats(var).time.end(id),
@@ -1265,9 +1268,9 @@ class TOADPlotter:
                     if is_real_cluster:
                         # Add label on first trajectory if legend is enabled
                         # For single plot: add label on first trajectory of each cluster
-                        # For subplots: add label on first trajectory of each cluster
-                        if add_legend and plot_idx == 0:
-                            # Label each cluster (works for both single plot and subplots)
+                        # For subplots: don't add label to line (we'll use ax.text instead)
+                        if add_legend and plot_idx == 0 and not use_subplots:
+                            # Label each cluster (only for single plot, not subplots)
                             add_label = f"#{id}"
                         else:
                             add_label = "__nolegend__"
@@ -1337,32 +1340,33 @@ class TOADPlotter:
 
             # Handle legend
             if add_legend:
-                # Check if there are any labeled artists before calling legend()
-                handles, labels = current_ax.get_legend_handles_labels()
-                has_labels = any(
-                    label and not label.startswith("_") for label in labels
-                )
+                if use_subplots:
+                    # For subplots: use ax.text to add cluster ID label (no color needed)
+                    if is_real_cluster:
+                        # Position text in upper right corner using axes coordinates
+                        current_ax.text(
+                            1.02,
+                            1.02,
+                            f"#{id}",
+                            ha="right",
+                            va="top",
+                            transform=current_ax.transAxes,
+                        )
+                else:
+                    # For single plot: use legend
+                    # Check if there are any labeled artists before calling legend()
+                    handles, labels = current_ax.get_legend_handles_labels()
+                    has_labels = any(
+                        label and not label.startswith("_") for label in labels
+                    )
 
-                if has_labels:
-                    # For single plot, show legend on the last cluster
-                    # For subplots, show legend on each subplot
-                    if not use_subplots:
+                    if has_labels:
                         # Single plot: only show legend on the last iteration
                         # Position in upper right corner
                         if i == len(cluster_ids_list) - 1:
                             legend = current_ax.legend(frameon=False, loc="upper right")
                             for handle in legend.get_lines():
                                 handle.set_alpha(1.0)
-                    else:
-                        # Subplots: show legend on each subplot
-                        # Position below the frame in lower right corner
-                        legend = current_ax.legend(
-                            frameon=False,
-                            loc="upper right",
-                            bbox_to_anchor=(1.0, 1.1),
-                        )
-                        for handle in legend.get_lines():
-                            handle.set_alpha(1.0)
 
         # Set title for subplots (only for first subplot when map=True)
         if map and use_subplots and len(ts_axes_list) > 0:
@@ -1483,7 +1487,7 @@ class TOADPlotter:
         cmap: Union[str, ListedColormap] = default_cmap,
         median_linewidth: float = 3,
         mean_linewidth: float = 3,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
         add_legend: bool = True,
         plot_cluster_range: bool = True,
         plot_cluster_68iqr: bool = True,
@@ -1516,7 +1520,7 @@ class TOADPlotter:
             cmap: Colormap to use if plotting multiple clusters and color is None.
             median_linewidth: Linewidth for the median curve.
             mean_linewidth: Linewidth for the mean curve.
-            normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
+            normalize: Method to normalize timeseries ('max', 'max_each'). Defaults to None.
             add_legend: If True, add a legend indicating cluster IDs.
             plot_cluster_range: If True, plot the full range (min to max) as a shaded area.
             plot_cluster_68iqr: If True, plot the 68% IQR (16th to 84th percentile) as a shaded area.
@@ -1797,7 +1801,7 @@ class TOADPlotter:
         map_remaining_clusters_cmap: Optional[Union[str, Colormap]] = "jet",
         map_remaining_clusters_legend_pos: Optional[Tuple[float, float]] = None,
         # cluster_timeseries parameters (prefixed with ts_)
-        ts_normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        ts_normalize: Optional[Literal["max", "max_each"]] | str = None,
         ts_add_legend: bool = True,
         ts_plot_individual: bool = True,
         ts_max_trajectories: int = 1_000,
@@ -1858,7 +1862,7 @@ class TOADPlotter:
             map_add_labels: If True, add cluster ID labels using a geometrically central point.
             map_remaining_clusters_cmap: Colormap for remaining clusters. Can be a string (e.g., "jet", "viridis") or a matplotlib colormap object.
             map_remaining_clusters_legend_pos: Tuple of (x, y) position of the remaining clusters legend. If None, the legend is placed automatically.
-            ts_normalize: Method to normalize timeseries ('first', 'max', 'last'). Defaults to None.
+            ts_normalize: Method to normalize timeseries ('max', 'max_each'). Defaults to None.
             ts_add_legend: If True, add a legend indicating cluster IDs.
             ts_plot_individual: If True, plot individual trajectories.
             ts_max_trajectories: Maximum number of individual trajectories to plot per cluster.

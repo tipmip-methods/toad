@@ -1301,7 +1301,7 @@ class TOAD:
         ]
         | str = "raw",
         percentile: Optional[float] = None,
-        normalize: Optional[Literal["first", "max", "last"]] | str = None,
+        normalize: Optional[Literal["max", "max_each"]] | str = None,
         keep_full_timeseries: bool = True,
     ) -> xr.DataArray:
         """Get time series for cluster, optionally aggregated across space.
@@ -1324,9 +1324,8 @@ class TOAD:
                 - "raw": Return data for each grid cell separately
             percentile: Percentile value between 0-1 when using percentile aggregation.
             normalize: How to normalize the data:
-                - "first": Normalize by the first non-zero, non-nan timestep
                 - "max": Normalize by the maximum value
-                - "last": Normalize by the last non-zero, non-nan timestep
+                - "max_each": Normalize each trajectory by its own maximum value
                 - None: Do not normalize
             keep_full_timeseries: If True, returns full time series of cluster cells. If
                 False, values outside cluster bounds will be nan. Ignored when cluster_id is None.
@@ -1375,32 +1374,40 @@ class TOAD:
 
         # Normalise
         if normalize:
-            if normalize == "first":
-                filtered = data.where(data != 0).dropna(dim=self.time_dim)
-                # TODO p1: this crashes
-                scalar = (
-                    filtered.isel({self.time_dim: 0})
-                    if len(filtered[self.time_dim]) > 0
-                    else np.nan
-                )  # get first non-zero, non-nan timestep if exists
-            elif normalize == "max":
+            if normalize == "max":
                 scalar = float(data.max())
-            elif normalize == "last":
-                # TODO p1: this crashes
-                filtered = data.where(data != 0).dropna(dim=self.time_dim)
-                scalar = (
-                    filtered.isel({self.time_dim: -1})
-                    if len(filtered[self.time_dim]) > 0
-                    else np.nan
-                )  # get last non-zero, non-nan timestep if exists
+                if scalar == 0 or np.isnan(scalar) or scalar is None:
+                    self.logger.error(f"Failed to normalise by {normalize} = {scalar}")
+                else:
+                    normalized = data / scalar
+                    data = normalized.where(np.isfinite(normalized))
+            elif normalize == "max_each":
+                # Normalize each trajectory by its own max
+                if "cell_xy" in data.dims:
+                    # Multiple trajectories: normalize each by its own max along time
+                    scalars = data.max(dim=self.time_dim)
+                    # Check if any valid scalars exist
+                    valid_mask = (scalars != 0) & np.isfinite(scalars)
+                    if not valid_mask.any():
+                        self.logger.error(
+                            f"Failed to normalise by {normalize}: all scalars are zero or NaN"
+                        )
+                    else:
+                        # Only normalize where scalars are valid, set others to NaN
+                        normalized = data / scalars.where(valid_mask)
+                        data = normalized.where(np.isfinite(normalized))
+                else:
+                    # Single trajectory: normalize by its max (same as "max")
+                    scalar = float(data.max())
+                    if scalar == 0 or np.isnan(scalar) or scalar is None:
+                        self.logger.error(
+                            f"Failed to normalise by {normalize} = {scalar}"
+                        )
+                    else:
+                        normalized = data / scalar
+                        data = normalized.where(np.isfinite(normalized))
             else:
                 raise ValueError(f"Unknown normalization method: {normalize}")
-
-            if scalar == 0 or np.isnan(scalar) or scalar is None:
-                self.logger.error(f"Failed to normalise by {normalize} = {scalar}")
-            else:
-                normalized = data / scalar
-                data = normalized.where(np.isfinite(normalized))
 
         return data
 

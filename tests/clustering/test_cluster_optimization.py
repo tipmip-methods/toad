@@ -4,8 +4,8 @@ from sklearn.cluster import HDBSCAN  # type: ignore
 from toad import TOAD
 
 
-def test_cluster_optimisation():
-    """Test the cluster optimisation."""
+def test_cluster_optimization():
+    """Test the cluster optimization."""
 
     # Setup
     td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
@@ -15,8 +15,8 @@ def test_cluster_optimisation():
     td.data = td.data.drop_vars(td.cluster_vars)
 
     td.compute_clusters(
-        optimise=True,
-        optimisation_params={
+        optimize=True,
+        optimization_params={
             "min_cluster_size": (5, 15),
             "shift_threshold": 0.75,
             "time_scale_factor": (0.5, 2.0),
@@ -26,5 +26,5 @@ def test_cluster_optimisation():
         n_trials=10,
     )
 
-    # Since a short optimisation like this won't always converge to the same result, we just check that a new cluster label was added.
+    # Since a short optimization like this won't always converge to the same result, we just check that a new cluster label was added.
     assert len(td.cluster_vars) == 1

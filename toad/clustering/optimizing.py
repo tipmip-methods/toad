@@ -41,7 +41,7 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
     return float(weights[0] * score1 + weights[1] * score2)
 
 
-default_optimisation_params = dict(
+default_optimization_params = dict(
     {
         "min_cluster_size": (10, 25),
         "time_scale_factor": (0.5, 1.5),
@@ -77,15 +77,15 @@ Cluster Scoring Methods
 Little note about parameters:
 - We have parameters that go directly into the clustering method. These must be very flexible because the clustering method can be anything.
 - We also have parameters that modify how TOAD applies the clustering method. These are specific.
-- The user however passes both in the same dictionary of optimisation_param_ranges.
+- The user however passes both in the same dictionary of optimization_param_ranges.
 - So we need to be careful when extracting and leading the params to the right places. 
 """
 
 
-def _optimise_clusters(**kwargs) -> xr.Dataset:
+def _optimize_clusters(**kwargs) -> xr.Dataset:
     """Internal function to optimize clustering parameters using Optuna.
 
-    This function is called by compute_clusters() when optimise=True. It runs multiple trials
+    This function is called by compute_clusters() when optimize=True. It runs multiple trials
     with different parameter combinations to find the optimal clustering configuration based
     on the specified objective function.
 
@@ -95,7 +95,7 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
     Returns:
         xr.Dataset: Dataset containing the clustering results using the best parameters found.
     """
-    # Extract and remove (pop) optimisation related params, because kwargs is passed back into compute_clusters()
+    # Extract and remove (pop) optimization related params, because kwargs is passed back into compute_clusters()
     td = kwargs.pop("td")
     var = kwargs.pop("var")
     method = kwargs.pop("method")
@@ -109,8 +109,8 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
     shift_threshold = kwargs.pop("shift_threshold")
     time_scale_factor = kwargs.pop("time_scale_factor")
 
-    # User defined optimisation params, can also include shift_threshold and time_scale_factor
-    optimisation_params = kwargs.pop("optimisation_params")
+    # User defined optimization params, can also include shift_threshold and time_scale_factor
+    optimization_params = kwargs.pop("optimization_params")
 
     # don't pop this one
     output_label = kwargs["output_label"]
@@ -132,9 +132,9 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         finally:
             if warn_user_about_params:
                 logger.warning(
-                    "When optimising, params passed through the clustering method (e.g. HDBSCAN(min_cluster_size=10)) will be ignored."
+                    "When optimizing, params passed through the clustering method (e.g. HDBSCAN(min_cluster_size=10)) will be ignored."
                     "\nPlease pass params through `optimistion_params` instead."
-                    "\nExample: optimisation_params={'min_cluster_size': 10} for a fixed min_cluster_size of 10."
+                    "\nExample: optimization_params={'min_cluster_size': 10} for a fixed min_cluster_size of 10."
                 )
     else:
         method_class = method
@@ -143,23 +143,23 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         "Method must be a clustering algorithm, extending ClusterMixin."
     )
 
-    assert isinstance(optimisation_params, dict), (
-        "optimisation_param_ranges must be a dict"
+    assert isinstance(optimization_params, dict), (
+        "optimization_param_ranges must be a dict"
     )
-    assert len(optimisation_params) > 0, (
-        "optimisation_params cannot be empty. Example: optimisation_params={'min_cluster_size': (5, 15)}"
+    assert len(optimization_params) > 0, (
+        "optimization_params cannot be empty. Example: optimization_params={'min_cluster_size': (5, 15)}"
     )
 
-    # Print optimisation params
-    logger.info(f"Optimising {n_trials} trials with params: {optimisation_params}")
+    # Print optimization params
+    logger.info(f"optimizing {n_trials} trials with params: {optimization_params}")
 
     score_computation_time = 0.0
 
     def objective_fn(trial) -> float:
         nonlocal score_computation_time
 
-        # Sample optimisation params: these may contains both TOAD and Clustering params (see note at the top).
-        cluster_params = _sample_params(trial, optimisation_params)
+        # Sample optimization params: these may contains both TOAD and Clustering params (see note at the top).
+        cluster_params = _sample_params(trial, optimization_params)
 
         # Get time_scale_factor if present, if not use the one from the kwargs
         sample_time_scale_factor = cluster_params.pop(
@@ -191,7 +191,7 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         else:
             # fmt: off
             # Map objective names to their corresponding scoring functions
-            # TODO p2: all the score functions are really slow and take ~90% of the optimisation time
+            # TODO p2: all the score functions are really slow and take ~90% of the optimization time
             score_funcs = {
                 "median_heaviside":           lambda: np.median([td.stats(output_label).general.score_heaviside(cid, aggregation="median") for cid in cluster_ids[:10]]),
                 "mean_heaviside":               lambda: np.mean([td.stats(output_label).general.score_heaviside(cid, aggregation="mean") for cid in cluster_ids[:10]]),
@@ -244,16 +244,16 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
         **kwargs,
     )
 
-    # Add optimisation details to attributes
+    # Add optimization details to attributes
     new_data[output_label].attrs.update(
         {
-            _attrs.OPTIMISATION: True,
+            _attrs.optimization: True,
             _attrs.OPT_OBJECTIVE: objective.__name__
             if callable(objective)
             else objective,
             _attrs.OPT_BEST_SCORE: study.best_value,
             _attrs.OPT_DIRECTION: direction,
-            _attrs.OPT_PARAMS: optimisation_params,
+            _attrs.OPT_PARAMS: optimization_params,
             _attrs.OPT_BEST_PARAMS: study.best_params,
             _attrs.OPT_N_TRIALS: n_trials,
         }

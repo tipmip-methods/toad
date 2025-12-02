@@ -37,10 +37,10 @@ from sklearn.preprocessing import (
 )
 
 from toad._version import __version__
-from toad.clustering.optimising import (
-    _optimise_clusters,
+from toad.clustering.optimizing import (
+    _optimize_clusters,
     combined_spatial_nonlinearity,
-    default_optimisation_params,
+    default_optimization_params,
 )
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
@@ -56,7 +56,7 @@ logger = logging.getLogger("TOAD")
 
 __all__ = [
     "compute_clusters",
-    "default_optimisation_params",
+    "default_optimization_params",
     "combined_spatial_nonlinearity",
     "sorted_cluster_labels",
 ]
@@ -85,9 +85,9 @@ def compute_clusters(
     output_label: str | None = None,
     overwrite: bool = False,
     sort_by_size: bool = True,
-    # Optimisation params
-    optimise: bool = False,  # TODO p1: rename optimize
-    optimisation_params: dict = default_optimisation_params,
+    # optimization params
+    optimize: bool = False,  # TODO p1: rename optimize
+    optimization_params: dict = default_optimization_params,
     objective: Callable  # TODO p1: rename all opt params to optimize_x_param
     | Literal[
         "median_heaviside",
@@ -124,19 +124,19 @@ def compute_clusters(
         overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
         merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
         sort_by_size: Whether to reorder clusters by size. Defaults to True.
-        optimise: Whether to optimise the clustering parameters. Defaults to False.
-        optimisation_params: Parameters for the optimisation. Defaults to default_optimisation_params.
-        objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
+        optimize: Whether to optimize the clustering parameters. Defaults to False.
+        optimization_params: Parameters for the optimization. Defaults to default_optimization_params.
+        objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
             - callable: Custom objective function taking (td, output_label) as arguments
             - "median_heaviside": Median heaviside score across clusters
             - "mean_heaviside": Mean heaviside score across clusters
             - "mean_consistency": Mean consistency score across clusters
             - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
             - "mean_nonlinearity": Mean nonlinearity score across clusters
-        n_trials: Number of trials to run for optimisation. Defaults to 50.
-        direction: The direction of the optimisation. Defaults to "maximize".
-        log_level: The log level for the optimisation. Defaults to optuna.logging.WARNING.
-        show_progress_bar: Whether to show the progress bar for the optimisation. Defaults to True.
+        n_trials: Number of trials to run for optimization. Defaults to 50.
+        direction: The direction of the optimization. Defaults to "maximize".
+        log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
+        show_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
 
     Returns:
         An `xarray.Dataset` containing the original data and the clustering results.
@@ -216,10 +216,10 @@ def compute_clusters(
     elif overwrite and new_output_label in td.data:
         td.data = td.data.drop_vars(new_output_label)
 
-    # ==================== OPTIMISATION ====================
-    # if optimise is True, optimise the parameters for clustering.
-    if optimise:
-        return _optimise_clusters(
+    # ==================== optimization ====================
+    # if optimize is True, optimize the parameters for clustering.
+    if optimize:
+        return _optimize_clusters(
             td=td,
             var=var,
             method=method,
@@ -232,8 +232,8 @@ def compute_clusters(
             output_label=new_output_label,
             overwrite=True,
             sort_by_size=sort_by_size,
-            optimise=False,
-            optimisation_params=optimisation_params,
+            optimize=False,
+            optimization_params=optimization_params,
             objective=objective,
             n_trials=n_trials,
             direction=direction,

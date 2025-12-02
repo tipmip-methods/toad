@@ -17,10 +17,10 @@ from sklearn.preprocessing import (
 
 from toad import (
     clustering,
+    plotting,
     postprocessing,
     preprocessing,
     shifts,
-    visualisation,
 )
 from toad.clustering.optimising import (
     default_optimisation_params,
@@ -404,26 +404,21 @@ class TOAD:
         )
         return postprocessing.ClusterStats(self, var)
 
+    # add "td.aggregate"
     def aggregation(self) -> postprocessing.Aggregation:
         """Access aggregation methods."""
         return postprocessing.Aggregation(self)
 
     @property
-    def plot(self) -> visualisation.TOADPlotter:
-        """Access plotting methods."""
-        return visualisation.TOADPlotter(self)
+    def plot(self) -> plotting.Plotter:
+        """Access plotting methods.
 
-    # TODO p1: delete this in favour of td.plot
-    def plotter(
-        self,
-        config: Optional[visualisation.PlotConfig] = None,
-        **kwargs,
-    ) -> visualisation.TOADPlotter:
-        """Access plotting methods."""
-        config = config if config else visualisation.PlotConfig()
-        config.__dict__.update(kwargs)
-        print("plotter() is deprecated. Please use td.plot() or td.plot instead.")
-        return visualisation.TOADPlotter(self, config=config)
+        Examples:
+            >>> td.plot.overview()
+            >>> td.plot.map()
+            >>> td.plot.timeseries(cluster_ids=range(6))
+        """
+        return plotting.Plotter(self)
 
     # # ======================================================================
     # #               SET functions
@@ -517,6 +512,7 @@ class TOAD:
         | None = StandardScaler(),
         time_scale_factor: float = 1,
         regridder: BaseRegridder | None = None,
+        disable_regridder: bool = False,
         output_label_suffix: str = "",
         output_label: str | None = None,
         overwrite: bool = False,
@@ -561,6 +557,7 @@ class TOAD:
             regridder: The regridding method to use from toad.clustering.regridding.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will
                 be created automatically.
+            disable_regridder: Whether to disable the regridder. Defaults to False.
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             return_results_directly: Whether to return the clustering results directly or merge
@@ -601,6 +598,7 @@ class TOAD:
             scaler=scaler,
             time_scale_factor=time_scale_factor,
             regridder=regridder,
+            disable_regridder=disable_regridder,
             output_label_suffix=output_label_suffix,
             output_label=output_label,
             overwrite=overwrite,
@@ -1004,7 +1002,7 @@ class TOAD:
 
         return result
 
-    def get_spatial_cluster_mask(  # TODO p1: rename to get_cluster_mask_spatial
+    def get_cluster_mask_spatial(
         self, var: str, cluster_id: Union[int, List[int]]
     ) -> xr.DataArray:
         """Returns a 2D boolean mask indicating which grid cells belonged to the specified cluster at any point in time.
@@ -1027,7 +1025,7 @@ class TOAD:
 
         return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
 
-    def apply_spatial_cluster_mask(
+    def apply_cluster_mask_spatial(
         self, var: str, apply_to_var: str, cluster_id: int
     ) -> xr.DataArray:
         """Apply the spatial cluster mask to a variable.
@@ -1041,10 +1039,10 @@ class TOAD:
         Returns:
             All data (regardless of cluster) masked by the spatial extend of the specified cluster.
         """
-        mask = self.get_spatial_cluster_mask(var, cluster_id)
+        mask = self.get_cluster_mask_spatial(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
-    def apply_temporal_cluster_mask(
+    def apply_cluster_mask_temporal(
         self, var: str, apply_to_var: str, cluster_id: int
     ) -> xr.DataArray:
         """Apply the temporal cluster mask to a variable.
@@ -1061,7 +1059,7 @@ class TOAD:
         mask = self.get_temporal_cluster_mask(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
-    def get_permanent_cluster_mask(self, var: str, cluster_id: int) -> xr.DataArray:
+    def get_cluster_mask_permanent(self, var: str, cluster_id: int) -> xr.DataArray:
         """Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1).
 
         Args:
@@ -1085,7 +1083,7 @@ class TOAD:
         Returns:
             Boolean mask where True indicates cells that were never clustered (always had value -1).
         """
-        return self.get_permanent_cluster_mask(var, -1)
+        return self.get_cluster_mask_permanent(var, -1)
 
     def get_cluster_temporal_density(self, var: str, cluster_id: int) -> xr.DataArray:
         """Calculate the temporal density of a cluster at each grid cell.
@@ -1288,7 +1286,6 @@ class TOAD:
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
 
-    # TODO p1: rename to get_trajectories
     def get_cluster_timeseries(
         self,
         var: str,
@@ -1353,7 +1350,7 @@ class TOAD:
             if is_equal_to(cluster_id, -1):
                 mask = self.get_permanent_unclustered_mask(cluster_var)
             else:
-                mask = self.get_spatial_cluster_mask(cluster_var, cluster_id)
+                mask = self.get_cluster_mask_spatial(cluster_var, cluster_id)
 
             # Apply mask
             data = self.data[var].where(mask)

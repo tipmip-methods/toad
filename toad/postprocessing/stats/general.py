@@ -14,11 +14,11 @@ score_dictionary = {
 }
 
 
-class ClusterGeneralStats:
+class GeneralStats:
     """General cluster statistics, such as cluster score."""
 
     def __init__(self, toad, var: str):
-        """Initialize ClusterGeneralStats.
+        """Initialize GeneralStats.
 
         Args:
             toad: TOAD object
@@ -358,7 +358,7 @@ class ClusterGeneralStats:
                 - aggregate_score: Product of all score values
 
         Example:
-            >>> stats = td.cluster_stats(var="temperature")
+            >>> stats = td.stats(var="temperature")
             >>> overview = stats.score_overview()
             >>> print(overview)
         """
@@ -448,7 +448,7 @@ class ClusterGeneralStats:
         if shift_var is not None:
             try:
                 # Compute transition time map (2D spatial array)
-                transition_time_map = self.td.cluster_stats(
+                transition_time_map = self.td.stats(
                     shift_var
                 ).time.compute_transition_time(shift_threshold=shift_threshold)
 

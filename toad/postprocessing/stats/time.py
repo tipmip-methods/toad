@@ -8,11 +8,11 @@ import xarray as xr
 from toad.utils import all_functions, convert_numeric_to_original_time
 
 
-class ClusterTimeStats:
+class TimeStats:
     """Class containing functions for calculating time-related statistics for clusters, such as start time, peak time, etc."""
 
     def __init__(self, toad, var):
-        """Initialize the ClusterTimeStats object.
+        """Initialize the TimeStats object.
 
         Args:
             toad (TOAD): TOAD object

@@ -1,4 +1,4 @@
 from toad.postprocessing.aggregation import Aggregation
-from toad.postprocessing.cluster_stats import ClusterStats
+from toad.postprocessing.stats import Stats
 
-__all__ = ["Aggregation", "ClusterStats"]
+__all__ = ["Aggregation", "Stats"]

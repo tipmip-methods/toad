@@ -52,7 +52,7 @@ td.compute_shifts("thk", method=ASDETECT())
 td.compute_clusters(
     var="thk",
     method=HDBSCAN(min_cluster_size=10),
-    time_scale_factor=1.5,
+    time_weight=1.5,
 )
 
 # Plot 8 largest clusters in ccrs.SouthPolarStereo() projection

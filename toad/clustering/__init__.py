@@ -78,7 +78,7 @@ def compute_clusters(
     | RobustScaler
     | MaxAbsScaler
     | None = StandardScaler(),
-    time_scale_factor: float = 1,  # TODO p1: rename time_scale
+    time_weight: float = 1,
     regridder: BaseRegridder | None = None,
     disable_regridder: bool = False,
     output_label_suffix: str = "",
@@ -86,7 +86,7 @@ def compute_clusters(
     overwrite: bool = False,
     sort_by_size: bool = True,
     # optimization params
-    optimize: bool = False,  # TODO p1: rename optimize
+    optimize: bool = False,
     optimization_params: dict = default_optimization_params,
     objective: Callable  # TODO p1: rename all opt params to optimize_x_param
     | Literal[
@@ -117,7 +117,7 @@ def compute_clusters(
             - "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
             Defaults to "local".
         scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
-        time_scale_factor: The factor to scale the time values by. Defaults to 1.
+        time_weight: The factor to scale the time values by. Defaults to 1.
         regridder: The regridding method to use from `toad.clustering.regridding`. Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
         disable_regridder: Whether to disable the regridder. Defaults to False.
         output_label_suffix: A suffix to add to the output label. Defaults to "".
@@ -159,7 +159,7 @@ def compute_clusters(
         - Extract spatial and temporal coordinates
         - Apply optional regridding to standardize coordinates
         - Scale coordinates using sklearn preprocessing
-        - Scale time values by time_scale_factor
+        - Scale time values by time_weight
         - Calculate weights from shift magnitudes
     3. Clustering
         - Store clustering parameters as metadata
@@ -227,7 +227,7 @@ def compute_clusters(
             shift_direction=shift_direction,
             shift_selection=shift_selection,
             scaler=scaler,
-            time_scale_factor=time_scale_factor,
+            time_weight=time_weight,
             regridder=regridder,
             output_label=new_output_label,
             overwrite=True,
@@ -358,8 +358,8 @@ def compute_clusters(
             coords = scaler.fit_transform(coords)
 
         # Scale time values by scaler value
-        if time_scale_factor != 1:
-            coords[:, 0] = coords[:, 0] * time_scale_factor
+        if time_weight != 1:
+            coords[:, 0] = coords[:, 0] * time_weight
 
         # convert method to instance if class was passed
         method = method() if isinstance(method, type) else method
@@ -439,7 +439,7 @@ def compute_clusters(
             _attrs.SHIFT_SELECTION: shift_selection,
             _attrs.SHIFT_DIRECTION: shift_direction,
             _attrs.SCALER: scaler.__class__.__name__ if scaler else "None",
-            _attrs.TIME_SCALE_FACTOR: time_scale_factor,
+            _attrs.time_weight: time_weight,
             _attrs.N_DATA_POINTS: n_pts,
             _attrs.METHOD_NAME: method.__class__.__name__,
             _attrs.RUNTIME_PREPROCESSING: float(preprocessing_time),

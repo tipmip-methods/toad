@@ -19,7 +19,7 @@ def test_cluster_optimization():
         optimization_params={
             "min_cluster_size": (5, 15),
             "shift_threshold": 0.75,
-            "time_scale_factor": (0.5, 2.0),
+            "time_weight": (0.5, 2.0),
         },
         method=HDBSCAN,
         shift_selection="local",

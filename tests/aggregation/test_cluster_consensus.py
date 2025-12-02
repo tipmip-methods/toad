@@ -41,7 +41,7 @@ def setup_regular_latlon_grid():
 
 
 @pytest.mark.parametrize(
-    "setup_func,time_scale_factors,expected_min_clusters,expected_max_clusters,expected_mean_shift_time,time_tolerance",
+    "setup_func,time_weights,expected_min_clusters,expected_max_clusters,expected_mean_shift_time,time_tolerance",
     [
         (
             setup_irregular_grid,
@@ -71,7 +71,7 @@ def setup_regular_latlon_grid():
 )
 def test_cluster_consensus(
     setup_func,
-    time_scale_factors,
+    time_weights,
     expected_min_clusters,
     expected_max_clusters,
     expected_mean_shift_time,
@@ -88,7 +88,7 @@ def test_cluster_consensus(
 
     For each grid type:
     - Coarsens the dataset to make computation faster
-    - Computes 4 clusterings using different time_scale_factors
+    - Computes 4 clusterings using different time_weights
     - Calls cluster_consensus to create consensus clusters
     - Validates that the output dataset contains valid masks
     - Validates that the summary dataframe matches the consensus clusters
@@ -96,7 +96,7 @@ def test_cluster_consensus(
 
     Args:
         setup_func (callable): Function that returns a configured TOAD object.
-        time_scale_factors (list): List of time_scale_factor values for clustering.
+        time_weights (list): List of time_weight values for clustering.
         expected_min_clusters (int): Minimum expected number of consensus clusters.
         expected_max_clusters (int): Maximum expected number of consensus clusters.
         expected_mean_shift_time (float): Expected mean shift time value (None means skip check).
@@ -113,17 +113,17 @@ def test_cluster_consensus(
         var = td.base_vars[0]
         td.compute_shifts(var, method=ASDETECT(ignore_nan_warnings=True))
 
-    # Compute 4 clusterings with different time_scale_factors
-    for tsf in time_scale_factors:
+    # Compute 4 clusterings with different time_weights
+    for tsf in time_weights:
         td.compute_clusters(
             method=HDBSCAN(min_cluster_size=10),
-            time_scale_factor=tsf,
+            time_weight=tsf,
             shift_threshold=0.8,
         )
 
     # Verify we have 4 clusterings
-    assert len(td.cluster_vars) == len(time_scale_factors), (
-        f"Expected {len(time_scale_factors)} clusterings, got {len(td.cluster_vars)}"
+    assert len(td.cluster_vars) == len(time_weights), (
+        f"Expected {len(time_weights)} clusterings, got {len(td.cluster_vars)}"
     )
 
     # Call consensus clustering spatial function

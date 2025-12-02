@@ -515,7 +515,7 @@ class TOAD:
         | RobustScaler
         | MaxAbsScaler
         | None = StandardScaler(),
-        time_scale_factor: float = 1,
+        time_weight: float = 1,
         regridder: BaseRegridder | None = None,
         disable_regridder: bool = False,
         output_label_suffix: str = "",
@@ -558,7 +558,7 @@ class TOAD:
             scaler: The scaling method to apply to the data before clustering. StandardScaler(),
                 MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are
                 supported. Defaults to StandardScaler().
-            time_scale_factor: The factor to scale the time values by. Defaults to 1.
+            time_weight: The factor to scale the time values by. Defaults to 1.
             regridder: The regridding method to use from toad.clustering.regridding.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will
                 be created automatically.
@@ -601,7 +601,7 @@ class TOAD:
             shift_selection=shift_selection,
             shift_direction=shift_direction,
             scaler=scaler,
-            time_scale_factor=time_scale_factor,
+            time_weight=time_weight,
             regridder=regridder,
             disable_regridder=disable_regridder,
             output_label_suffix=output_label_suffix,

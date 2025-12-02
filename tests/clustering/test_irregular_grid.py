@@ -54,7 +54,7 @@ def test_irregular_grid(
         shift_threshold=shifts_threshold,
         method=HDBSCAN(min_cluster_size=min_cluster_size),
         overwrite=True,
-        time_scale_factor=2,
+        time_weight=2,
         shift_selection=shift_selection,
     )
 

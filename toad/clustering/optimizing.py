@@ -44,7 +44,7 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
 default_optimization_params = dict(
     {
         "min_cluster_size": (10, 25),
-        "time_scale_factor": (0.5, 1.5),
+        "time_weight": (0.5, 1.5),
     }
 )
 
@@ -107,9 +107,9 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
 
     # TOAD specific clustering params
     shift_threshold = kwargs.pop("shift_threshold")
-    time_scale_factor = kwargs.pop("time_scale_factor")
+    time_weight = kwargs.pop("time_weight")
 
-    # User defined optimization params, can also include shift_threshold and time_scale_factor
+    # User defined optimization params, can also include shift_threshold and time_weight
     optimization_params = kwargs.pop("optimization_params")
 
     # don't pop this one
@@ -161,10 +161,8 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         # Sample optimization params: these may contains both TOAD and Clustering params (see note at the top).
         cluster_params = _sample_params(trial, optimization_params)
 
-        # Get time_scale_factor if present, if not use the one from the kwargs
-        sample_time_scale_factor = cluster_params.pop(
-            "time_scale_factor", time_scale_factor
-        )
+        # Get time_weight if present, if not use the one from the kwargs
+        sample_time_weight = cluster_params.pop("time_weight", time_weight)
 
         # Get shift_threshold if present, if not use the one from the kwargs
         sample_shift_threshold = cluster_params.pop("shift_threshold", shift_threshold)
@@ -175,7 +173,7 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
             var,
             method=method_class(**cluster_params),
             shift_threshold=sample_shift_threshold,
-            time_scale_factor=sample_time_scale_factor,
+            time_weight=sample_time_weight,
             **kwargs,
         )
 
@@ -231,16 +229,16 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         # f"Score computation time: {score_computation_time:.2f} seconds." # score computation is slow...
     )
 
-    # copy best params and pop shift_threshold and time_scale_factor if present, if not use the one from the kwargs
+    # copy best params and pop shift_threshold and time_weight if present, if not use the one from the kwargs
     best_params = study.best_params.copy()
     best_shift_threshold = best_params.pop("shift_threshold", shift_threshold)
-    best_time_scale_factor = best_params.pop("time_scale_factor", time_scale_factor)
+    best_time_weight = best_params.pop("time_weight", time_weight)
     new_data = clustering.compute_clusters(
         td,
         var,
         method=method_class(**best_params),
         shift_threshold=best_shift_threshold,
-        time_scale_factor=best_time_scale_factor,
+        time_weight=best_time_weight,
         **kwargs,
     )
 

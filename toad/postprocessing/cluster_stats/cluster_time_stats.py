@@ -263,6 +263,7 @@ class ClusterTimeStats:
         for method_name in all_functions(self):
             if (
                 not method_name.startswith("all_stats")
+                and not method_name.startswith("_")
                 and len(inspect.signature(getattr(self, method_name)).parameters) == 1
             ):
                 dict[method_name] = getattr(self, method_name)(cluster_id)
@@ -305,7 +306,7 @@ class ClusterTimeStats:
 
         # Filter by clusters if specified
         if cluster_ids is not None:
-            mask = self.td.get_spatial_cluster_mask(self.var, cluster_ids)
+            mask = self.td.get_cluster_mask_spatial(self.var, cluster_ids)
             shifts = shifts.where(mask)
 
         max_dts_mask = _compute_dts_peak_sign_mask(

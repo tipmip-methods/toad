@@ -80,6 +80,7 @@ def compute_clusters(
     | None = StandardScaler(),
     time_scale_factor: float = 1,  # TODO p1: rename time_scale
     regridder: BaseRegridder | None = None,
+    disable_regridder: bool = False,
     output_label_suffix: str = "",
     output_label: str | None = None,
     overwrite: bool = False,
@@ -118,6 +119,7 @@ def compute_clusters(
         scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
         time_scale_factor: The factor to scale the time values by. Defaults to 1.
         regridder: The regridding method to use from `toad.clustering.regridding`. Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
+        disable_regridder: Whether to disable the regridder. Defaults to False.
         output_label_suffix: A suffix to add to the output label. Defaults to "".
         overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
         merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
@@ -330,9 +332,9 @@ def compute_clusters(
 
         # ==================== REGIDDING ====================
         # Create HealPixRegridder only for regular 1D lat/lon grids
-        if regridder is None and is_latlon_dims:
+        if regridder is None and is_latlon_dims and not disable_regridder:
             regridder = HealPixRegridder()
-        if regridder:
+        if regridder and not disable_regridder:
             logger.debug(
                 f"Regridding {shifts_variable} with {regridder.__class__.__name__}"
             )

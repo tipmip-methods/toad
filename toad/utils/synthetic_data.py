@@ -13,6 +13,7 @@ def create_global_dataset(
     random_seed=42,
 ):
     """
+    TODO: this will be removed
     Generate a global dataset with background trend and spatially coherent abrupt shifts.
 
     Args:

@@ -134,6 +134,9 @@ class Aggregation:
             xr.DataArray: Stability scores per grid cell, with the same spatial shape
                         as the input data and values in [0, 1] or NaN.
         """
+        print(
+            "This function is deprecated and will be removed in a future release. Use cluster_consensus() instead."
+        )
         # get all clsuter vars if nothing is provided
         if cluster_vars is None:
             cluster_vars = list(self.td.cluster_vars)

@@ -454,7 +454,7 @@ class ClusterGeneralStats:
 
                 for cluster_id in cluster_ids:
                     # Get spatial mask for this cluster (2D boolean mask)
-                    cluster_mask_2d = self.td.get_spatial_cluster_mask(
+                    cluster_mask_2d = self.td.get_cluster_mask_spatial(
                         self.var, cluster_id
                     )
 

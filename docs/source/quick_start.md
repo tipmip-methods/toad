@@ -17,12 +17,11 @@ td.compute_shifts("temp", method=ASDETECT())
 # Compute clusters for points that have shifts larger than 0.8 using HDBSCAN (McInnes, 2017)
 td.compute_clusters(
     var="temp",
-    method=HDBSCAN(min_cluster_size=25),
-    shift_threshold=0.8,
+    method=HDBSCAN(min_cluster_size=10),
 )
 
 # Visualise results
-td.plot.cluster_overview("temp");
+td.plot.overview("temp");
 ```
 
 For more details, please see the [tutorial](https://github.com/tipmip-methods/toad/blob/main/tutorials/basics.ipynb).

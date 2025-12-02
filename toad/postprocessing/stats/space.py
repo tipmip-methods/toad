@@ -3,7 +3,7 @@ import inspect
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
-from toad.utils import all_functions
+from toad.utils import _all_functions
 
 
 class SpaceStats:
@@ -184,7 +184,7 @@ class SpaceStats:
     def all_stats(self, cluster_id) -> dict:
         """Return all cluster stats"""
         dict = {}
-        for method_name in all_functions(self):
+        for method_name in _all_functions(self):
             if (
                 not method_name.startswith("all_stats")
                 and not method_name.startswith("_")

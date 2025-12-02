@@ -110,6 +110,9 @@ def _build_knn_edges_from_regridder(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build undirected edges using KNN after mapping to a regularized grid (e.g., HealPix).
 
+    This function correctly computes KNN on HealPix pixel centers rather than original
+    grid coordinates, avoiding circular cluster artifacts around the poles.
+
     Args:
         lat2d: 2D array of latitude values.
         lon2d: 2D array of longitude values.
@@ -135,18 +138,54 @@ def _build_knn_edges_from_regridder(
     if regridder is None:
         regridder = HealPixRegridder()
 
+    # Currently only HealPixRegridder is supported for consensus clustering
+    # because we need to convert regridded indices back to lat/lon centers
+    if not isinstance(regridder, HealPixRegridder):
+        raise ValueError(
+            f"Only HealPixRegridder is currently supported for consensus clustering. "
+            f"Got {type(regridder).__name__}. "
+            f"This restriction may be lifted in the future if a generic interface is added."
+        )
+
+    # Map original grid cells to HealPix pixel indices
     hp_index_flat = regridder.map_orig_to_regrid(coords_latlon_flat)
 
-    xyz = _latlon_to_unit_xyz(coords_latlon_flat[:, 0], coords_latlon_flat[:, 1])
-    nn = NearestNeighbors(n_neighbors=min(k + 1, N)).fit(xyz)
-    _, nbrs = nn.kneighbors(xyz)
+    # Get unique HealPix pixel indices that are actually used
+    unique_hp_pixels = np.unique(hp_index_flat)
+    N_hp = len(unique_hp_pixels)
 
-    knn_rows = np.repeat(np.arange(len(xyz)), nbrs.shape[1] - 1)
-    knn_cols = nbrs[:, 1:].ravel()
+    if N_hp == 0:
+        return (
+            np.array([], np.int64),
+            np.array([], np.int64),
+            hp_index_flat,
+        )
 
+    # Get center coordinates of each unique HealPix pixel
+    # This ensures we compute KNN on the actual HealPix grid, not the original grid
+    hp_centers_lat = np.zeros(N_hp)
+    hp_centers_lon = np.zeros(N_hp)
+    for i, hp_pix in enumerate(unique_hp_pixels):
+        lat, lon = regridder.healpix_to_latlon(int(hp_pix))
+        hp_centers_lat[i] = lat
+        hp_centers_lon[i] = lon
+
+    # Convert HealPix pixel centers to 3D Cartesian coordinates
+    xyz_hp = _latlon_to_unit_xyz(hp_centers_lat, hp_centers_lon)
+
+    # Compute KNN on HealPix pixel centers
+    nn = NearestNeighbors(n_neighbors=min(k + 1, N_hp))
+    nn.fit(xyz_hp)
+    _, nbrs = nn.kneighbors(xyz_hp)
+
+    # Build edges between HealPix pixel indices
+    knn_rows = np.repeat(unique_hp_pixels, nbrs.shape[1] - 1)
+    knn_cols = unique_hp_pixels[nbrs[:, 1:].ravel()]
+
+    # Keep only undirected edges (i < j)
     keep = knn_rows < knn_cols
-    knn_rows = hp_index_flat[knn_rows[keep]]
-    knn_cols = hp_index_flat[knn_cols[keep]]
+    knn_rows = knn_rows[keep]
+    knn_cols = knn_cols[keep]
 
     return knn_rows, knn_cols, hp_index_flat
 

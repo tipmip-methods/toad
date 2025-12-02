@@ -557,10 +557,10 @@ class Plotter:
             if add_labels:
                 # returns space_dims[0, 1], so y, x or lon, lat
                 # Uses the point furthest from the cluster edge for robust labeling
-                y, x = self.td.cluster_stats(var).space.central_point_for_labeling(id)
+                y, x = self.td.stats(var).space.central_point_for_labeling(id)
                 if np.isnan(x) or np.isnan(y):
                     # Get median coordinates as fallback
-                    y, x = self.td.cluster_stats(var).space.footprint_median(id)
+                    y, x = self.td.stats(var).space.footprint_median(id)
 
                 if not (np.isnan(x) or np.isnan(y)):
                     # Use color_list directly to avoid type issues with cluster_cmap.colors
@@ -1594,8 +1594,8 @@ class Plotter:
             shift_indicator_alpha: Alpha transparency
         """
         current_ax.axvspan(
-            self.td.cluster_stats(var).time.start(cluster_id),
-            self.td.cluster_stats(var).time.end(cluster_id),
+            self.td.stats(var).time.start(cluster_id),
+            self.td.stats(var).time.end(cluster_id),
             color=shift_color,
             alpha=shift_indicator_alpha,
             zorder=-100,

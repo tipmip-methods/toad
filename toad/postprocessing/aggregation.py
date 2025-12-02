@@ -288,7 +288,7 @@ class Aggregation:
             * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
 
         Example:
-            >>> ds, summary_df = td.aggregation().cluster_consensus(
+            >>> ds, summary_df = td.aggregate.cluster_consensus(
             ...     cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7
             ... )
             >>> ds.clusters.plot()  # Visualize consensus clusters

@@ -6,11 +6,11 @@ from scipy.ndimage import distance_transform_edt
 from toad.utils import all_functions
 
 
-class ClusterSpaceStats:
+class SpaceStats:
     """Class containing functions for calculating space-related statistics for clusters, such as mean, median, std, etc."""
 
     def __init__(self, toad, var):
-        """Initialize ClusterSpaceStats.
+        """Initialize SpaceStats.
 
         Args:
             toad: TOAD object

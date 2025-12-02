@@ -127,7 +127,7 @@ def test_cluster_consensus(
     )
 
     # Call consensus clustering spatial function
-    ds_consensus, summary_df = td.aggregation().cluster_consensus(
+    ds_consensus, summary_df = td.aggregate.cluster_consensus(
         min_consensus=0.8, top_n_clusters=5
     )
 

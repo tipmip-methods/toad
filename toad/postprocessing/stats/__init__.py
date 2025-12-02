@@ -1,9 +1,11 @@
-from toad.postprocessing.cluster_stats.cluster_time_stats import ClusterTimeStats
-from toad.postprocessing.cluster_stats.cluster_space_stats import ClusterSpaceStats
-from toad.postprocessing.cluster_stats.cluster_general_stats import ClusterGeneralStats
+from toad.postprocessing.stats.general import GeneralStats
+from toad.postprocessing.stats.space import SpaceStats
+from toad.postprocessing.stats.time import TimeStats
+
+__all__ = ["TimeStats", "SpaceStats", "GeneralStats", "Stats"]
 
 
-class ClusterStats:
+class Stats:
     """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
 
     def __init__(self, toad, var):
@@ -20,14 +22,14 @@ class ClusterStats:
     @property
     def time(self):
         """Access time-related statistics for clusters."""
-        return ClusterTimeStats(self.td, self.var)
+        return TimeStats(self.td, self.var)
 
     @property
     def space(self):
         """Access space-related statistics for clusters."""
-        return ClusterSpaceStats(self.td, self.var)
+        return SpaceStats(self.td, self.var)
 
     @property
     def general(self):
         """Access general statistics for clusters."""
-        return ClusterGeneralStats(self.td, self.var)
+        return GeneralStats(self.td, self.var)

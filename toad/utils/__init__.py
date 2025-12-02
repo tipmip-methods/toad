@@ -51,7 +51,7 @@ class _Attrs:
     SHIFT_SELECTION: str = "shift_selection"
     SHIFT_DIRECTION: str = "shift_direction"
     SCALER: str = "scaler"
-    TIME_SCALE_FACTOR: str = "time_scale_factor"
+    time_weight: str = "time_weight"
     N_DATA_POINTS: str = "n_data_points"
     METHOD_NAME: str = "method_name"
     RUNTIME_PREPROCESSING: str = "runtime_preprocessing"

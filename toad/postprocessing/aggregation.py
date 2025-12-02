@@ -11,7 +11,7 @@ from scipy.sparse.csgraph import connected_components
 
 # from sklearn.neighbors import NearestNeighbors  # unused here; kept in utils
 from toad.clustering import sorted_cluster_labels
-from toad.regridding.base import BaseRegridder
+from toad.regridding.healpix import HealPixRegridder
 
 # from toad.regridding.healpix import HealPixRegridder  # unused here; used in utils
 from toad.utils import detect_latlon_names, get_unique_variable_name
@@ -193,7 +193,7 @@ class Aggregation:
         min_consensus: float = 0.75,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
-        regridder: BaseRegridder | None = None,
+        regridder: HealPixRegridder | None = None,
         k_neighbors: int = 8,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """Build a spatial consensus clustering from multiple clustering results.
@@ -221,6 +221,8 @@ class Aggregation:
                 geographic coordinates; for lat/lon grids, see `k_neighbors`.
             regridder: Optional custom regridder. If None and data has regular lat/lon dimensions,
                 HealPixRegridder will be used automatically. Default: None.
+                **Note:** Currently only HealPixRegridder is supported for consensus clustering.
+                Other regridders will raise a ValueError.
             k_neighbors: Number of nearest neighbors to consider for lat/lon grids using
                 K-nearest neighbors on the sphere. Only applies when lat/lon coordinates are
                 available. Higher values provide more connectivity but may be less spatially
@@ -347,12 +349,6 @@ class Aggregation:
 
         # Recast naming for readability
         regrid_enabled = is_latlon_dims
-
-        # TODO p1: fix this bug: looks like we are getting circular clusters around the poles... not sure the regridder is working correctly.
-        if regrid_enabled:
-            logger.warning(
-                "There may be a bug here.. when using regridder, the consensus clusters may be incorrect."
-            )
 
         # use knn if dataset has lat/lon
         if has_latlon:

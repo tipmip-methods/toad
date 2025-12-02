@@ -1,7 +1,9 @@
-from toad.utils import all_functions
 import inspect
+
 import numpy as np
 from scipy.ndimage import distance_transform_edt
+
+from toad.utils import all_functions
 
 
 class ClusterSpaceStats:
@@ -49,7 +51,7 @@ class ClusterSpaceStats:
 
         if has_latlon:
             # Use lat/lon coordinates (works for both 1D regular and 2D irregular grids)
-            spatial_mask = self.td.get_spatial_cluster_mask(self.var, cluster_id)
+            spatial_mask = self.td.get_cluster_mask_spatial(self.var, cluster_id)
 
             if self.td.data[lat_name].ndim == 2:
                 # 2D coordinates (irregular grid)
@@ -57,20 +59,20 @@ class ClusterSpaceStats:
                 lon_values = self.td.data[lon_name].where(spatial_mask)
             else:
                 # 1D coordinates (regular grid) - apply mask to get subset
-                lat_values = self.td.apply_spatial_cluster_mask(
+                lat_values = self.td.apply_cluster_mask_spatial(
                     self.var, lat_name, cluster_id
                 )
-                lon_values = self.td.apply_spatial_cluster_mask(
+                lon_values = self.td.apply_cluster_mask_spatial(
                     self.var, lon_name, cluster_id
                 )
 
             return lat_values, lon_values
         else:
             # Fallback to dimension coordinates when lat/lon not available
-            y_coords = self.td.apply_spatial_cluster_mask(
+            y_coords = self.td.apply_cluster_mask_spatial(
                 self.var, self.td.space_dims[0], cluster_id
             )
-            x_coords = self.td.apply_spatial_cluster_mask(
+            x_coords = self.td.apply_cluster_mask_spatial(
                 self.var, self.td.space_dims[1], cluster_id
             )
             return y_coords, x_coords
@@ -121,7 +123,7 @@ class ClusterSpaceStats:
             Returns (np.nan, np.nan) if the footprint is empty.
         """
         # Get the 2D spatial footprint mask (ensure it's boolean or 0/1)
-        spatial_mask = self.td.get_spatial_cluster_mask(self.var, cluster_id)
+        spatial_mask = self.td.get_cluster_mask_spatial(self.var, cluster_id)
 
         # Ensure the mask is boolean or integer type for distance transform
         if spatial_mask.dtype != bool and not np.issubdtype(
@@ -177,7 +179,7 @@ class ClusterSpaceStats:
 
     def footprint_cumulative_area(self, cluster_id) -> int:
         """Returns the total number of spatial cells that were ever touched by the cluster."""
-        return int(self.td.get_spatial_cluster_mask(self.var, cluster_id).sum().sum())
+        return int(self.td.get_cluster_mask_spatial(self.var, cluster_id).sum().sum())
 
     def all_stats(self, cluster_id) -> dict:
         """Return all cluster stats"""

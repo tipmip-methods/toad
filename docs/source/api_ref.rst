@@ -16,7 +16,7 @@ Top-Level Functions
 	toad.TOAD
 	toad.compute_shifts
 	toad.compute_clusters
-	toad.TOADPlotter
+	toad.Plotter
 
 Core Modules
 ============
@@ -28,6 +28,6 @@ Core Modules
 	toad.clustering
 	toad.shifts
 	toad.regridding
-	toad.visualisation
+	toad.plotting
 	toad.utils
 	toad.postprocessing

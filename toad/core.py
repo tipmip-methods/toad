@@ -28,10 +28,10 @@ from toad.clustering.optimizing import (
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
-    contains_value,
+    _contains_value,
+    _is_equal_to,
     detect_latlon_names,
     get_space_dims,
-    is_equal_to,
 )
 
 
@@ -1019,7 +1019,7 @@ class TOAD:
             Mask for the cluster id.
         """
         # Notify user of better masking for cluster_id = -1
-        if contains_value(cluster_id, -1):
+        if _contains_value(cluster_id, -1):
             self.logger.info(
                 "Hint: If you want to get the mask for unclustered cells, use get_cluster_mask_permanent_noise() instead."
             )
@@ -1164,7 +1164,7 @@ class TOAD:
             - If cluster_id is a list, returns the union of the masks for each cluster id.
         """
         # use the unclustered mask if cluster_id == -1
-        if is_equal_to(
+        if _is_equal_to(
             cluster_id, -1
         ):  # checks if cluster_id is a scalar and equals -1
             mask = self.get_cluster_mask_permanent_noise(var)
@@ -1331,7 +1331,7 @@ class TOAD:
                 data = data.expand_dims("cell_xy")
         else:
             # Handle unclustered case (-1)
-            if is_equal_to(cluster_id, -1):
+            if _is_equal_to(cluster_id, -1):
                 mask = self.get_cluster_mask_permanent_noise(cluster_var)
             else:
                 mask = self.get_cluster_mask_spatial(cluster_var, cluster_id)
@@ -1341,8 +1341,8 @@ class TOAD:
 
             # Crop to cluster duration
             if not keep_full_timeseries:
-                start_idx = self.cluster_stats(var).time.start_timestep(cluster_id)
-                end_idx = self.cluster_stats(var).time.end_timestep(cluster_id)
+                start_idx = self.stats(var).time.start_timestep(cluster_id)
+                end_idx = self.stats(var).time.end_timestep(cluster_id)
                 # Set values outside the [start_idx, end_idx) range to NaN along the time dimension
                 time_indices = np.arange(data.sizes[self.time_dim])
                 mask_in_range = (time_indices >= start_idx) & (time_indices < end_idx)

@@ -20,17 +20,12 @@ import xarray as xr
 
 from .synthetic_data import create_global_dataset
 
-# TODO p1: remove functions that are not supposed to be public, and prefix with _
 __all__ = [
     "create_global_dataset",
     "get_space_dims",
-    "reorder_space_dims",
     "detect_latlon_names",
     "is_regular_grid",
     "deprecated",
-    "all_functions",
-    "is_equal_to",
-    "contains_value",
     "get_unique_variable_name",
     "_attrs",
     "convert_time_to_seconds",
@@ -112,7 +107,7 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[st
     return [str(dim) for dim in sdims if "bnds" not in str(dim)]
 
 
-def reorder_space_dims(space_dims: list[str]) -> list[str]:
+def _reorder_space_dims(space_dims: list[str]) -> list[str]:
     """Reorder space dimensions to ensure lat comes before lon if both present.
 
     Args:
@@ -208,18 +203,18 @@ def deprecated(message=None):
     return decorator
 
 
-def all_functions(obj) -> list[str]:
+def _all_functions(obj) -> list[str]:
     return [x for x in dir(obj) if not x.startswith("__") and callable(getattr(obj, x))]
 
 
-def is_equal_to(x, value):
+def _is_equal_to(x, value):
     """Check if x equals value, whether x is a scalar or sequence."""
     if np.isscalar(x):
         return x == value
     return np.array_equal(x, [value])
 
 
-def contains_value(x, value):
+def _contains_value(x, value):
     """Check if x contains value, whether x is a scalar or sequence."""
     if np.isscalar(x):
         return x == value

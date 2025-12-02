@@ -46,9 +46,9 @@ from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
+    _reorder_space_dims,
     detect_latlon_names,
     get_unique_variable_name,
-    reorder_space_dims,
 )
 from toad.utils.shift_selection_utils import _compute_dts_peak_sign_mask
 
@@ -292,7 +292,7 @@ def compute_clusters(
     else:
         # Handle dimensions
         space_dims = td.space_dims
-        space_dims = reorder_space_dims(space_dims)
+        space_dims = _reorder_space_dims(space_dims)
 
         # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
         lat_name, lon_name = detect_latlon_names(td.data)

@@ -5,7 +5,7 @@ import cftime
 import numpy as np
 import xarray as xr
 
-from toad.utils import all_functions, convert_numeric_to_original_time
+from toad.utils import _all_functions, convert_numeric_to_original_time
 
 
 class TimeStats:
@@ -260,7 +260,7 @@ class TimeStats:
     def all_stats(self, cluster_id) -> dict:
         """Return all cluster stats"""
         dict = {}
-        for method_name in all_functions(self):
+        for method_name in _all_functions(self):
             if (
                 not method_name.startswith("all_stats")
                 and not method_name.startswith("_")

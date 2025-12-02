@@ -385,15 +385,20 @@ class TOAD:
         """Access preprocessing methods."""
         return preprocessing.Preprocess(self)
 
-    def cluster_stats(self, var: str | None = None) -> postprocessing.ClusterStats:
-        """Access cluster statistical methods.
+    def stats(self, var: str | None = None) -> postprocessing.Stats:
+        """Access statistics about clusters and their properties, such as time, space, and general metrics.
 
         Args:
             var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
 
         Returns:
-            ClusterStats object for analyzing cluster statistics.
+            Stats object for analyzing cluster statistics.
+
+        Examples:
+            >>> td.stats(var="temperature").time.start(cluster_id=0)
+            >>> td.stats(var="temperature").space.mean(cluster_id=0)
+            >>> td.stats(var="temperature").general.score_heaviside(cluster_id=0)
         """
 
         # attempt to infer var
@@ -402,10 +407,10 @@ class TOAD:
             if var
             else str(self.get_clusters(self._get_base_var_if_none(None)).name)
         )
-        return postprocessing.ClusterStats(self, var)
+        return postprocessing.Stats(self, var)
 
-    # add "td.aggregate"
-    def aggregation(self) -> postprocessing.Aggregation:
+    @property
+    def aggregate(self) -> postprocessing.Aggregation:
         """Access aggregation methods."""
         return postprocessing.Aggregation(self)
 

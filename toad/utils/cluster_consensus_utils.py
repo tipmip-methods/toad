@@ -259,9 +259,7 @@ def _build_consensus_summary_df(
     for cluster_var in td.cluster_vars:
         shift_var = td.data[cluster_var].shifts_variable
         transition_time_maps.append(
-            td.cluster_stats(shift_var).time.compute_transition_time(
-                shift_threshold=0.0
-            )
+            td.stats(shift_var).time.compute_transition_time(shift_threshold=0.0)
         )
 
     if len(transition_time_maps) == 0:

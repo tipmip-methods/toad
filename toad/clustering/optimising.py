@@ -26,13 +26,13 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
     """
 
     cluster_ids = td.get_cluster_ids(cluster_variable)
-    score1 = td.cluster_stats(cluster_variable).general.aggregate_cluster_scores(
+    score1 = td.stats(cluster_variable).general.aggregate_cluster_scores(
         cluster_ids=cluster_ids[:10],
         score_method="score_spatial_autocorrelation",
         aggregation="median",
     )
 
-    score2 = td.cluster_stats(cluster_variable).general.aggregate_cluster_scores(
+    score2 = td.stats(cluster_variable).general.aggregate_cluster_scores(
         cluster_ids=cluster_ids[:10],
         score_method="score_nonlinearity",
         aggregation="median",
@@ -193,11 +193,11 @@ def _optimise_clusters(**kwargs) -> xr.Dataset:
             # Map objective names to their corresponding scoring functions
             # TODO p2: all the score functions are really slow and take ~90% of the optimisation time
             score_funcs = {
-                "median_heaviside":           lambda: np.median([td.cluster_stats(output_label).general.score_heaviside(cid, aggregation="median") for cid in cluster_ids[:10]]),
-                "mean_heaviside":               lambda: np.mean([td.cluster_stats(output_label).general.score_heaviside(cid, aggregation="mean") for cid in cluster_ids[:10]]),
-                "mean_consistency":             lambda: np.mean([td.cluster_stats(output_label).general.score_consistency(cid) for cid in cluster_ids[:10]]),
-                "mean_spatial_autocorrelation": lambda: np.mean([td.cluster_stats(output_label).general.score_spatial_autocorrelation(cid) for cid in cluster_ids[:10]]),
-                "mean_nonlinearity":            lambda: np.mean([td.cluster_stats(output_label).general.score_nonlinearity(cid, aggregation="mean") for cid in cluster_ids[:10]]),
+                "median_heaviside":           lambda: np.median([td.stats(output_label).general.score_heaviside(cid, aggregation="median") for cid in cluster_ids[:10]]),
+                "mean_heaviside":               lambda: np.mean([td.stats(output_label).general.score_heaviside(cid, aggregation="mean") for cid in cluster_ids[:10]]),
+                "mean_consistency":             lambda: np.mean([td.stats(output_label).general.score_consistency(cid) for cid in cluster_ids[:10]]),
+                "mean_spatial_autocorrelation": lambda: np.mean([td.stats(output_label).general.score_spatial_autocorrelation(cid) for cid in cluster_ids[:10]]),
+                "mean_nonlinearity":            lambda: np.mean([td.stats(output_label).general.score_nonlinearity(cid, aggregation="mean") for cid in cluster_ids[:10]]),
                 "combined_spatial_nonlinearity": lambda: combined_spatial_nonlinearity(td, output_label)
             }
             # fmt: on

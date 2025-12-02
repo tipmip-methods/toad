@@ -481,7 +481,7 @@ class Plotter:
 
             # Get mask for clustered or unclustered cells
             mask = (
-                self.td.get_permanent_unclustered_mask(var)
+                self.td.get_cluster_mask_permanent_noise(var)
                 if id == -1
                 else self.td.get_cluster_mask_spatial(var, id)
             )

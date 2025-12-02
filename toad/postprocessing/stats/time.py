@@ -36,7 +36,7 @@ class TimeStats:
 
     def start_timestep(self, cluster_id) -> float:
         """Return the start index of the cluster"""
-        dens = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        dens = self.td.get_cluster_density_spatial(self.var, cluster_id)
         idx_start = np.where(dens > 0)[0][0]
         return int(idx_start)
 
@@ -54,7 +54,7 @@ class TimeStats:
 
     def end_timestep(self, cluster_id) -> int:
         """Return the end index of the cluster"""
-        dens = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        dens = self.td.get_cluster_density_spatial(self.var, cluster_id)
         idx_end = np.where(dens > 0)[0][-1]
         return int(idx_end)
 
@@ -80,7 +80,7 @@ class TimeStats:
 
         If there's a plateau at the maximum value, returns the center of the plateau.
         """
-        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
 
         # Find the maximum value
         max_value = float(ctd.max())
@@ -103,7 +103,7 @@ class TimeStats:
 
     def membership_peak_density(self, cluster_id) -> float:
         """Return the largest cluster temporal density"""
-        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
         return float(ctd.max().values)
 
     def steepest_gradient(self, cluster_id) -> Union[float, cftime.datetime]:
@@ -180,7 +180,7 @@ class TimeStats:
         Returns:
             tuple: Start time and end time of the interquantile range in original time format
         """
-        ctd = self.td.get_cluster_spatial_density(self.var, cluster_id)
+        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
         cum_dist = ctd.cumsum()
 
         # Find indices where quantiles are reached

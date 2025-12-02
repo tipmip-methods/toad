@@ -16,14 +16,14 @@ def test_cluster_optimization():
 
     td.compute_clusters(
         optimize=True,
-        optimization_params={
+        optimize_params={
             "min_cluster_size": (5, 15),
             "shift_threshold": 0.75,
             "time_weight": (0.5, 2.0),
         },
         method=HDBSCAN,
         shift_selection="local",
-        n_trials=10,
+        optimize_n_trials=10,
     )
 
     # Since a short optimization like this won't always converge to the same result, we just check that a new cluster label was added.

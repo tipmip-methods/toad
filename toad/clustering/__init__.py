@@ -40,7 +40,7 @@ from toad._version import __version__
 from toad.clustering.optimizing import (
     _optimize_clusters,
     combined_spatial_nonlinearity,
-    default_optimization_params,
+    default_opt_params,
 )
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
@@ -56,7 +56,7 @@ logger = logging.getLogger("TOAD")
 
 __all__ = [
     "compute_clusters",
-    "default_optimization_params",
+    "default_opt_params",
     "combined_spatial_nonlinearity",
     "sorted_cluster_labels",
 ]
@@ -87,8 +87,8 @@ def compute_clusters(
     sort_by_size: bool = True,
     # optimization params
     optimize: bool = False,
-    optimization_params: dict = default_optimization_params,
-    objective: Callable  # TODO p1: rename all opt params to optimize_x_param
+    optimize_params: dict = default_opt_params,
+    optimize_objective: Callable
     | Literal[
         "median_heaviside",
         "mean_heaviside",
@@ -98,10 +98,10 @@ def compute_clusters(
         "combined_spatial_nonlinearity",
     ]
     | str = "combined_spatial_nonlinearity",
-    n_trials: int = 50,
-    direction: str = "maximize",
-    log_level: int = optuna.logging.WARNING,
-    show_progress_bar: bool = True,
+    optimize_n_trials: int = 50,
+    optimize_direction: str = "maximize",
+    optimize_log_level: int = optuna.logging.WARNING,
+    optimize_progress_bar: bool = True,
 ) -> xr.Dataset:
     """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
@@ -122,21 +122,20 @@ def compute_clusters(
         disable_regridder: Whether to disable the regridder. Defaults to False.
         output_label_suffix: A suffix to add to the output label. Defaults to "".
         overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
-        merge_input: Whether to merge the clustering results with the input dataset. Defaults to True.
         sort_by_size: Whether to reorder clusters by size. Defaults to True.
         optimize: Whether to optimize the clustering parameters. Defaults to False.
-        optimization_params: Parameters for the optimization. Defaults to default_optimization_params.
-        objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
+        optimize_params: Parameters for the optimization. Defaults to default_opt_params.
+        optimize_objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
             - callable: Custom objective function taking (td, output_label) as arguments
             - "median_heaviside": Median heaviside score across clusters
             - "mean_heaviside": Mean heaviside score across clusters
             - "mean_consistency": Mean consistency score across clusters
             - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
             - "mean_nonlinearity": Mean nonlinearity score across clusters
-        n_trials: Number of trials to run for optimization. Defaults to 50.
-        direction: The direction of the optimization. Defaults to "maximize".
-        log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
-        show_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
+        optimize_n_trials: Number of trials to run for optimization. Defaults to 50.
+        optimize_direction: The direction of the optimization. Defaults to "maximize".
+        optimize_log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
+        optimize_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
 
     Returns:
         An `xarray.Dataset` containing the original data and the clustering results.
@@ -169,8 +168,7 @@ def compute_clusters(
         - Sort clusters by size if requested
         - Scatter labels back to xarray coordinates
         - Add clustering parameters as attributes
-        - Optionally merge results with input dataset
-        - Return Dataset or DataArray based on merge_input parameter
+        - Merge results with input dataset and return Dataset
     """
 
     start_time = time_now()
@@ -235,12 +233,12 @@ def compute_clusters(
             overwrite=True,
             sort_by_size=sort_by_size,
             optimize=False,
-            optimization_params=optimization_params,
-            objective=objective,
-            n_trials=n_trials,
-            direction=direction,
-            log_level=log_level,
-            show_progress_bar=show_progress_bar,
+            optimize_params=optimize_params,
+            optimize_objective=optimize_objective,
+            optimize_n_trials=optimize_n_trials,
+            optimize_direction=optimize_direction,
+            optimize_log_level=optimize_log_level,
+            optimize_progress_bar=optimize_progress_bar,
         )
 
     # ==================== SHIFT SELECTION ====================

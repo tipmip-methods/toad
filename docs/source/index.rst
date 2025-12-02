@@ -38,7 +38,7 @@ Contributors:
 
 * Karoline Ramin: Student assistant for codebase support
 * Kobe De Maeyer: MSc 2024, Vegetation compatibility
-* Vincent Overbeck: MSc 2023, scoring and optimisation loop
+* Vincent Overbeck: MSc 2023, scoring and optimization loop
 * Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
 * Ann Sophie Messerschmidt: MSc 2022, clustering methods 
 

@@ -61,8 +61,8 @@ class _Attrs:
     TOAD_VERSION: str = "toad_version"
     TIME_DIM: str = "time_dim"
 
-    # Optimisation related attributes
-    OPTIMISATION: str = "optimisation"
+    # optimization related attributes
+    optimization: str = "optimization"
     OPT_OBJECTIVE: str = "opt_objective"
     OPT_BEST_SCORE: str = "opt_best_score"
     OPT_DIRECTION: str = "opt_direction"

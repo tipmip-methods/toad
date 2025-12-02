@@ -22,8 +22,8 @@ from toad import (
     preprocessing,
     shifts,
 )
-from toad.clustering.optimising import (
-    default_optimisation_params,
+from toad.clustering.optimizing import (
+    default_optimization_params,
 )
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
@@ -522,9 +522,9 @@ class TOAD:
         output_label: str | None = None,
         overwrite: bool = False,
         sort_by_size: bool = True,
-        # optimisation related params
-        optimise: bool = False,
-        optimisation_params: dict = default_optimisation_params,
+        # optimization related params
+        optimize: bool = False,
+        optimization_params: dict = default_optimization_params,
         objective: Callable
         | Literal[
             "median_heaviside",
@@ -568,19 +568,19 @@ class TOAD:
             return_results_directly: Whether to return the clustering results directly or merge
                 into the original dataset. Defaults to False.
             sort_by_size: Whether to reorder clusters by size. Defaults to True.
-            optimise: Whether to optimise the clustering parameters. Defaults to False.
-            optimisation_params: Parameters for the optimisation. Defaults to default_optimisation_params.
-            objective: The objective function to optimise. Defaults to combined_spatial_nonlinearity. Can be one of:
+            optimize: Whether to optimize the clustering parameters. Defaults to False.
+            optimization_params: Parameters for the optimization. Defaults to default_optimization_params.
+            objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
                 - callable: Custom objective function taking (td, output_label) as arguments
                 - "median_heaviside": Median heaviside score across clusters
                 - "mean_heaviside": Mean heaviside score across clusters
                 - "mean_consistency": Mean consistency score across clusters
                 - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
                 - "mean_nonlinearity": Mean nonlinearity score across clusters
-            n_trials: Number of trials to run for optimisation. Defaults to 50.
-            direction: The direction of the optimisation. Defaults to "maximize".
-            log_level: The log level for the optimisation. Defaults to optuna.logging.WARNING.
-            show_progress_bar: Whether to show the progress bar for the optimisation. Defaults to True.
+            n_trials: Number of trials to run for optimization. Defaults to 50.
+            direction: The direction of the optimization. Defaults to "maximize".
+            log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
+            show_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
 
         Returns:
             None.
@@ -608,8 +608,8 @@ class TOAD:
             output_label=output_label,
             overwrite=overwrite,
             sort_by_size=sort_by_size,
-            optimise=optimise,
-            optimisation_params=optimisation_params,
+            optimize=optimize,
+            optimization_params=optimization_params,
             objective=objective,
             n_trials=n_trials,
             direction=direction,

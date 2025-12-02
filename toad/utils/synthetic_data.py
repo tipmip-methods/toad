@@ -13,7 +13,6 @@ def create_global_dataset(
     random_seed=42,
 ):
     """
-    TODO: this will be removed
     Generate a global dataset with background trend and spatially coherent abrupt shifts.
 
     Args:
@@ -139,8 +138,8 @@ def add_shift_blob(
     pos_extended = np.dstack((lat_grid, extended_lon_grid))
 
     # Calculate Gaussian blob
-    cov = np.array([[sigma_lat**2, 0], [0, sigma_lon**2]])
-    rv = multivariate_normal(mean=[center_lat, center_lon], cov=cov)
+    cov = np.array([[sigma_lat**2, 0], [0, sigma_lon**2]], dtype=np.float64)
+    rv = multivariate_normal(mean=[center_lat, center_lon], cov=cov)  # type: ignore[arg-type]
     extended_blob = rv.pdf(pos_extended)
     blob_normalized = extended_blob / np.max(extended_blob)
 

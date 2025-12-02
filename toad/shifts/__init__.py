@@ -82,7 +82,7 @@ def compute_shifts(
 
     # check that data_array is 3-dimensional
     if data_array.ndim != 3:
-        raise ValueError("data must be 3-dimensional")
+        raise ValueError("data must be 3-dimensional: time/forcing x space x space")
 
     # Check if the output_label is already in the data
     output_label = f"{var}_dts{output_label_suffix}"

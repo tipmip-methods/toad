@@ -41,7 +41,7 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
     return float(weights[0] * score1 + weights[1] * score2)
 
 
-default_optimization_params = dict(
+default_opt_params = dict(
     {
         "min_cluster_size": (10, 25),
         "time_weight": (0.5, 1.5),
@@ -77,7 +77,7 @@ Cluster Scoring Methods
 Little note about parameters:
 - We have parameters that go directly into the clustering method. These must be very flexible because the clustering method can be anything.
 - We also have parameters that modify how TOAD applies the clustering method. These are specific.
-- The user however passes both in the same dictionary of optimization_param_ranges.
+- The user however passes both in the same dictionary of optimize_params.
 - So we need to be careful when extracting and leading the params to the right places. 
 """
 
@@ -99,18 +99,18 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
     td = kwargs.pop("td")
     var = kwargs.pop("var")
     method = kwargs.pop("method")
-    objective = kwargs.pop("objective")
-    direction = kwargs.pop("direction")
-    log_level = kwargs.pop("log_level")
-    show_progress_bar = kwargs.pop("show_progress_bar")
-    n_trials = kwargs.pop("n_trials")
+    objective = kwargs.pop("optimize_objective")
+    direction = kwargs.pop("optimize_direction")
+    log_level = kwargs.pop("optimize_log_level")
+    show_progress_bar = kwargs.pop("optimize_progress_bar")
+    n_trials = kwargs.pop("optimize_n_trials")
 
     # TOAD specific clustering params
     shift_threshold = kwargs.pop("shift_threshold")
     time_weight = kwargs.pop("time_weight")
 
     # User defined optimization params, can also include shift_threshold and time_weight
-    optimization_params = kwargs.pop("optimization_params")
+    opt_params = kwargs.pop("optimize_params")
 
     # don't pop this one
     output_label = kwargs["output_label"]
@@ -133,8 +133,8 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
             if warn_user_about_params:
                 logger.warning(
                     "When optimizing, params passed through the clustering method (e.g. HDBSCAN(min_cluster_size=10)) will be ignored."
-                    "\nPlease pass params through `optimistion_params` instead."
-                    "\nExample: optimization_params={'min_cluster_size': 10} for a fixed min_cluster_size of 10."
+                    "\nPlease pass params through `optimize_params` instead."
+                    "\nExample: optimize_params={'min_cluster_size': 10} for a fixed min_cluster_size of 10."
                 )
     else:
         method_class = method
@@ -143,15 +143,13 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         "Method must be a clustering algorithm, extending ClusterMixin."
     )
 
-    assert isinstance(optimization_params, dict), (
-        "optimization_param_ranges must be a dict"
-    )
-    assert len(optimization_params) > 0, (
-        "optimization_params cannot be empty. Example: optimization_params={'min_cluster_size': (5, 15)}"
+    assert isinstance(opt_params, dict), "optimize_params must be a dict"
+    assert len(opt_params) > 0, (
+        "optimize_params cannot be empty. Example: optimize_params={'min_cluster_size': (5, 15)}"
     )
 
     # Print optimization params
-    logger.info(f"optimizing {n_trials} trials with params: {optimization_params}")
+    logger.info(f"optimizing {n_trials} trials with params: {opt_params}")
 
     score_computation_time = 0.0
 
@@ -159,7 +157,7 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         nonlocal score_computation_time
 
         # Sample optimization params: these may contains both TOAD and Clustering params (see note at the top).
-        cluster_params = _sample_params(trial, optimization_params)
+        cluster_params = _sample_params(trial, opt_params)
 
         # Get time_weight if present, if not use the one from the kwargs
         sample_time_weight = cluster_params.pop("time_weight", time_weight)
@@ -214,7 +212,9 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         t0 = time.time()
         study = optuna.create_study(direction=direction)
         study.optimize(
-            objective_fn, n_trials=n_trials, show_progress_bar=show_progress_bar
+            objective_fn,
+            n_trials=n_trials,
+            show_progress_bar=show_progress_bar,
         )
         t1 = time.time()
     finally:
@@ -251,7 +251,7 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
             else objective,
             _attrs.OPT_BEST_SCORE: study.best_value,
             _attrs.OPT_DIRECTION: direction,
-            _attrs.OPT_PARAMS: optimization_params,
+            _attrs.OPT_PARAMS: opt_params,
             _attrs.OPT_BEST_PARAMS: study.best_params,
             _attrs.OPT_N_TRIALS: n_trials,
         }

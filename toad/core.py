@@ -23,7 +23,7 @@ from toad import (
     shifts,
 )
 from toad.clustering.optimizing import (
-    default_optimization_params,
+    default_opt_params,
 )
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
@@ -520,8 +520,8 @@ class TOAD:
         sort_by_size: bool = True,
         # optimization related params
         optimize: bool = False,
-        optimization_params: dict = default_optimization_params,
-        objective: Callable
+        optimize_params: dict = default_opt_params,
+        optimize_objective: Callable
         | Literal[
             "median_heaviside",
             "mean_heaviside",
@@ -531,10 +531,10 @@ class TOAD:
             "combined_spatial_nonlinearity",
         ]
         | str = "combined_spatial_nonlinearity",
-        n_trials: int = 50,
-        direction: str = "maximize",
-        log_level: int = optuna.logging.WARNING,
-        show_progress_bar: bool = True,
+        optimize_n_trials: int = 50,
+        optimize_direction: str = "maximize",
+        optimize_log_level: int = optuna.logging.WARNING,
+        optimize_progress_bar: bool = True,
     ):
         """Apply clustering to a dataset's temporal shifts using a sklearn-compatible clustering algorithm.
 
@@ -561,22 +561,20 @@ class TOAD:
             disable_regridder: Whether to disable the regridder. Defaults to False.
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
-            return_results_directly: Whether to return the clustering results directly or merge
-                into the original dataset. Defaults to False.
             sort_by_size: Whether to reorder clusters by size. Defaults to True.
             optimize: Whether to optimize the clustering parameters. Defaults to False.
-            optimization_params: Parameters for the optimization. Defaults to default_optimization_params.
-            objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
+            optimize_params: Parameters for the optimization. Defaults to clustering.default_opt_params.
+            optimize_objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
                 - callable: Custom objective function taking (td, output_label) as arguments
                 - "median_heaviside": Median heaviside score across clusters
                 - "mean_heaviside": Mean heaviside score across clusters
                 - "mean_consistency": Mean consistency score across clusters
                 - "mean_spatial_autocorrelation": Mean spatial autocorrelation score
                 - "mean_nonlinearity": Mean nonlinearity score across clusters
-            n_trials: Number of trials to run for optimization. Defaults to 50.
-            direction: The direction of the optimization. Defaults to "maximize".
-            log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
-            show_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
+            optimize_n_trials: Number of trials to run for optimization. Defaults to 50.
+            optimize_direction: The direction of the optimization. Defaults to "maximize".
+            optimize_log_level: The log level for the optimization. Defaults to optuna.logging.WARNING.
+            optimize_progress_bar: Whether to show the progress bar for the optimization. Defaults to True.
 
         Returns:
             None.
@@ -605,12 +603,12 @@ class TOAD:
             overwrite=overwrite,
             sort_by_size=sort_by_size,
             optimize=optimize,
-            optimization_params=optimization_params,
-            objective=objective,
-            n_trials=n_trials,
-            direction=direction,
-            log_level=log_level,
-            show_progress_bar=show_progress_bar,
+            optimize_params=optimize_params,
+            optimize_objective=optimize_objective,
+            optimize_n_trials=optimize_n_trials,
+            optimize_direction=optimize_direction,
+            optimize_log_level=optimize_log_level,
+            optimize_progress_bar=optimize_progress_bar,
         )
 
     # # ======================================================================

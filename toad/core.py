@@ -640,8 +640,14 @@ class TOAD:
         # Use user-provided path if specified, otherwise use self.path
         save_path = path if path is not None else self.path
 
+        # Type guard: save_path cannot be None at this point due to earlier checks
+        assert save_path is not None, "save_path should not be None"
+
         if save_path == self.path:
             # Get original extension if using self.path
+            assert (
+                self.path is not None
+            )  # Type guard: self.path is not None when save_path == self.path
             original_ext = self.path.rsplit(".", 1)[1] if "." in self.path else "nc"
         else:
             # For user-provided path without extension, default to .nc

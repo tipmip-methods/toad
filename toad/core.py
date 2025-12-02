@@ -1021,7 +1021,7 @@ class TOAD:
         # Notify user of better masking for cluster_id = -1
         if contains_value(cluster_id, -1):
             self.logger.info(
-                "Hint: If you want to get the mask for unclustered cells, use get_permanent_unclustered_mask() instead."
+                "Hint: If you want to get the mask for unclustered cells, use get_cluster_mask_permanent_noise() instead."
             )
 
         return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
@@ -1057,7 +1057,7 @@ class TOAD:
         Returns:
             All data (regardless of cluster) masked by the temporal extend of the specified cluster.
         """
-        mask = self.get_temporal_cluster_mask(var, cluster_id)
+        mask = self.get_cluster_mask_temporal(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
     def get_cluster_mask_permanent(self, var: str, cluster_id: int) -> xr.DataArray:
@@ -1074,7 +1074,7 @@ class TOAD:
         clusters = self.get_clusters(var)
         return (clusters == cluster_id).all(dim=self.time_dim)
 
-    def get_permanent_unclustered_mask(self, var: str) -> xr.DataArray:
+    def get_cluster_mask_permanent_noise(self, var: str) -> xr.DataArray:
         """Create the spatial mask for cells that are always unclustered (i.e. -1).
 
         Args:
@@ -1086,7 +1086,7 @@ class TOAD:
         """
         return self.get_cluster_mask_permanent(var, -1)
 
-    def get_cluster_temporal_density(self, var: str, cluster_id: int) -> xr.DataArray:
+    def get_cluster_density_temporal(self, var: str, cluster_id: int) -> xr.DataArray:
         """Calculate the temporal density of a cluster at each grid cell.
 
         Args:
@@ -1101,24 +1101,32 @@ class TOAD:
         density = density.rename(f"{density.name}_temporal_density")
         return density
 
-    def get_cluster_spatial_density(self, var: str, cluster_id: int) -> xr.DataArray:
+    def get_cluster_density_spatial(
+        self, var: str, cluster_id: Optional[int] = None
+    ) -> xr.DataArray:
         """Calculate the spatial density of a cluster across all grid cells.
 
         Args:
             var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
                 or custom cluster variable name.
-            cluster_id: The cluster id to calculate density for.
+            cluster_id: The cluster id to calculate density for. If None, calculates density
+                for all clusters combined (excluding noise points, cluster ID -1).
 
         Returns:
-            1D timeseries containing the fraction (0-1) of grid cells that belonged to the specified cluster at each timestep.
+            1D timeseries containing the fraction (0-1) of grid cells that belonged to the
+            specified cluster (or all clusters if cluster_id is None) at each timestep.
         """
-        density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
-        density = density.rename(f"{density.name}_spatial_density")
+        if cluster_id is None:
+            # Get the mask for all clusters except -1 (noise)
+            mask = self.get_cluster_mask(var, -1) == 0
+            density = mask.mean(dim=self.space_dims)
+            density = density.rename(f"{var}_total_cluster_spatial_density")
+        else:
+            density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
+            density = density.rename(f"{density.name}_spatial_density")
         return density
 
-    def get_temporal_cluster_mask(
-        self, var: str, cluster_id: int
-    ) -> xr.DataArray:  # TODO p1: rename to get_cluster_mask_temporal
+    def get_cluster_mask_temporal(self, var: str, cluster_id: int) -> xr.DataArray:
         """Calculate a temporal footprint indicating cluster presence at each timestep.
 
         For each timestep, returns a boolean mask indicating whether any grid cell belonged
@@ -1137,29 +1145,6 @@ class TOAD:
         footprint = self.get_cluster_mask(var, cluster_id).any(dim=self.space_dims)
         footprint = footprint.rename(f"{footprint.name}_temporal_footprint")
         return footprint
-
-    def get_total_spatial_temporal_density(self, var: str) -> xr.DataArray:
-        """Calculate the fraction of all grid cells that belong to any cluster at each timestep.
-
-        For each timestep, calculates what fraction of all grid cells belong to any cluster,
-        excluding noise points (cluster ID -1). This gives a measure of how much of the spatial
-        domain is covered by clusters at each point in time.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-
-        Returns:
-            Fraction (0-1) of grid cells belonging to any cluster at each timestep.
-            The output is named '{var}_total_cluster_temporal_density'.
-        """
-        # Get the mask for all clusters except -1
-        non_noise_mask = self.get_cluster_mask(var, -1) == 0
-        # Calculate the mean over the spatial dimensions
-        density = non_noise_mask.mean(dim=self.space_dims)
-        # Rename the result for clarity
-        density = density.rename(f"{var}_total_cluster_temporal_density")
-        return density
 
     def get_cluster_data(
         self, var: str, cluster_id: Union[int, List[int]]
@@ -1182,7 +1167,7 @@ class TOAD:
         if is_equal_to(
             cluster_id, -1
         ):  # checks if cluster_id is a scalar and equals -1
-            mask = self.get_permanent_unclustered_mask(var)
+            mask = self.get_cluster_mask_permanent_noise(var)
         else:
             mask = self.get_cluster_mask(var, cluster_id)
 
@@ -1290,9 +1275,7 @@ class TOAD:
     def get_cluster_timeseries(
         self,
         var: str,
-        cluster_id: Optional[
-            Union[int, List[int]]
-        ] = None,  # TODO p1: rename to cluster_ids ?
+        cluster_id: Optional[Union[int, List[int]]] = None,
         cluster_var: Optional[str] = None,
         aggregation: Literal[
             "raw", "mean", "sum", "std", "median", "percentile", "max", "min"
@@ -1349,7 +1332,7 @@ class TOAD:
         else:
             # Handle unclustered case (-1)
             if is_equal_to(cluster_id, -1):
-                mask = self.get_permanent_unclustered_mask(cluster_var)
+                mask = self.get_cluster_mask_permanent_noise(cluster_var)
             else:
                 mask = self.get_cluster_mask_spatial(cluster_var, cluster_id)
 

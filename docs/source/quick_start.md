@@ -20,7 +20,7 @@ td.compute_clusters(
     method=HDBSCAN(min_cluster_size=10),
 )
 
-# Visualise results
+# Visualize results
 td.plot.overview("temp");
 ```
 

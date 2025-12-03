@@ -7,7 +7,7 @@ Refactored: Nov, 2024 (Jakob)
 """
 
 import logging
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import numpy as np
 from numba import njit
@@ -15,6 +15,11 @@ from numpy.linalg import lstsq
 from numpy.typing import NDArray
 
 from .base import ShiftsMethod
+
+if TYPE_CHECKING:
+    import xarray as xr
+
+    from toad.core import TOAD
 
 
 class ASDETECT(ShiftsMethod):
@@ -30,17 +35,17 @@ class ASDETECT(ShiftsMethod):
 
     Two segmentation modes are available:
 
-    **"original" mode** (following [Boulton+Lenton2019]_):
-        - Uses centered, non-overlapping segments that are evenly distributed within the time series.
-        - Normalizes by dividing by the total number of window sizes used (lmax - lmin + 1).
-        - Simpler approach that matches the original algorithm implementation.
-
     **"two_sided" mode** (default, recommended):
         - Uses forward and backward segmentation to reduce bias and improve coverage.
         - Segments overlap, providing better temporal coverage of the time series.
         - Normalizes by dividing by a counter array that tracks how many segments cover each time point.
         - Applies edge correction by downweighting signals at boundaries where fewer segments overlap, reducing unreliable detections at the start and end of the time series.
         - Generally produces smoother and more reliable results, especially near the edges.
+
+    **"original" mode** (following [Boulton+Lenton2019]_):
+        - Uses centered, non-overlapping segments that are evenly distributed within the time series.
+        - Normalizes by dividing by the total number of window sizes used (lmax - lmin + 1).
+        - Simpler approach that matches the original algorithm implementation.
 
     Note: ASDETECT does not work with NaN values so it will return a detection time series of all zeros if the input time series contains NaN values.
 
@@ -57,6 +62,16 @@ class ASDETECT(ShiftsMethod):
             (lmin, lmax) and overrides the explicit lmin/lmax settings. Either bound may be
             set to None to fall back to the defaults (5 time steps for the minimum,
             one third of the series length for the maximum).
+
+            **Important:** When the input dataset uses cftime format, the timescale parameter
+            must be specified in seconds, because cftime values are internally converted to
+            seconds since the first time point. For example, to detect shifts at timescales of
+            1-2 years with cftime data, use ``timescale=(365.25*24*3600, 2*365.25*24*3600)``
+            (seconds). For numeric time data (not cftime), use the same units as your time axis.
+
+            **Note:** The timescale conversion requires regular temporal spacing. If your time
+            series has irregular spacing, a ValueError will be raised. In this case, use lmin/lmax
+            parameters directly instead of timescale, or resample your data to regular spacing.
         segmentation: Segmentation method to use. "two_sided" (recommended) applies forward
             and backward segmentation with counter-based normalisation and edge correction,
             reducing positional bias at roughly twice the computational cost of the original
@@ -83,7 +98,6 @@ class ASDETECT(ShiftsMethod):
         self.timescale = timescale
         self.segmentation: Literal["two_sided", "original"] | str = segmentation
         self.ignore_nan_warnings = ignore_nan_warnings
-        self._converted_timescale = False
 
         assert timescale is None or (
             isinstance(timescale, tuple)
@@ -146,8 +160,34 @@ class ASDETECT(ShiftsMethod):
                 )
             lmax = lmax_max
 
-        self._converted_timescale = True
         return lmin, lmax
+
+    def pre_validation(
+        self,
+        data_array: "xr.DataArray",
+        td: "TOAD",
+    ) -> None:
+        """Validate regular temporal spacing and convert timescale to lmin/lmax if needed.
+
+        This method is called once in compute_shifts() before applying the method to all
+        grid cells. It always validates that the time series has regular spacing (required
+        for the algorithm to work correctly) and converts timescale parameters to lmin/lmax
+        if timescale is provided.
+
+        Args:
+            data_array: The masked data array that will be processed
+            td: The TOAD object containing the dataset and metadata
+
+        Raises:
+            ValueError: If time spacing is irregular
+        """
+        # Validate regular temporal spacing using numeric time values
+        times_1d = td.numeric_time_values
+        _check_regular_temporal_spacing(times_1d)
+
+        # Convert timescale to lmin/lmax if needed
+        if self.timescale is not None:
+            self.lmin, self.lmax = self._get_segment_lengths(times_1d)
 
     def fit_predict(
         self,
@@ -167,9 +207,6 @@ class ASDETECT(ShiftsMethod):
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
         """
 
-        if self.timescale is not None and not self._converted_timescale:
-            self.lmin, self.lmax = self._get_segment_lengths(times_1d)
-
         return construct_detection_ts(
             values_1d=values_1d,
             times_1d=times_1d,
@@ -177,6 +214,41 @@ class ASDETECT(ShiftsMethod):
             lmax=self.lmax,
             segmentation=self.segmentation,
             ignore_nan_warnings=self.ignore_nan_warnings,
+        )
+
+
+# Helper functions =============================================================
+
+
+def _check_regular_temporal_spacing(times_1d: NDArray[np.float64]) -> None:
+    """Check if time series has regular temporal spacing.
+
+    Args:
+        times_1d: 1D array of times
+
+    Raises:
+        ValueError: If time spacing is irregular (not all time steps are approximately equal)
+    """
+    if len(times_1d) < 2:
+        return  # Need at least 2 points to check spacing
+
+    dt = np.diff(times_1d)
+    dt_first = dt[0]
+
+    # Use relative tolerance for floating point comparison
+    # Allow 1% relative difference to account for floating point precision
+    rtol = 1e-2
+    atol = np.abs(dt_first) * rtol
+
+    if not np.allclose(dt, dt_first, rtol=rtol, atol=atol):
+        min_dt = np.min(dt)
+        max_dt = np.max(dt)
+        raise ValueError(
+            f"Time series has irregular temporal spacing. "
+            f"Time steps range from {min_dt:.6e} to {max_dt:.6e} (first step: {dt_first:.6e}). "
+            f"ASDETECT requires regular temporal spacing to properly convert timescale parameters "
+            f"to segment lengths. Please resample your data to regular spacing or use lmin/lmax "
+            f"parameters directly instead of timescale."
         )
 
 

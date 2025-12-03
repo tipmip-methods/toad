@@ -1,0 +1,25 @@
+{
+  "typeCheckingMode": "standard",
+  "exclude": [
+    "build",
+    "build/lib",
+    "toad.egg-info",
+    "docs",
+    "tutorials",
+    "test_artifacts",
+    "**/__pycache__",
+    "**/*.pyc"
+  ],
+  "include": [
+    "toad",
+    "tests"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "pythonVersion": "3.12",
+  "extraPaths": [
+    "${workspaceFolder}"
+  ]
+}
+
+

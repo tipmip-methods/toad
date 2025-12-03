@@ -116,8 +116,8 @@ class ASDETECT(ShiftsMethod):
         lmax_max = len(times_1d) // 3
         lmin, lmax = self.lmin, self.lmax if self.lmax is not None else lmax_max
 
+        dt = np.diff(times_1d)[0]
         if self.timescale is not None:
-            dt = np.diff(times_1d)[0]
             if self.timescale[0] is not None:
                 lmin = int(self.timescale[0] / dt)
             if self.timescale[1] is not None:

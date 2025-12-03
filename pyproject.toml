@@ -88,3 +88,18 @@ cftime = "cftime"
 Homepage = "https://tipmip.pik-potsdam.de/"
 Documentation = "https://www.pik-potsdam.de/~lukasro/toad/#"
 Repository = "https://github.com/tipmip-methods/toad"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+exclude = [
+    "build/",
+    "build/lib/",
+    "toad.egg-info/",
+    "docs/",
+    "tutorials/",
+    "test_artifacts/",
+    ".*",
+]

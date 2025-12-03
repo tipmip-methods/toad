@@ -124,6 +124,7 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
         method_class = method.__class__
 
         # Try to check if params have been changed
+        warn_user_about_params = False
         try:
             warn_user_about_params = method.__dict__ != method.__class__().__dict__
         except TypeError:

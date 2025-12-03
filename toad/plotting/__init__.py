@@ -160,19 +160,6 @@ class Plotter:
         map_style: Optional[Union[MapStyle, dict]] = None,
     ) -> Tuple[matplotlib.figure.Figure, np.ndarray]: ...
 
-    @overload
-    def map(
-        self,
-        nrows: int,
-        ncols: int,
-        *,
-        figsize: Optional[Tuple[float, float]] = None,
-        height_ratios: Optional[List[float]] = None,
-        width_ratios: Optional[List[float]] = None,
-        subplot_spec: Any = None,
-        map_style: Optional[Union[MapStyle, dict]] = None,
-    ) -> Tuple[matplotlib.figure.Figure, Axes]: ...
-
     def map(
         self,
         nrows: int = 1,
@@ -294,7 +281,7 @@ class Plotter:
         cmap: Union[str, ListedColormap] = default_cmap,
         map_cmap_other: Optional[Union[str, Colormap]] = "jet",
         include_all_clusters: bool = True,
-        subplots: Literal[True] = True,
+        subplots: Literal[True],
         ncols: int = 3,
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
@@ -464,6 +451,9 @@ class Plotter:
         # Create a ListedColormap for each cluster
         cmap_list = [ListedColormap([c]) for c in color_list]
 
+        # Initialize plot_params for use after the loop (for remaining clusters)
+        plot_params: dict[str, Any] = {}
+
         for i, id in enumerate(valid_cluster_ids):
             # Select the appropriate axis for this cluster
             if subplots:
@@ -585,8 +575,13 @@ class Plotter:
             elif single_plot:
                 current_ax.set_title(f"{var}_cluster {id}")
 
-        # Plot remaining clusters (only when not using subplots)
-        if map_cmap_other and not subplots and include_all_clusters:
+        # Plot remaining clusters (only when not using subplots, include_all_clusters is True, and there are valid clusters to plot)
+        if (
+            map_cmap_other
+            and not subplots
+            and include_all_clusters
+            and len(valid_cluster_ids) > 0
+        ):
             # ax is guaranteed to be set at this point when subplots=False
             assert ax is not None, "ax should be set when subplots=False"
             remaining_cluster_ids = [  # get unplotted clusters ids (except -1)
@@ -1657,7 +1652,7 @@ class Plotter:
                 raise ValueError(f"No timeseries found for {plot_var}")
 
         # Limit the number of trajectories to plot
-        max_trajectories_actual = np.min([max_trajectories, len(cells)])
+        max_trajectories_actual = int(np.min([max_trajectories, len(cells)]))
 
         # Shuffle the cell to get a random sample
         order = np.arange(len(cells))

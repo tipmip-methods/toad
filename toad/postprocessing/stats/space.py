@@ -143,7 +143,9 @@ class SpaceStats:
 
         # Calculate the distance transform
         # distance_transform_edt returns distances for non-zero elements from the nearest zero element
-        distance_map = distance_transform_edt(spatial_mask.values)  # Pass numpy array
+        distance_map = np.asarray(
+            distance_transform_edt(spatial_mask.values)
+        )  # Pass numpy array
 
         # Find the index (row, col) of the maximum distance
         # np.argmax flattens the array first, so we need unravel_index

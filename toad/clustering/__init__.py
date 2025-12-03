@@ -393,7 +393,7 @@ def compute_clusters(
         # ==================== APPLY CLUSTERING METHOD ====================
         cluster_start = time_now()
         try:
-            cluster_labels = np.array(method.fit_predict(coords, weights))
+            cluster_labels = np.array(method.fit_predict(X=coords, y=weights))
         except ValueError as e:
             if "min_samples" in str(e) and "must be at most" in str(e):
                 logger.warning(

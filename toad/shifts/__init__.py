@@ -117,6 +117,9 @@ def compute_shifts(
     fully_valid_mask = valid_mask & (~valid_cells_with_any_nan)
     masked_data_array = data_array.where(fully_valid_mask)
 
+    # Run method-specific validation once before applying to all grid cells
+    method.pre_validation(masked_data_array, td)
+
     # Initialize output array with NaN values
     shifts = xr.full_like(data_array, fill_value=np.nan)
 

@@ -60,6 +60,9 @@ dev = [
 [tool.setuptools]
 packages = {find = {}}
 
+[tool.setuptools.package-data]
+toad = ["py.typed"]
+
 [tool.setuptools.dynamic]
 version = {attr = "toad._version.__version__"}
 

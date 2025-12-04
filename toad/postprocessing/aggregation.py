@@ -350,10 +350,23 @@ class Aggregation:
         # Recast naming for readability
         regrid_enabled = is_latlon_dims
 
+        # Initialize variables that may be conditionally defined (for type checking)
+        lat: np.ndarray | None = None
+        knn_rows: np.ndarray | None = None
+        knn_cols: np.ndarray | None = None
+        hp_index_flat: np.ndarray | None = None
+        N_hp: int = 0
+        mask_hp: np.ndarray | None = None
+        valid_hp: np.ndarray | None = None
+        present_mask2d: np.ndarray | None = None
+
         # use knn if dataset has lat/lon
+        # Note: regrid_enabled can only be True if has_latlon is True (since is_latlon_dims requires has_latlon)
         if has_latlon:
             lat = sample[lat_name].values
             lon = sample[lon_name].values
+            # Type narrowing assertion: helps type checker understand lat/lon are arrays (not None) after assignment
+            assert lat is not None and lon is not None
 
             # if lat/lon are 1D, convert to 2D to keep consistent with 2D grids, i.e. irregular such as lat(i, j) and lon(i, j)
             if lat.ndim == 1 and lon.ndim == 1:
@@ -382,6 +395,10 @@ class Aggregation:
 
         # Preallocate reusable arrays (if using regridding)
         if regrid_enabled:
+            assert N_hp > 0, "N_hp must be set when regrid_enabled is True"
+            assert hp_index_flat is not None, (
+                "hp_index_flat must be set when regrid_enabled is True"
+            )
             mask_hp = np.zeros(N_hp, dtype=bool)
             valid_hp = np.ones(N_hp, dtype=bool)
         else:
@@ -398,6 +415,21 @@ class Aggregation:
                 unique_ids = unique_ids[:top_n_clusters]
 
             if regrid_enabled:
+                assert mask_hp is not None, (
+                    "mask_hp must be set when regrid_enabled is True"
+                )
+                assert valid_hp is not None, (
+                    "valid_hp must be set when regrid_enabled is True"
+                )
+                assert hp_index_flat is not None, (
+                    "hp_index_flat must be set when regrid_enabled is True"
+                )
+                assert knn_rows is not None, (
+                    "knn_rows must be set when regrid_enabled is True"
+                )
+                assert knn_cols is not None, (
+                    "knn_cols must be set when regrid_enabled is True"
+                )
                 labels3d = self.td.data[cvar].values  # (T, Y, X)
 
                 # Build 2D mask: pixels in any of the selected clusters at any time
@@ -431,6 +463,12 @@ class Aggregation:
                     mask2d = (labels == cid).any(axis=0)  # (Y, X)
 
                     if use_knn:
+                        assert knn_rows is not None, (
+                            "knn_rows must be set when use_knn is True"
+                        )
+                        assert knn_cols is not None, (
+                            "knn_cols must be set when use_knn is True"
+                        )
                         # cluster footprint mask (reuse mask2d computation)
                         mask_flat = mask2d.ravel()
                         both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
@@ -452,10 +490,22 @@ class Aggregation:
                 # Availability per map (all pixels valid → all adjacency edges)
                 # present_mask2d preallocated before loop since it's the same every iteration
                 if use_knn:
+                    assert present_mask2d is not None, (
+                        "present_mask2d must be set when not regrid_enabled"
+                    )
+                    assert knn_rows is not None, (
+                        "knn_rows must be set when use_knn is True"
+                    )
+                    assert knn_cols is not None, (
+                        "knn_cols must be set when use_knn is True"
+                    )
                     rA, cA = _knn_edges_from_mask(
                         present_mask2d.ravel(), knn_rows, knn_cols
                     )
                 else:
+                    assert present_mask2d is not None, (
+                        "present_mask2d must be set when not regrid_enabled"
+                    )
                     rA, cA = _native_edges_from_mask(
                         present_mask2d, flat_idx_2d, neighbor_connectivity == 8
                     )
@@ -469,7 +519,11 @@ class Aggregation:
             )
 
         # Build weighted consensus
-        shape = (N_hp, N_hp) if regrid_enabled else (N, N)
+        if regrid_enabled:
+            assert N_hp > 0, "N_hp must be set when regrid_enabled is True"
+            shape = (N_hp, N_hp)
+        else:
+            shape = (N, N)
         W = _compute_weighted_consensus(
             rows_V, cols_V, rows_A, cols_A, shape, min_consensus
         )
@@ -485,6 +539,10 @@ class Aggregation:
         node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
 
         if regrid_enabled:
+            assert hp_index_flat is not None, (
+                "hp_index_flat must be set when regrid_enabled is True"
+            )
+            assert lat is not None, "lat must be set when regrid_enabled is True"
             consistency_hp = np.divide(
                 node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
             )
@@ -507,6 +565,10 @@ class Aggregation:
 
         # Reshape labels back to 2D and mark isolated points as noise
         if regrid_enabled:
+            assert hp_index_flat is not None, (
+                "hp_index_flat must be set when regrid_enabled is True"
+            )
+            assert lat is not None, "lat must be set when regrid_enabled is True"
             labels_flat_orig = labels_flat[hp_index_flat]  # shape (N,)
             labels_2d = labels_flat_orig.reshape(lat.shape)  # restored (Y,X)
             deg_hp = np.array(bin_adj.getnnz(axis=1))

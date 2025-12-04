@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Any, List, Literal, Optional, Tuple, Union, cast, overload
 
@@ -14,6 +15,8 @@ from matplotlib.patches import Rectangle
 from toad.utils import _attrs, detect_latlon_names, is_regular_grid
 
 __all__ = ["Plotter", "MapStyle"]
+
+logger = logging.getLogger("TOAD")
 
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
@@ -268,7 +271,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]: ...
+    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Axes]]: ...
 
     @overload
     def cluster_map(
@@ -286,7 +289,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], np.ndarray]: ...
+    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[np.ndarray]]: ...
 
     def cluster_map(
         self,
@@ -303,7 +306,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Union[Axes, np.ndarray]]:
+    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Union[Axes, np.ndarray]]]:
         """Plot one or multiple clusters on a map.
 
         Args:
@@ -393,7 +396,9 @@ class Plotter:
         # Filter out cluster IDs that don't exist
         valid_cluster_ids = [id for id in cluster_ids if id in all_cluster_ids]
         if len(valid_cluster_ids) == 0:
-            raise ValueError(f"No valid clusters found in clusters for variable {var}")
+            # raise ValueError(f"No valid clusters found in clusters for variable {var}")
+            logger.warning(f"No valid clusters found in clusters for variable {var}")
+            return None, None
 
         # Setup subplots if requested
         if subplots:
@@ -679,7 +684,9 @@ class Plotter:
         ] = None,  # Only relevant when plot_map=True
         map_style: Optional[Union[MapStyle, dict]] = None,
         **plot_kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Union[Axes, List[Axes], dict]]:
+    ) -> Tuple[
+        Optional[matplotlib.figure.Figure], Optional[Union[Axes, List[Axes], dict]]
+    ]:
         """Plot time series from clusters or all data.
 
         This function allows flexible plotting of individual trajectories, aggregated statistics
@@ -775,6 +782,11 @@ class Plotter:
             cluster_ids, var
         )
         var = self.td._get_base_var_if_none(var)
+
+        # Check if we have any valid clusters to plot
+        if not plot_all_data and len(cluster_ids_list) == 0:
+            logger.warning(f"No valid clusters found in clusters for variable {var}")
+            return None, None
 
         if plot_map and plot_all_data:
             raise ValueError(
@@ -1114,7 +1126,8 @@ class Plotter:
 
             # Check if we have any clusters to plot
             if len(cluster_ids) == 0:
-                raise ValueError(f"No valid clusters found for variable {var}")
+                # Return empty list to signal no valid clusters (handled by caller)
+                return [], False, plot_all_data
 
             # Convert single cluster_id to list for consistent handling
             if isinstance(cluster_ids, int):

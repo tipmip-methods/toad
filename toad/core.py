@@ -510,7 +510,7 @@ class TOAD:
         | MinMaxScaler
         | RobustScaler
         | MaxAbsScaler
-        | None = StandardScaler(),
+        | None = None,  # TODO remove scaler 2026/Jan
         time_weight: float = 1,
         regridder: BaseRegridder | None = None,
         disable_regridder: bool = False,
@@ -553,8 +553,8 @@ class TOAD:
                 Defaults to "local".
             scaler: The scaling method to apply to the data before clustering. StandardScaler(),
                 MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are
-                supported. Defaults to StandardScaler().
-            time_weight: The factor to scale the time values by. Defaults to 1.
+                supported. Defaults to None. This option will be removed in the future. Set scaler=None to use recommended temporal scaling only.
+            time_weight: Controls the relative influence of time in clustering. By default, time values are automatically scaled to match the standard deviation of the spatial coordinates. Increasing time_weight gives more emphasis to the temporal dimension, resulting in clusters that are tighter in time (shorter delays between abrupt events). Decreasing it emphasizes the spatial dimensions, allowing clusters to span a wider range of shift times. Defaults to 1.
             regridder: The regridding method to use from toad.clustering.regridding.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will
                 be created automatically.

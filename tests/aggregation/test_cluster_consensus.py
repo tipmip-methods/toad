@@ -46,8 +46,8 @@ def setup_regular_latlon_grid():
         (
             setup_irregular_grid,
             [0.5, 1.0, 1.5, 2.0],
-            5,  # min clusters
-            6,  # max clusters
+            7,  # min clusters
+            9,  # max clusters
             1890.0,  # Typical value from [1910.7632, 1899.7142, 1887., 1873.4286]
             5.0,  # tolerance in years
         ),

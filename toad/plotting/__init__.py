@@ -245,6 +245,8 @@ class Plotter:
                         ax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
                     elif ax.projection == ccrs.NorthPolarStereo():
                         ax.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
+                else:
+                    ax.set_extent(config.extent, crs=ccrs.PlateCarree())
 
             # toggle frame on/off
             ax.set_frame_on(config.map_frame)
@@ -2268,7 +2270,7 @@ def _cluster_annotate(
         text=str(cluster_id),
         xy=(x, y),
         xycoords="axes fraction" if relative_coords else "data",
-        annotation_clip=False,
+        annotation_clip=True,  # don't show if outside the extent of the axis
         color=black_or_white,
         zorder=100,
         fontweight="semibold",

@@ -1220,8 +1220,6 @@ class Plotter:
 
         if map or use_subplots:
             # Create figure with constrained_layout
-            if figsize is None:
-                figsize = (12, 6)
             fig = plt.figure(figsize=figsize, constrained_layout=True)
 
             if map:

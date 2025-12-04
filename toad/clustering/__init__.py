@@ -77,7 +77,7 @@ def compute_clusters(
     | MinMaxScaler
     | RobustScaler
     | MaxAbsScaler
-    | None = StandardScaler(),
+    | None = None,  # TODO remove scaler 2026/Jan
     time_weight: float = 1,
     regridder: BaseRegridder | None = None,
     disable_regridder: bool = False,
@@ -116,8 +116,8 @@ def compute_clusters(
             - "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
             - "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
             Defaults to "local".
-        scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to StandardScaler().
-        time_weight: The factor to scale the time values by. Defaults to 1.
+        scaler: The scaling method to apply to the data before clustering. StandardScaler(), MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are supported. Defaults to None. This option will be removed in the future. Set scaler=None to use recommended temporal scaling only.
+        time_weight: Controls the relative influence of time in clustering. By default, time values are automatically scaled to match the standard deviation of the spatial coordinates. Increasing time_weight gives more emphasis to the temporal dimension, resulting in clusters that are tighter in time (shorter delays between abrupt events). Decreasing it emphasizes the spatial dimensions, allowing clusters to span a wider range of shift times. Defaults to 1.
         regridder: The regridding method to use from `toad.clustering.regridding`. Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will be created automatically.
         disable_regridder: Whether to disable the regridder. Defaults to False.
         output_label_suffix: A suffix to add to the output label. Defaults to "".
@@ -355,7 +355,24 @@ def compute_clusters(
 
         # Scale coordinates using sklearn preprocessing
         if scaler:
+            logger.warning(
+                "Scaling coordinates is not recommended because it distorts distances unless data domain is completely square and uniformly distributed. This option will be removed in the future. Set scaler=None to use recommended temporal scaling only and remove this warning."
+            )
             coords = scaler.fit_transform(coords)
+        else:
+            # Calculate spatial scale as the mean std of all spatial (non-time) coordinates
+            space_coords = coords[:, 1:]  # exclude time, keep x/y[/z]
+            space_std = np.mean(np.std(space_coords, axis=0))
+
+            # Scale time to match spatial std
+            time_values = coords[:, 0]  # extract time column
+            time_mean = np.mean(time_values)
+            time_std = np.std(time_values)
+
+            if time_std > 0:
+                # Scale time: (time - mean) / std * spatial_std
+                coords[:, 0] = (time_values - time_mean) / time_std * space_std
+            # else: time_std is 0, keep time as is (all same value)
 
         # Scale time values by scaler value
         if time_weight != 1:

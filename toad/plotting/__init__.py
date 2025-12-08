@@ -360,9 +360,9 @@ class Plotter:
         )
 
         # plot_contour is not supported on irregular grids
-        if plot_contour and not is_regular_grid(self.td.data):
+        if (plot_contour and not plot_fill) and not is_regular_grid(self.td.data):
             raise ValueError(
-                "plot_contour is not supported on irregular grids. Set plot_contour=False or use a regular grid."
+                "plot_contour is not supported on irregular grids. Use plot_fill=True instead."
             )
 
         var = self.td._get_base_var_if_none(var)
@@ -492,38 +492,14 @@ class Plotter:
                 **kwargs,
             }
 
-            lat_name, lon_name = detect_latlon_names(self.td.data)
-            has_latlon = lat_name is not None and lon_name is not None
-
-            # Check if axes is a GeoAxes (has projection)
-            projection_attr = getattr(current_ax, "projection", None)
-            is_geoaxes = projection_attr is not None
-
-            # plot on lat/lon coordinates if available
-            if has_latlon:
-                plot_params["x"] = lon_name
-                plot_params["y"] = lat_name
-                plot_params["transform"] = ccrs.PlateCarree()
-            elif is_geoaxes:
-                # GeoAxes but no lat/lon - use spatial dimensions explicitly
-                # This ensures xarray.plot uses the correct dimensions
-                space_dims = self.td.space_dims
-                if len(space_dims) >= 2:
-                    plot_params["x"] = space_dims[1]  # x/lon dimension
-                    plot_params["y"] = space_dims[0]  # y/lat dimension
-                # Don't set transform - let xarray handle it based on the GeoAxes projection
-            else:
-                # Regular axes, no lat/lon - use spatial dimensions explicitly
-                # This ensures xarray.plot uses the correct dimensions
-                space_dims = self.td.space_dims
-                if len(space_dims) >= 2:
-                    plot_params["x"] = space_dims[1]  # x/lon dimension
-                    plot_params["y"] = space_dims[0]  # y/lat dimension
+            plot_params, use_pcolormesh = self._prepare_map_plot_params(
+                current_ax, plot_params
+            )
 
             if plot_fill:
                 # Don't plot values outside mask: FALSE -> np.nan
                 # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
-                if not has_latlon and not is_geoaxes:
+                if use_pcolormesh:
                     mask.where(mask, np.nan).plot.pcolormesh(
                         **plot_params,
                     )
@@ -626,6 +602,113 @@ class Plotter:
                 return fig, axs_array[0, 0]  # type: ignore
         else:
             assert ax is not None, "ax should be set when subplots=False"
+        return fig, ax
+
+    def max_shifts_map(
+        self,
+        var: str,
+        cmap: Optional[Union[str, Colormap]] = "coolwarm",
+        map_style: Optional[Union[MapStyle, dict]] = None,
+    ):
+        """Plot a map showing the value in the time dimension where the absolute value of the shift is maximal, keeping sign.
+
+        Args:
+            var (str): Name of the variable for which to compute the maximum shift.
+            cmap (Optional[Union[str, Colormap]], optional): Colormap to use for the plot. Can be a string name of a colormap
+                recognized by matplotlib, or an actual Colormap object. Defaults to 'coolwarm'.
+            map_style (Optional[Union[MapStyle, dict]], optional): Configuration for the map style.
+                This can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
+
+        Returns:
+            Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]: The created matplotlib Figure and Axes objects.
+
+        Notes:
+            For each location, this plots the value along the time axis whose absolute value is maximal. Locations with all-NaN
+            values will be masked out.
+        """
+        # Normalize map_style to MapStyle
+        config = _normalize_map_style(map_style)
+
+        fig, ax = self.map(map_style=config)
+        shifts = self.td.get_shifts(var)
+
+        # Prepare plot parameters for different grid types
+        plot_params = {
+            "ax": ax,
+            "add_colorbar": True,
+            "vmax": 1,
+            "vmin": -1,
+            "cmap": cmap,
+            "cbar_kwargs": {
+                "label": "Maximum shift magnitude",
+            },
+        }
+
+        plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
+
+        # Find the shift with largest magnitude (max abs value), keeping the original sign
+        abs_shifts = abs(shifts)
+        # Fill NaN with -inf so argmax ignores them (won't affect valid data since we're finding max)
+        # This prevents ValueError for all-NaN slices
+        abs_argmax = abs_shifts.fillna(float("-inf")).argmax(dim=self.td.time_dim)
+        # Select from original shifts (with sign) at max indices, masking all-NaN locations
+        has_valid_data = ~abs_shifts.isnull().all(dim=self.td.time_dim)
+        shifts_max = shifts.isel({self.td.time_dim: abs_argmax}).where(has_valid_data)
+
+        if use_pcolormesh:
+            # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
+            shifts_max.plot.pcolormesh(**plot_params)
+        else:
+            shifts_max.plot(**plot_params)
+
+        ax.set_title(f"Maximum shift magnitude for {var}")
+
+        return fig, ax
+
+    def time_of_max_shifts_map(
+        self,
+        var: str,
+        map_style: Optional[Union[MapStyle, dict]] = None,
+        shift_threshold: float = 0.5,
+    ):
+        """Plot a map showing the time at which the maximal shift occurs for a given variable.
+
+        Args:
+            var (str): Name of the variable for which to compute the time of maximum shift.
+            map_style (Optional[Union[MapStyle, dict]], optional): Configuration for the map style.
+                Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
+            shift_threshold (float, optional): Threshold value for shift magnitude above which a transition
+                is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
+
+        Returns:
+            Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
+                The created matplotlib Figure and Axes objects.
+        """
+        # Normalize map_style to MapStyle
+        config = _normalize_map_style(map_style)
+
+        fig, ax = self.map(map_style=config)
+        transition_time = self.td.stats(var).time.compute_transition_time(
+            shift_threshold=shift_threshold
+        )
+
+        # Prepare plot parameters for different grid types
+        plot_params = {
+            "ax": ax,
+            "add_colorbar": True,
+        }
+
+        plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
+
+        # Use appropriate plotting method based on grid type
+        if use_pcolormesh:
+            # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
+            transition_time.plot.pcolormesh(**plot_params)
+        else:
+            transition_time.plot(**plot_params)
+
+        ax.set_title(f"Time of maximum shift for {var}")
+
         return fig, ax
 
     def timeseries(
@@ -1099,6 +1182,52 @@ class Plotter:
             )
             axs[i].set_yscale(yscale)
         return fig, axs
+
+    def _prepare_map_plot_params(
+        self, ax: Axes, plot_params: dict[str, Any]
+    ) -> Tuple[dict[str, Any], bool]:
+        """Prepare plot parameters for different grid types and determine plotting method.
+
+        Args:
+            ax: Matplotlib axes to plot on.
+            plot_params: Dictionary of plot parameters to update.
+
+        Returns:
+            Tuple of (updated_plot_params, use_pcolormesh) where use_pcolormesh indicates
+            whether to use pcolormesh (True) or regular plot (False).
+        """
+        lat_name, lon_name = detect_latlon_names(self.td.data)
+        has_latlon = lat_name is not None and lon_name is not None
+
+        # Check if axes is a GeoAxes (has projection)
+        projection_attr = getattr(ax, "projection", None)
+        is_geoaxes = projection_attr is not None
+
+        # plot on lat/lon coordinates if available
+        if has_latlon:
+            plot_params["x"] = lon_name
+            plot_params["y"] = lat_name
+            plot_params["transform"] = ccrs.PlateCarree()
+        elif is_geoaxes:
+            # GeoAxes but no lat/lon - use spatial dimensions explicitly
+            # This ensures xarray.plot uses the correct dimensions
+            space_dims = self.td.space_dims
+            if len(space_dims) >= 2:
+                plot_params["x"] = space_dims[1]  # x/lon dimension
+                plot_params["y"] = space_dims[0]  # y/lat dimension
+            # Don't set transform - let xarray handle it based on the GeoAxes projection
+        else:
+            # Regular axes, no lat/lon - use spatial dimensions explicitly
+            # This ensures xarray.plot uses the correct dimensions
+            space_dims = self.td.space_dims
+            if len(space_dims) >= 2:
+                plot_params["x"] = space_dims[1]  # x/lon dimension
+                plot_params["y"] = space_dims[0]  # y/lat dimension
+
+        # Determine if we should use pcolormesh (for regular axes without lat/lon)
+        use_pcolormesh = not has_latlon and not is_geoaxes
+
+        return plot_params, use_pcolormesh
 
     def _parse_cluster_ids(
         self,

@@ -1601,9 +1601,10 @@ class Plotter:
             shift_color: Color for shading
             shift_indicator_alpha: Alpha transparency
         """
+        # Matplotlib supports np.datetime64 and cftime.datetime directly at runtime
         current_ax.axvspan(
-            self.td.stats(var).time.start(cluster_id),
-            self.td.stats(var).time.end(cluster_id),
+            self.td.stats(var).time.start(cluster_id),  # type: ignore[arg-type]
+            self.td.stats(var).time.end(cluster_id),  # type: ignore[arg-type]
             color=shift_color,
             alpha=shift_indicator_alpha,
             zorder=-100,

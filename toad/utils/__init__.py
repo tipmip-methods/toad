@@ -321,7 +321,7 @@ def convert_time_to_seconds(time_array: xr.DataArray) -> np.ndarray:
 
 def convert_numeric_to_original_time(
     numeric_result: float, numeric_times: np.ndarray, original_time_values: xr.DataArray
-) -> Union[float, cftime.datetime]:
+) -> Union[float, cftime.datetime, np.datetime64]:
     """Convert a numeric time result back to original format for user-facing results.
 
     Args:
@@ -343,9 +343,6 @@ def convert_numeric_to_original_time(
             else numeric_result
         )
     else:
-        # If original times are datetime objects (cftime), create interpolated cftime
-        from datetime import timedelta
-
         # Extract scalar value from DataArray if needed
         if hasattr(numeric_result, "values"):
             seconds = float(numeric_result.values)  # type: ignore
@@ -353,8 +350,18 @@ def convert_numeric_to_original_time(
             seconds = float(numeric_result)
 
         first_time = original_time_values.values[0]
-        new_time = first_time + timedelta(seconds=seconds)
-        return new_time
+
+        # Check if it's numpy datetime64
+        if np.issubdtype(original_time_values.dtype, np.datetime64):
+            # Use numpy timedelta64 for numpy datetime64
+            new_time = first_time + np.timedelta64(int(seconds), "s")
+            return new_time
+        else:
+            # Assume cftime or other datetime objects that work with datetime.timedelta
+            from datetime import timedelta
+
+            new_time = first_time + timedelta(seconds=seconds)
+            return new_time
 
 
 # Include this once we have a published release to fetch test data

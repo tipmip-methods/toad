@@ -22,7 +22,7 @@ class TimeStats:
         self.td = toad
         self.var = var
 
-    def start(self, cluster_id) -> Union[float, cftime.datetime]:
+    def start(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
         """Return the start time of the cluster."""
         masked_numeric_time_values = self._get_cluster_numeric_times(cluster_id)
 
@@ -40,7 +40,7 @@ class TimeStats:
         idx_start = np.where(dens > 0)[0][0]
         return int(idx_start)
 
-    def end(self, cluster_id) -> Union[float, cftime.datetime]:
+    def end(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
         """Return the end time of the cluster."""
         masked_numeric_time_values = self._get_cluster_numeric_times(cluster_id)
 
@@ -75,7 +75,9 @@ class TimeStats:
         """Return duration of the cluster in timesteps."""
         return int(self.end_timestep(cluster_id) - self.start_timestep(cluster_id))
 
-    def membership_peak(self, cluster_id) -> Union[float, cftime.datetime]:
+    def membership_peak(
+        self, cluster_id
+    ) -> Union[float, cftime.datetime, np.datetime64]:
         """Return the time of the largest cluster temporal density.
 
         If there's a plateau at the maximum value, returns the center of the plateau.
@@ -106,7 +108,9 @@ class TimeStats:
         ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
         return float(ctd.max().values)
 
-    def steepest_gradient(self, cluster_id) -> Union[float, cftime.datetime]:
+    def steepest_gradient(
+        self, cluster_id
+    ) -> Union[float, cftime.datetime, np.datetime64]:
         """Return the time of the steepest gradient of the median cluster timeseries"""
         cluster_var = str(self.td.get_clusters(self.var).name)
         base_var = str(self.td.get_base_var(self.var))
@@ -169,7 +173,10 @@ class TimeStats:
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float
-    ) -> tuple[Union[float, cftime.datetime], Union[float, cftime.datetime]]:
+    ) -> tuple[
+        Union[float, cftime.datetime, np.datetime64],
+        Union[float, cftime.datetime, np.datetime64],
+    ]:
         """Get start and end time of the specified interquantile range of the cluster temporal density.
 
         Args:
@@ -205,15 +212,30 @@ class TimeStats:
 
         return (lower_original, upper_original)
 
-    def iqr_50(self, cluster_id) -> tuple[float, float]:
+    def iqr_50(
+        self, cluster_id
+    ) -> tuple[
+        Union[float, cftime.datetime, np.datetime64],
+        Union[float, cftime.datetime, np.datetime64],
+    ]:
         """Get start and end time of the 50% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.25, 0.75)
 
-    def iqr_68(self, cluster_id) -> tuple[float, float]:
+    def iqr_68(
+        self, cluster_id
+    ) -> tuple[
+        Union[float, cftime.datetime, np.datetime64],
+        Union[float, cftime.datetime, np.datetime64],
+    ]:
         """Get start and end time of the 68% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.16, 0.84)
 
-    def iqr_90(self, cluster_id) -> tuple[float, float]:
+    def iqr_90(
+        self, cluster_id
+    ) -> tuple[
+        Union[float, cftime.datetime, np.datetime64],
+        Union[float, cftime.datetime, np.datetime64],
+    ]:
         """Get start and end time of the 90% interquantile range of the cluster temporal density"""
         return self.iqr(cluster_id, 0.05, 0.95)
 
@@ -231,12 +253,12 @@ class TimeStats:
         mask = mask.any(dim=self.td.space_dims)
         return self.td.numeric_time_values[mask]
 
-    def mean(self, cluster_id) -> Union[float, cftime.datetime]:
+    def mean(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
         """Return mean time value of the cluster."""
         numeric_times = self._get_cluster_numeric_times(cluster_id)
         return self._return_time(float(np.mean(numeric_times)))
 
-    def median(self, cluster_id) -> Union[float, cftime.datetime]:
+    def median(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
         """Return median time of the cluster."""
         numeric_times = self._get_cluster_numeric_times(cluster_id)
         return self._return_time(float(np.median(numeric_times)))
@@ -248,7 +270,7 @@ class TimeStats:
 
     def _return_time(
         self, value, convert_to_original_time: bool = True
-    ) -> Union[float, cftime.datetime]:
+    ) -> Union[float, cftime.datetime, np.datetime64]:
         """Return time value in original time format."""
         if convert_to_original_time:
             return convert_numeric_to_original_time(
@@ -270,7 +292,7 @@ class TimeStats:
         return dict
 
     def compute_transition_time(
-        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.25
+        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.5
     ) -> xr.DataArray:
         """Computes the transition time for each grid cell.
 

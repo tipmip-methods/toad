@@ -1,6 +1,9 @@
+import logging
 from typing import Callable, Optional, Union
 
 import numpy as np
+
+logger = logging.getLogger("TOAD")
 
 
 class Preprocess:
@@ -63,7 +66,7 @@ class Preprocess:
 
         Example:
             # Convert realization dimension to variables for 'thk'
-            td.preprocess().dimension_to_variables(var='thk', dim='realization')
+            td.preprocess.dimension_to_variables(var='thk', dim='realization')
         """
         ds = self.td.data
         # Check if dimension exists
@@ -79,12 +82,16 @@ class Preprocess:
             )
 
         # Create new variables directly in the existing dataset
+        new_var_names = []
         for val in ds[dim].values:
             data = ds[var].sel({dim: val}).drop_vars(dim)
             var_name = f"{var}_{dim}_{val}" if add_dim_to_name else f"{var}_{val}"
             self.td.data[var_name] = data
             self.td.data[var_name].attrs[dim] = val
+            new_var_names.append(var_name)
 
         if drop_original:
             # Drop the original variable and dimension
             self.td.data = self.td.data.drop_vars(var).drop_dims(dim)
+
+        logger.info(f"Converted dimension {dim} to variables: {new_var_names}")

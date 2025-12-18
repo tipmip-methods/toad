@@ -34,7 +34,7 @@ def get_projection(projection: str | ccrs.Projection) -> ccrs.Projection:
     """Get a cartopy projection object from a string name or return the projection.
 
     Args:
-        projection: Either a string name of a projection (e.g., "plate_carree", "north_pole")
+        projection: Either a string name of a projection (e.cg., "plate_carree", "north_pole")
             or a cartopy Projection object. Valid string names are: "plate_carree",
             "north_pole", "north_polar_stereo", "south_pole", "south_polar_stereo",
             "global", "robinson", "mollweide".
@@ -59,6 +59,7 @@ def get_projection(projection: str | ccrs.Projection) -> ccrs.Projection:
 
 
 default_cmap = "tab20b"
+default_cmap_other = ListedColormap(plt.cm.Greys_r(np.linspace(0.25, 0.75, 256)))  # type: ignore
 
 
 @dataclass
@@ -85,15 +86,18 @@ class MapStyle:
     extent: Optional[Tuple[float, float, float, float]] = None
     map_frame: bool = True
     continent_shading: bool = False
-    continent_shading_color: str = "lightgray"
+    continent_shading_color: str = "#E9E9E9"
     ocean_shading: bool = False
-    ocean_shading_color: str = "lightgray"
+    ocean_shading_color: str = "#E9E9E9"
 
     # Cluster map visualization options
     plot_contour: bool = True
     plot_fill: bool = True
     add_labels: bool = True
     contour_linewidth: float = 1.5
+    other_legend_pos: Optional[Tuple[float, float]] = None
+    cluster_alpha: float = 0.75
+    other_cluster_alpha: float = 0.5
 
 
 def _normalize_map_style(
@@ -266,7 +270,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
-        map_cmap_other: Optional[Union[str, Colormap]] = "jet",
+        map_cmap_other: Optional[Union[str, Colormap]] = default_cmap_other,
         include_all_clusters: bool = True,
         subplots: Literal[False] = False,
         ncols: int = 3,
@@ -284,7 +288,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
-        map_cmap_other: Optional[Union[str, Colormap]] = "jet",
+        map_cmap_other: Optional[Union[str, Colormap]] = default_cmap_other,
         include_all_clusters: bool = True,
         subplots: Literal[True],
         ncols: int = 3,
@@ -301,7 +305,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         color: Optional[Union[str, Tuple, List[Union[str, Tuple]]]] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
-        map_cmap_other: Optional[Union[str, Colormap]] = "jet",
+        map_cmap_other: Optional[Union[str, Colormap]] = default_cmap_other,
         include_all_clusters: bool = True,
         subplots: bool = False,
         ncols: int = 3,
@@ -488,7 +492,7 @@ class Plotter:
                 "ax": current_ax,
                 "cmap": cluster_cmap,
                 "add_colorbar": False,
-                "alpha": 0.75,
+                "alpha": config.cluster_alpha,
                 **kwargs,
             }
 
@@ -577,6 +581,7 @@ class Plotter:
                 cl = self.td.get_clusters(var).where(mask)
 
                 plot_params["cmap"] = map_cmap_other
+                plot_params["alpha"] = config.other_cluster_alpha
                 plot_params["ax"] = ax  # Use the single ax for remaining clusters
                 cl.max(dim=self.td.time_dim).plot(
                     **plot_params,
@@ -587,7 +592,9 @@ class Plotter:
                     ax,
                     remaining_cluster_ids[0],
                     remaining_cluster_ids[-1],
+                    legend_pos=config.other_legend_pos,
                     var=var,
+                    alpha=config.other_cluster_alpha,
                     cmap=plt.get_cmap(map_cmap_other)
                     if isinstance(map_cmap_other, str)
                     else map_cmap_other,
@@ -604,10 +611,11 @@ class Plotter:
             assert ax is not None, "ax should be set when subplots=False"
         return fig, ax
 
-    def max_shifts_map(
+    # TODO: add variable auto inference
+    def max_shift_map(
         self,
         var: str,
-        cmap: Optional[Union[str, Colormap]] = "coolwarm",
+        cmap: Optional[Union[str, Colormap]] = "RdBu_r",
         map_style: Optional[Union[MapStyle, dict]] = None,
     ):
         """Plot a map showing the value in the time dimension where the absolute value of the shift is maximal, keeping sign.
@@ -665,19 +673,28 @@ class Plotter:
 
         return fig, ax
 
-    def time_of_max_shifts_map(
+    # TODO: add variable auto inference, make it take an ax
+    def time_of_max_shift_map(
         self,
         var: str,
+        *,
+        cluster_ids: int | list[int] | None = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
+        cmap: Optional[Union[str, Colormap]] = "turbo",
         shift_threshold: float = 0.5,
     ):
         """Plot a map showing the time at which the maximal shift occurs for a given variable.
 
         Args:
-            var (str): Name of the variable for which to compute the time of maximum shift.
-            map_style (Optional[Union[MapStyle, dict]], optional): Configuration for the map style.
+            var: Name of the variable for which to compute the time of maximum shift.
+            cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
+                If None, analyzes all clusters. If specified, only analyzes grid cells belonging
+                to the given cluster(s).
+            map_style: Configuration for the map style.
                 Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
-            shift_threshold (float, optional): Threshold value for shift magnitude above which a transition
+            cmap: Colormap to use for the plot. Can be a string name of a colormap
+                recognized by matplotlib, or an actual Colormap object. Defaults to 'turbo'.
+            shift_threshold: Threshold value for shift magnitude above which a transition
                 is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
 
         Returns:
@@ -689,13 +706,14 @@ class Plotter:
 
         fig, ax = self.map(map_style=config)
         transition_time = self.td.stats(var).time.compute_transition_time(
-            shift_threshold=shift_threshold
+            cluster_ids=cluster_ids, shift_threshold=shift_threshold
         )
 
         # Prepare plot parameters for different grid types
         plot_params = {
             "ax": ax,
             "add_colorbar": True,
+            "cmap": cmap,
         }
 
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
@@ -750,7 +768,7 @@ class Plotter:
         # Map options
         plot_map: bool = False,
         map_var: Optional[str] = None,
-        map_cmap_other: Optional[Union[str, Colormap]] = "jet",
+        map_cmap_other: Optional[Union[str, Colormap]] = default_cmap_other,
         map_include_all_clusters: bool = True,
         # Subplot layout
         subplots: bool = False,  # If True, create one subplot per cluster
@@ -1143,9 +1161,7 @@ class Plotter:
         )
         return cast(Tuple[Optional[matplotlib.figure.Figure], dict], result)
 
-    def shifts_distribution(
-        self, figsize: Optional[tuple] = None, yscale: str = "log", bins=20
-    ):
+    def shift_dist(self, figsize: Optional[tuple] = None, yscale: str = "log", bins=20):
         """Plot histograms showing the distribution of shifts for each shift variable.
 
         Args:
@@ -1730,14 +1746,27 @@ class Plotter:
             shift_color: Color for shading
             shift_indicator_alpha: Alpha transparency
         """
-        # Matplotlib supports np.datetime64 and cftime.datetime directly at runtime
-        current_ax.axvspan(
-            self.td.stats(var).time.start(cluster_id),  # type: ignore[arg-type]
-            self.td.stats(var).time.end(cluster_id),  # type: ignore[arg-type]
-            color=shift_color,
-            alpha=shift_indicator_alpha,
-            zorder=-100,
-        )
+
+        start = self.td.stats(var).time.start(cluster_id)
+        end = self.td.stats(var).time.end(cluster_id)
+
+        if start == end:
+            current_ax.axvline(
+                start,  # type: ignore[arg-type]
+                color=shift_color,
+                alpha=shift_indicator_alpha,
+                zorder=0,
+            )
+        else:
+            # Matplotlib supports np.datetime64 and cftime.datetime directly at runtime
+            current_ax.axvspan(
+                self.td.stats(var).time.start(cluster_id),  # type: ignore[arg-type]
+                self.td.stats(var).time.end(cluster_id),  # type: ignore[arg-type]
+                facecolor=shift_color,
+                edgecolor="none",
+                alpha=shift_indicator_alpha,
+                zorder=-100,
+            )
 
     def _plot_individual_trajectories(
         self,
@@ -1907,16 +1936,20 @@ class Plotter:
                 y_label = current_ax.get_ylabel()
             current_ax.set_ylabel("")
 
-        # Determine if this subplot is in the bottom row of its column
+        # Determine if this subplot is in the bottom row
+        # With column-major ordering: subplot i is at row (i % n_ts_rows) and column (i // n_ts_rows)
         n_ts = len(cluster_ids_list)
-        # If multiple columns, check if this is the bottom subplot in its column
-        # Otherwise, check if it's the last subplot overall
-        if n_subplots_col > 1:
-            # Check if next subplot in same column exists
-            is_bottom_in_column = i + n_subplots_col >= n_ts
-        else:
-            # Single column: just check if it's the last subplot
-            is_bottom_in_column = i == n_ts - 1
+        n_ts_rows = int(np.ceil(n_ts / n_subplots_col))
+        current_row = i % n_ts_rows
+        current_col = i // n_ts_rows
+        # A subplot is in the bottom row if it's in the last row position (n_ts_rows - 1)
+        # This applies to all columns - all subplots in the bottom row should show xlabels
+        # For incomplete columns, check if this is the last subplot in its column
+        # The last subplot in column c would be at index: min((c+1)*n_ts_rows - 1, n_ts - 1)
+        is_bottom_row = current_row == n_ts_rows - 1
+        last_idx_in_column = min((current_col + 1) * n_ts_rows - 1, n_ts - 1)
+        is_last_in_incomplete_column = (i == last_idx_in_column) and not is_bottom_row
+        is_bottom_in_column = is_bottom_row or is_last_in_incomplete_column
 
         # Handle axis cleanup
         if not is_bottom_in_column:
@@ -1927,6 +1960,10 @@ class Plotter:
 
         if not is_bottom_in_column:
             _remove_ticks(current_ax, keep_y=True)
+
+        # capitalise labels, sometimes they are all lowercase in nc files
+        # current_ax.set_xlabel(current_ax.get_xlabel().capitalize())
+        # current_ax.set_ylabel(current_ax.get_ylabel().capitalize())
 
         return y_label
 
@@ -2338,8 +2375,9 @@ def _add_map_features(ax: GeoAxes, config: MapStyle) -> None:
                 config.resolution,
                 facecolor=config.continent_shading_color,
                 edgecolor="none",
-                alpha=0.5,
-            )
+                alpha=1.0,
+            ),
+            zorder=0,
         )
 
     if config.ocean_shading:
@@ -2350,8 +2388,9 @@ def _add_map_features(ax: GeoAxes, config: MapStyle) -> None:
                 config.resolution,
                 facecolor=config.ocean_shading_color,
                 edgecolor="none",
-                alpha=0.5,
-            )
+                alpha=1.0,
+            ),
+            zorder=0,
         )
 
     ax.coastlines(resolution=config.resolution, linewidth=config.coastline_linewidth)
@@ -2460,17 +2499,17 @@ def _create_timeseries_layout(
             wspace=wspace if n_subplots_col > 1 else 0,
         )
 
-    # Create timeseries axes
+    # Create timeseries axes (column-major order: fill columns first)
     for i in range(n_clusters):
-        row = i // n_subplots_col
-        col = i % n_subplots_col
+        row = i % n_ts_rows
+        col = i // n_ts_rows
         ts_ax = fig.add_subplot(gs[row, col])
         ts_axes_list.append(ts_ax)
 
-    # Hide any empty subplots
+    # Hide any empty subplots (column-major order)
     for i in range(n_clusters, n_ts_rows * n_subplots_col):
-        row = i // n_subplots_col
-        col = i % n_subplots_col
+        row = i % n_ts_rows
+        col = i // n_ts_rows
         empty_ax = fig.add_subplot(gs[row, col])
         empty_ax.set_visible(False)
 
@@ -2484,7 +2523,8 @@ def _add_gradient_legend(
     legend_pos: Optional[Tuple[float, float]] = None,
     legend_size: Tuple[float, float] = (0.05, 0.02),
     label_text: Optional[str] = None,
-    fontsize: int = 8,
+    fontsize: int = 10,
+    alpha: float = 1.0,
     cmap: Optional[Union[str, Colormap]] = None,
     var: Optional[str] = None,
 ):
@@ -2593,6 +2633,7 @@ def _add_gradient_legend(
                 segment_width,
                 legend_height,
                 facecolor=color,
+                alpha=alpha,
                 edgecolor="none",
                 clip_on=False,
                 transform=ax.transAxes,

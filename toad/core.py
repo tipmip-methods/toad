@@ -198,10 +198,7 @@ class TOAD:
 
         # Generate HTML for the hierarchy
         variable_table = ""
-        if any(
-            len(info["shifts"]) > 0 or len(info["clusters"]) > 0
-            for info in hierarchy.values()
-        ):
+        if len(hierarchy) > 0:
             hierarchy_html = []
             for base_var in sorted(hierarchy.keys()):
                 info = hierarchy[base_var]
@@ -212,12 +209,12 @@ class TOAD:
                     info["clusters"]
                 )
 
-                if shift_count == 0 and cluster_count == 0:
-                    continue  # Skip base variables with no derived variables
-
                 # Base variable row
                 base_id = f"{instance_id}_base_{base_var.replace('.', '_')}"
-                hierarchy_html.append(f"""
+
+                # Only make it expandable if there are shifts or clusters
+                if shift_count > 0 or cluster_count > 0:
+                    hierarchy_html.append(f"""
                 <div style="margin: 2px 0;">
                     <span onclick="toggleSection_{instance_id}('{base_id}')" style="cursor: pointer; user-select: none;">
                         <span id="{base_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
@@ -228,6 +225,19 @@ class TOAD:
                     </span>
                     <div id="{base_id}_content" style="display: none; margin-left: 20px; margin-top: 5px;">
                 """)
+                else:
+                    # Base variable with no derived variables - non-expandable
+                    hierarchy_html.append(f"""
+                <div style="margin: 2px 0;">
+                    <span style="font-family: monospace; font-weight: bold; opacity: 0;">▶</span>
+                    <span style="color: black; background-color: #A8D5FF; padding: 2px 4px; border-radius: 4px;">base var</span> {base_var}
+                    <span style="opacity: 0.5; font-size: 0.85em;">
+                        (no shifts or clusterings)
+                    </span>
+                </div>
+                """)
+                    # Skip the rest of the loop for this base_var since there's nothing to show
+                    continue
 
                 # Shift variables
                 for shift_info in info["shifts"]:
@@ -377,6 +387,7 @@ class TOAD:
     # # ======================================================================
     # #               Module functions
     # # ======================================================================
+    @property
     def preprocess(self) -> preprocessing.Preprocess:
         """Access preprocessing methods."""
         return preprocessing.Preprocess(self)
@@ -747,6 +758,24 @@ class TOAD:
             for x in list(self.data.data_vars.keys())
             if self._is_cluster_variable(x)
         ]
+
+    def drop_clusters(self):
+        """
+        Remove all cluster variables from the dataset.
+
+        This method drops all variables identified as cluster variables from the
+        underlying data object.
+        """
+        self.data = self.data.drop_vars(self.cluster_vars)
+
+    def drop_shifts(self):
+        """
+        Remove all shift variables from the dataset.
+
+        This method drops all variables identified as shift variables from the
+        underlying data object.
+        """
+        self.data = self.data.drop_vars(self.shift_vars)
 
     def shift_vars_for_var(self, var: str) -> list[str]:
         """Get the shift variables for a given variable.

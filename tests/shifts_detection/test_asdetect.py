@@ -27,8 +27,8 @@ def test_params_centered():
 
 
 @pytest.fixture
-def test_params_fine_correction():
-    """Fixture providing parameters for the ASDETECT test in segmentation mode "fine_correction".
+def test_params_two_sided():
+    """Fixture providing parameters for the ASDETECT test in segmentation mode "two_sided".
 
     Returns:
         dict: A dictionary containing:
@@ -103,7 +103,9 @@ def test_asdetect_centered(test_params_centered, toad_instance):
     ).mean()
 
     # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="original"), overwrite=True)
+    td.compute_shifts(
+        "tas", ASDETECT(segmentation="original"), overwrite=True, run_parallel=False
+    )  # test non-parallel mode
     shifts = td.get_shifts("tas")
     mean = shifts.mean().values
     std = shifts.std().values
@@ -117,8 +119,8 @@ def test_asdetect_centered(test_params_centered, toad_instance):
     )
 
 
-def test_asdetect_fine_correction(test_params_fine_correction, toad_instance):
-    """Test the ASDETECT shift detection method in segmentation mode "fine_correction".
+def test_asdetect_two_sided(test_params_two_sided, toad_instance):
+    """Test the ASDETECT shift detection method in segmentation mode "two_sided".
 
     Same idea as test 2 from test_asdetect_centered.
     """
@@ -196,9 +198,9 @@ def test_asdetect_fine_correction(test_params_fine_correction, toad_instance):
     # - setup
     td = toad_instance
     td.data = td.data.coarsen(
-        lat=test_params_fine_correction["lat"],
-        lon=test_params_fine_correction["lon"],
-        time=test_params_fine_correction["time"],
+        lat=test_params_two_sided["lat"],
+        lon=test_params_two_sided["lon"],
+        time=test_params_two_sided["time"],
         boundary="trim",
     ).mean()
 
@@ -213,8 +215,8 @@ def test_asdetect_fine_correction(test_params_fine_correction, toad_instance):
     # The actual value is float32, so we need slightly more lenient tolerances
     # Max absolute difference observed: ~2.9e-07, so atol=1e-6 is safe
     np.testing.assert_allclose(
-        mean, test_params_fine_correction["expected_mean"], rtol=2e-5, atol=1e-6
+        mean, test_params_two_sided["expected_mean"], rtol=2e-5, atol=1e-6
     )
     np.testing.assert_allclose(
-        std, test_params_fine_correction["expected_std"], rtol=2e-5, atol=1e-6
+        std, test_params_two_sided["expected_std"], rtol=2e-5, atol=1e-6
     )

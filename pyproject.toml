@@ -45,7 +45,9 @@ dependencies = [
     "numba",
     "healpix",
     "optuna",
-    "cftime"
+    "cftime",
+    "joblib",
+    "tqdm-joblib"
 ]
 
 [project.optional-dependencies]
@@ -86,6 +88,8 @@ numba = "numba"
 healpix = "healpix"
 optuna = "optuna"
 cftime = "cftime"
+joblib = "joblib"
+tqdm-joblib = "tqdm_joblib"
 
 [project.urls]
 Homepage = "https://tipmip.pik-potsdam.de/"

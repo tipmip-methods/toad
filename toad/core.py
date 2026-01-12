@@ -486,6 +486,9 @@ class TOAD:
         method: shifts.ShiftsMethod = shifts.ASDETECT(),
         output_label_suffix: str = "",
         overwrite: bool = False,
+        run_parallel: bool = True,
+        n_jobs: int = -1,
+        show_progress: bool = True,
     ):
         """Apply an abrupt shift detection algorithm to a dataset along the specified temporal dimension.
 
@@ -497,6 +500,9 @@ class TOAD:
                 or create your own by subclassing `ShiftsMethod` from `toad.shifts`. Defaults to `ASDETECT()`.
             output_label_suffix: A suffix to add to the output label. Defaults to `""`.
             overwrite: Whether to overwrite existing variable. Defaults to `False`.
+            run_parallel: Whether to run the shift detection in parallel. Defaults to True.
+            n_jobs: Number of jobs to run in parallel. Defaults to -1 (use all available cores).
+            show_progress: Whether to show a progress bar during parallel processing. Defaults to True.
 
         Raises:
             ValueError: If data is invalid or required parameters are missing
@@ -508,6 +514,9 @@ class TOAD:
             method=method,
             output_label_suffix=output_label_suffix,
             overwrite=overwrite,
+            run_parallel=run_parallel,
+            n_jobs=n_jobs,
+            show_progress=show_progress,
         )
 
     def compute_clusters(

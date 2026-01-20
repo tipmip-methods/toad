@@ -110,6 +110,10 @@ others to use very specific versions of the code if needed.
 
 ---
 
+## License
+
+TOAD is licensed under the BSD 2-Clause License. See [LICENSE.txt](LICENSE.txt) for details.
+
 ## References
 
 - Boulton, C. A., & Lenton, T. M. (2019). A new method for detecting abrupt shifts in time series. F1000Research, 8, 746. [https://doi.org/10.12688/F1000RESEARCH.19310.1](https://doi.org/10.12688/F1000RESEARCH.19310.1)

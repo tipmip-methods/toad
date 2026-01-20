@@ -43,7 +43,7 @@ from sklearn.cluster import HDBSCAN
 
 
 # init TOAD object with Global Mean Surface Temperature as custom "time" dimension
-td = TOAD("ice_thickness.nc", time_dim="GMST)
+td = TOAD("ice_thickness.nc", time_dim="GMST")
 
 # Compute shifts for variable 'temp' using the method ASDETECT (Boulton & Lenton, 2019)
 td.compute_shifts("thk", method=ASDETECT())
@@ -56,7 +56,7 @@ td.compute_clusters(
 )
 
 # Plot 8 largest clusters in ccrs.SouthPolarStereo() projection
-td.plot.overview("thk", cluster_ids=range(8), map_style={"projection": "south_pole"});
+td.plot.overview("thk", cluster_ids=range(8), map_style={"projection": "south_pole"})
 ```
 
 <div align="center">
@@ -96,25 +96,6 @@ The hooks will automatically run on each commit, checking and fixing code format
 $ pre-commit run --all-files
 ```
 
-## Version information
-
-**Version 0.3 [Nov 2024]** Major refactoring of the code to increase
-ease of use and extendability. First version on GitHub. The main use-case now happens through
-the `TOAD` object, which wraps the `xarray` dataset and provides analysis
-functions etc. You can now create your own shifts detection and clustering methods, as well
-pass clustering methods from `sklearn.cluster` directly to `TOAD`.
-Various classes/functions are still to be implemented, but the basic functionality of 0.2 is there,
-and few breaking changes are expected.
-
-**Version 0.2 [Jun 2023]** Working clustering based on `DBSCAN` with an
-evaluation pipeline that adds the cluster labels as auxiliary variable to a
-dataset. Also testing post-clustering evaluation methods (API might change!).
-
-**Version 0.1 [Oct 2022]** New repository after major refactoring. Working
-abrupt shift detection based on `asdetect` with an evaluation pipeline that adds
-the detection time series as auxiliary variable to a dataset. The git hash is
-additionally saved as an attribute.
-
 ## Repository information
 
 We use [trunk-based development](https://medium.com/@vafrcor2009/gitflow-vs-trunk-based-development-3beff578030b)
@@ -127,29 +108,8 @@ issues pull-requests that are approved or rejected by the maintainer. Special
 versions of the code can be then dedicated releases with version tags, allowing
 others to use very specific versions of the code if needed.
 
-## Note on using older version of TOAD
-
-Version 0.2 of TOAD is still available on the `toad-alpha` branch. The package there has been renamed from `toad` to `toad-alpha` such that it can be used alongside the most recent version of toad if cloned locally:
-
-```bash
-$ git clone -b toad_alpha https://github.com/tipmip-methods/toad.git toad_alpha
-$ cd toad_alpha
-$ pip install .
-```
-
-Then
-
-```python
-import toad-alpha as toad
-```
-
 ---
-
-Nov 2024 ∙ [Jakob Harteg](mailto:jakob.harteg@pik-potsdam.de)
-
-June 2022 ∙ [Sina Loriani](mailto:sina.loriani@pik-potsdam.de)
 
 ## References
 
 - Boulton, C. A., & Lenton, T. M. (2019). A new method for detecting abrupt shifts in time series. F1000Research, 8, 746. [https://doi.org/10.12688/F1000RESEARCH.19310.1](https://doi.org/10.12688/F1000RESEARCH.19310.1)
-- L. McInnes, J. Healy, S. Astels, hdbscan: Hierarchical density based clustering In: Journal of Open Source Software, The Open Journal, volume 2, number 11. 2017,

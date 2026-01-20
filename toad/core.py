@@ -8,12 +8,6 @@ import optuna
 import sklearn.cluster
 import xarray as xr
 from sklearn.base import ClusterMixin
-from sklearn.preprocessing import (
-    MaxAbsScaler,
-    MinMaxScaler,
-    RobustScaler,
-    StandardScaler,
-)
 
 from toad import (
     clustering,
@@ -526,11 +520,6 @@ class TOAD:
         shift_threshold: float = 0.5,
         shift_direction: Literal["both", "positive", "negative"] | str = "both",
         shift_selection: Literal["local", "global", "all"] | str = "local",
-        scaler: StandardScaler
-        | MinMaxScaler
-        | RobustScaler
-        | MaxAbsScaler
-        | None = None,  # TODO remove scaler 2026/Jan
         time_weight: float = 1,
         regridder: BaseRegridder | None = None,
         disable_regridder: bool = False,
@@ -571,9 +560,6 @@ class TOAD:
                 "global": Finds the overall strongest shift per grid cell. Cluster only the single maximum shift value per grid cell where abs(shift) > shift_threshold.
                 "all": Cluster all shift values that meet the threshold and direction criteria. Includes all data points above threshold, not just peaks.
                 Defaults to "local".
-            scaler: The scaling method to apply to the data before clustering. StandardScaler(),
-                MinMaxScaler(), RobustScaler() and MaxAbsScaler() from sklearn.preprocessing are
-                supported. Defaults to None. This option will be removed in the future. Set scaler=None to use recommended temporal scaling only.
             time_weight: Controls the relative influence of time in clustering. By default, time values are automatically scaled to match the standard deviation of the spatial coordinates. Increasing time_weight gives more emphasis to the temporal dimension, resulting in clusters that are tighter in time (shorter delays between abrupt events). Decreasing it emphasizes the spatial dimensions, allowing clusters to span a wider range of shift times. Defaults to 1.
             regridder: The regridding method to use from toad.clustering.regridding.
                 Defaults to None. If None and coordinates are lat/lon, a HealPixRegridder will
@@ -614,7 +600,6 @@ class TOAD:
             shift_threshold=shift_threshold,
             shift_selection=shift_selection,
             shift_direction=shift_direction,
-            scaler=scaler,
             time_weight=time_weight,
             regridder=regridder,
             disable_regridder=disable_regridder,

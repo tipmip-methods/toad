@@ -142,7 +142,7 @@ def compute_shifts(
             "Dask backend is not yet supported. Please use the Joblib backend instead."
         )
         # # Build chunking dict: time dimension must be -1 (single chunk), spatial dims can be chunked
-        # # TODO this should be moved to a helper function
+        # # TODO chunking code should be moved to a helper function
         # chunk_dict: dict[str, int | str] = {td.time_dim: -1}
         # for space_dim in td.space_dims:
         #     chunk_dict[space_dim] = int(masked_data_array.sizes[td.space_dims[0]] / 4)

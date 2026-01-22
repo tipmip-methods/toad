@@ -21,8 +21,8 @@ def test_params_centered():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.004754983,
-        "expected_std": 0.21182401,
+        "expected_mean": 0.017697551648168934,
+        "expected_std": 0.15253265952046005,
     }
 
 
@@ -42,14 +42,14 @@ def test_params_two_sided():
         "lat": 10,
         "lon": 10,
         "time": 3,
-        "expected_mean": 0.01522529,
-        "expected_std": 0.16875029,
+        "expected_mean": 0.024135386789707777,
+        "expected_std": 0.1289442182680194,
     }
 
 
 @pytest.fixture
 def toad_instance():
-    return TOAD("tutorials/test_data/global_mean_summer_tas.nc")
+    return TOAD("tutorials/test_data/synth_data.nc")
 
 
 def test_asdetect_centered(test_params_centered, toad_instance):
@@ -104,9 +104,9 @@ def test_asdetect_centered(test_params_centered, toad_instance):
 
     # - call function
     td.compute_shifts(
-        "tas", ASDETECT(segmentation="original"), overwrite=True, run_parallel=False
+        "ts", ASDETECT(segmentation="original"), overwrite=True, run_parallel=False
     )  # test non-parallel mode
-    shifts = td.get_shifts("tas")
+    shifts = td.get_shifts("ts")
     mean = shifts.mean().values
     std = shifts.std().values
 
@@ -205,8 +205,10 @@ def test_asdetect_two_sided(test_params_two_sided, toad_instance):
     ).mean()
 
     # - call function
-    td.compute_shifts("tas", ASDETECT(segmentation="two_sided"), overwrite=True)
-    shifts = td.get_shifts("tas")
+    td.compute_shifts(
+        "ts", ASDETECT(segmentation="two_sided"), overwrite=True, run_parallel=False
+    )
+    shifts = td.get_shifts("ts")
     mean = float(shifts.mean().values)
     std = float(shifts.std().values)
 

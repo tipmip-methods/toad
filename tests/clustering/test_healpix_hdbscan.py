@@ -17,7 +17,7 @@ def cleanup_memory():
 @pytest.mark.parametrize(
     "lat,lon,min_cluster_size,shifts_threshold,shift_selection,expected_N_clusters",
     [
-        (6, 6, 25, 0.5, "all", 7),  # First parameter set
+        (6, 6, 25, 0.5, "all", 2),  # First parameter set
         (6, 6, 25, 0.5, "local", 2),  # Second parameter set
     ],
 )
@@ -46,7 +46,7 @@ def test_healpix_hdbscan(
     """
 
     # Setup
-    td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
+    td = TOAD("tutorials/test_data/synth_data.nc")
     td.data = td.data.coarsen(lat=lat, lon=lon, boundary="trim").reduce(np.mean)
 
     td.compute_clusters(

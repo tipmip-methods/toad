@@ -8,7 +8,7 @@ def test_cluster_optimization():
     """Test the cluster optimization."""
 
     # Setup
-    td = TOAD("tutorials/test_data/global_mean_summer_tas.nc")
+    td = TOAD("tutorials/test_data/synth_data.nc")
     td.data = td.data.coarsen(lat=3, lon=3, boundary="trim").reduce(np.mean)
 
     # Drop any cluster vars

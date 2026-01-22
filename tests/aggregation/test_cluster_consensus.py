@@ -35,7 +35,7 @@ def setup_native_grid():
 
 def setup_regular_latlon_grid():
     """Setup and coarsen regular lat/lon grid data."""
-    td = TOAD("tutorials/test_data/global_mean_summer_tas.nc", time_dim="time")
+    td = TOAD("tutorials/test_data/synth_data.nc", time_dim="time")
     td.data = td.data.coarsen(lat=3, lon=3, time=3, boundary="trim").reduce(np.mean)
     return td
 
@@ -64,8 +64,8 @@ def setup_regular_latlon_grid():
             [0.5, 1.0, 1.5, 2.0],
             1,
             4,
-            2028.0,  # Typical value from [2085., 2027.5714, 2085., 2028., 2028., 2029.5, 2030., 2028., 2026.5, 2026.5, 2028., 2026.5]
-            10.0,  # tolerance in years
+            47.5,  # Typical value from synth_data.nc with 2 shifts [47.548386, 139.66667]
+            100.0,  # tolerance in years (to cover both shift times)
         ),
     ],
 )

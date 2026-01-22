@@ -15,38 +15,15 @@ Getting Started
    :hidden:
 	
    installation
-   package_overview
    quick_start
 
-.. note::
 
-	This project is under active development.
+``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is an open-source Python framework designed for detecting abrupt, nonlinear, and potentially irreversible transitions in gridded Earth-system data. Developed at the Potsdam Institute for Climate Impact Research (PIK), TOAD provides a structured, user-friendly pipeline for:
 
+1. Detecting abrupt shifts at the grid level
+2. Clustering co-occurring changes in space and time
+3. Synthesizing robust transition regions across ensemble members, variables, models, and detection methods
 
-``toad`` (**T**\ ipping and **O**\ ther **A**\ brupt events **D**\ etector) is a python package within the *TIPMIP* research
-project of *PIK* (Potsdam Institut für Klimafolgenforschung, GER). Here are links provided to the `TIPMIP project page <https://tipmip.pik-potsdam.de>`_
-as well as to the `GitHub repository <https://github.com/tipmip-methods/toad>`_ of the project.
+This modular workflow empowers researchers to systematically reveal where and when potentially tipping-relevant changes occur—supporting rigorous uncertainty quantification and coordinated risk assessments for critical Earth-system components.
 
-Contributors:
--------------
-
-* Sina Loriani: TOAD science and code development lead
-* Jakob Harteg: PhD Student, TOAD development
-* Lukas Röhrich: Scientist for codebase support
-
-**Developer team and student projects**
-
-* Karoline Ramin: Student assistant for codebase support
-* Kobe De Maeyer: MSc 2024, Vegetation compatibility
-* Vincent Overbeck: MSc 2023, scoring and optimization loop
-* Antonia Lehrmann: BSc 2022, Bayesian inference as time series analysis method
-* Ann Sophie Messerschmidt: MSc 2022, clustering methods 
-
-**Scientific discussions**
-
-* Boris Sakschewski: Conceptualisation, biosphere
-* Julius Garbe: Ice Sheets, conceptualisation
-* Jonathan Donges: Conceptualisation
-* Ann Kristin Klose: Ice Sheets, conceptualisation
-* Ricarda Winkelmann: Ice Sheets, conceptualisation
-* José Licon-Salaiz: Clustering methods
+For source code, examples, and ongoing development, visit the `GitHub repository <https://github.com/tipmip-methods/toad>`_.

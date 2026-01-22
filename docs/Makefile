@@ -14,7 +14,14 @@ TUTORIAL_DEST = ./source/tutorials
 help:
 	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
-.PHONY: help toad Makefile
+.PHONY: help toad copy-tutorials Makefile
+
+# Copy tutorials to source directory (for development with sphinx-autobuild)
+copy-tutorials:
+	@echo ">> Copying tutorial files from $(TUTORIAL_SRC) to $(TUTORIAL_DEST)"
+	@mkdir -p $(TUTORIAL_DEST)
+	@cp -r $(TUTORIAL_SRC)/*.ipynb $(TUTORIAL_DEST)/ 2>/dev/null || true
+	@echo ">> Tutorials copied. Ready for sphinx-autobuild."
 
 # custom html maker:
 # 	- copies the tutorial files to the source directory

@@ -14,8 +14,8 @@ sys.path.insert(0, module_path)
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "toad"
-copyright = "2024, Lukas Röhrich"
-author = "Lukas Röhrich"
+copyright = "2026, TOAD Developers"
+author = "TOAD Developers"
 language = "en"
 
 # -- General configuration ---------------------------------------------------

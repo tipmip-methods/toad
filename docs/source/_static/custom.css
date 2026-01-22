@@ -32,3 +32,12 @@ label {
     font-size: 0.9em;
     background-color: rgba(110, 110, 110, 0.1); /* Semi-transparent black background */
 }
+
+/* Hide auto-generated Sphinx citation list */
+table.citation,
+div.citation,
+ol.citation,
+dl.citation,
+.citations {
+    display: none !important;
+}

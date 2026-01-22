@@ -4,13 +4,22 @@ Installation Guide
 TOAD
 ----
 
-Make sure that your device is able to securely communicate with GitHub by `setting up a ssh-key <https://docs.gitlab.com/ee/user/ssh.html>`_.
-TOAD can be installed directly from GitHub using the python `pip` installer by running the following command in a terminal:
+TOAD is not yet published on PyPI or conda, but you can easily install it directly from GitHub. 
 
-**linux/macOS and windows**
+**Recommended installation (using HTTPS, works on Linux, macOS, and Windows):**
 
 .. code:: bash
 
-    pip install git+ssh://git@github.com:tipmip-methods/toad.git
+    git clone https://github.com/tipmip-methods/toad.git
+    cd toad
+    pip install .
 
+**Developer mode installation** (if you want to modify TOAD or contribute):
 
+.. code:: bash
+
+    git clone https://github.com/tipmip-methods/toad.git
+    cd toad
+    pip install -e .[dev]
+
+The ``-e`` flag installs the package in "editable" mode. Changes to the source code are reflected immediately.

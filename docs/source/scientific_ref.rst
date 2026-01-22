@@ -1,33 +1,25 @@
-
 Scientific References
 =====================
 
-Referenced to peer-reviewed publications, theses and reports describing the applied
-methods implemented in ``toad``.
+TOAD incorporates methods inspired by the following publications:
 
-*Implemented Papers*
-~~~~~~~~~~~~~~~~~~~~
+- **Boulton & Lenton (2019)** — C. A. Boulton; T. M. Lenton. *A new method for detecting abrupt shifts in time series*. *F1000Research*, 8:746. https://doi.org/10.12688/F1000RESEARCH.19310.1
 
-[Boulton+Lenton2019]_.
+- **Fred & Jain (2005)** — Ana L. N. Fred; Anil K. Jain. *Combining multiple clusterings using evidence accumulation*. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 27(6), 835–850. https://doi.org/10.1109/TPAMI.2005.113
 
-[McInnes+al2017]_.
+.. raw:: html
 
-[Fred+Jain2005]_
+   <style>
+   /* Hide the auto-generated Sphinx citation list */
+   table.citation,
+   div.citation,
+   ol.citation,
+   .citations,
+   dl.citation {
+       display: none !important;
+   }
+   </style>
 
+.. [Boulton+Lenton2019] C. A. Boulton; T. M. Lenton. *A new method for detecting abrupt shifts in time series*. *F1000Research*, 8:746. https://doi.org/10.12688/F1000RESEARCH.19310.1
 
-.. [Boulton+Lenton2019] C. A. Boulton; T. M. Lenton.
-	"A new method for detecting abrupt shifts in time series"
-	In *F1000Research*, vol. 8, article 746
-	`doi:10.12688/F1000RESEARCH.19310.1
-	<https://doi.org/10.12688/F1000RESEARCH.19310.1>`__
-
-
-.. [McInnes+al2017] L. McInnes; J. Healy, S. Astels.
-	"hdbscan: Hierarchical density based clustering"
-	In *Journal of Open Source Software, The Open Journal*, volume 2, number 11. 2017
-
-.. [Fred+Jain2005] Ana L. N. Fred; Anil K. Jain.
-	"Combining multiple clusterings using evidence accumulation"
-	In *IEEE Transactions on Pattern Analysis and Machine Intelligence*, vol. 27, no. 6, pp. 835–850, 2005.
-	Publisher: IEEE
-
+.. [Fred+Jain2005] Ana L. N. Fred; Anil K. Jain. *Combining multiple clusterings using evidence accumulation*. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 27(6), 835–850. https://doi.org/10.1109/TPAMI.2005.113

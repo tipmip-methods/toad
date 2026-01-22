@@ -1,12 +1,11 @@
 # This workflow will install Python and sphinx, then it build the html documentation pages with sphinx and deploys it into the gh-pages branch
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Build HTML Pages
+name: Build HTML Pages for Docs 
 
 on:
-  pull_request:
+  push:
     branches: ["main"]
-    types: ["closed"]
   workflow_dispatch:    # Allows you to run this workflow manually from the Actions tab
     
 # Set permissions for the workflow - necc. to write html-docs to gh-pages branch
@@ -14,15 +13,10 @@ permissions:
   contents: write
 
 jobs:
-  if_merged:
-    if: github.event.pull_request.merged == true
-
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      
       # Step to checkout the code from the repository
       - name: Checkout code
         uses: actions/checkout@v4

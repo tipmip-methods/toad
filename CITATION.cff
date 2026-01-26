@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "TOAD: Tipping and Other Abrupt events Detector"
+version: "1.0.0"
+doi: "10.5281/zenodo.18316437"
+date-released: "2026-01-22"
+authors:
+  - given-names: Jakob
+    family-names: Harteg
+  - given-names: Lukas
+    family-names: Roehrich
+  - given-names: Kobe
+    family-names: De Maeyer
+  - given-names: Julius
+    family-names: Garbe
+  - given-names: Boris
+    family-names: Sakschewski
+  - given-names: Ann Kristin
+    family-names: Klose
+  - given-names: Jonathan
+    family-names: Donges
+  - given-names: Ricarda
+    family-names: Winkelmann
+  - given-names: Sina
+    family-names: Loriani
+repository-code: "https://github.com/tipmip-methods/toad"
+license: "BSD-2-Clause"
+keywords:
+  - "tipping points"
+  - "abrupt shifts"
+  - "climate science"
+  - "spatio-temporal analysis"
+  - "clustering"
+  - "earth system models"
+abstract: "TOAD is a Python package designed for detecting and clustering abrupt shifts in gridded Earth-system datasets, such as model outputs. The input data should be structured as a 3D array in the format space × space × time, where time can represent actual time or some other forcing variable or bifurcation parameter. TOAD provides a streamlined pipeline for identifying and analyzing spatio-temporal regions that exhibit similar dynamical responses to external forcing."

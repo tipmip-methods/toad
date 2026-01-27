@@ -31,7 +31,13 @@ TOAD's core functionality is exposed through the `TOAD` class, which analyzes ne
 
 ## Installation
 
-Until TOAD is published on pip/conda you can install it like this:
+[![PyPI version](https://img.shields.io/pypi/v/tipmip-toad)](https://pypi.org/project/tipmip-toad/)
+
+```bash
+$ pip install tipmip-toad
+```
+
+or
 
 ```bash
 $ git clone https://github.com/tipmip-methods/toad.git

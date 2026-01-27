@@ -1,6 +1,6 @@
 # toml-file started Feb 2025 by Lukas Röhrich
 #
-# This file acts as aconfiguration file for the toad packages
+# This file acts as a configuration file for the toad package
 # by Potsdam Institute for Climate Impact Research, GER
 #
 # Tutorial on how to setup this config file:
@@ -11,26 +11,36 @@
 build-backend = "setuptools.build_meta"
 requires = [
     "setuptools",
-    ]
+]
 
 # basic metadata
 [project]
-name = "toad"
-dynamic = ["version",]
+name = "tipmip-toad"
+dynamic = ["version"]
 description = "Tipping and Other Abrupt events Detector"
 readme = "README.md"
-keywords = ["tipping", "tipping points", "climate"]
+keywords = ["tipping", "tipping points", "climate", "abrupt shifts", "earth system"]
+license = "BSD-2-Clause"
+requires-python = ">=3.10"
 authors = [
-    {name = "Sina Loriani", email = "sina.loriani@pik-potsdam.de"},
-    {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"}
+    {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"},
+    {name = "Lukas Roehrich", email = "lukas.roehrich@pik-potsdam.de"},
+    {name = "Sina Loriani", email = "sina.loriani@pik-potsdam.de"}
 ]
 maintainers = [
     {name = "Jakob Harteg", email = "jakob.harteg@pik-potsdam.de"}
 ]
 classifiers = [
-    "Topic :: Scientific :: Climate",
-    "Intended Audience :: Climate Scientists",
-    "Programming Language :: Python",
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: Oceanography",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
 ]
 
 dependencies = [
@@ -59,6 +69,10 @@ dev = [
     "deptry",
 ]
 
+[project.urls]
+Homepage = "https://tipmip.pik-potsdam.de/"
+Repository = "https://github.com/tipmip-methods/toad"
+
 [tool.setuptools]
 packages = {find = {}}
 
@@ -69,7 +83,7 @@ toad = ["py.typed"]
 version = {attr = "toad._version.__version__"}
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry"]  # ignore unused dependencies and dev tools
+DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry"]
 
 [tool.deptry]
 ignore_notebooks = true
@@ -90,11 +104,6 @@ optuna = "optuna"
 cftime = "cftime"
 joblib = "joblib"
 tqdm-joblib = "tqdm_joblib"
-
-[project.urls]
-Homepage = "https://tipmip.pik-potsdam.de/"
-Documentation = "https://www.pik-potsdam.de/~lukasro/toad/#"
-Repository = "https://github.com/tipmip-methods/toad"
 
 [tool.mypy]
 python_version = "3.12"

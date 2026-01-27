@@ -1,11 +1,11 @@
 <div align="center">
 
-![TOAD](docs/source/resources/toad.png)
+![TOAD](https://raw.githubusercontent.com/tipmip-methods/toad/main/docs/source/resources/toad.png)
 
 # TOAD: **T**ipping and **O**ther **A**brupt events **D**etector
 
 [![Documentation](https://img.shields.io/badge/docs-toad--docs-blue)](https://toad-docs.pages.dev)
-[![PyPI version](https://img.shields.io/badge/PyPI-coming%20soon-lightgrey)]()
+[![PyPI version](https://img.shields.io/pypi/v/tipmip-toad)](https://pypi.org/project/tipmip-toad/)
 [![CI](https://github.com/tipmip-methods/toad/actions/workflows/build_and_tests.yml/badge.svg)](https://github.com/tipmip-methods/toad/actions/workflows/build_and_tests.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-BSD--2--Clause-blue)](LICENSE.txt) <br>
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18316437.svg)](https://doi.org/10.5281/zenodo.18316437) 
@@ -24,7 +24,7 @@ The TOAD pipeline consists of three main components:
 3. **Aggregation & Synthesis:** Aggregates results across multiple cluster maps from different datasets, models, variables, realisations, or methods to produce consensus clusters and statistics, and generates plots and summaries of the identified clusters for insights and interpretation.
 
 
-![TOAD](docs/source/resources/TOAD_pipeline.png?)
+![TOAD Pipeline](https://raw.githubusercontent.com/tipmip-methods/toad/main/docs/source/resources/TOAD_pipeline.png)
 
 TOAD's core functionality is exposed through the `TOAD` class, which analyzes netCDF files or xarray datasets. The primary methods - `compute_shifts`, `compute_clusters`, and `aggregate.cluster_consensus()` - handle the three main pipeline steps. The pipeline supports aggregation of results across multiple runs, enabling consensus-based analysis. Additional helper functions and visualization tools make it easy to explore and understand the results.
 
@@ -51,21 +51,21 @@ from sklearn.cluster import HDBSCAN
 td = TOAD("ice_thickness.nc", time_dim="GMST")
 
 # Compute shifts for variable 'thk' using the method ASDETECT (Boulton & Lenton, 2019)
-td.compute_shifts("thk", method=ASDETECT())
+td.compute_shifts("thk", method=ASDETECT(timescale=(0.5, 3.5)))
 
 # Compute clusters using HDBSCAN from scikit-learn (McInnes, 2017)
 td.compute_clusters(
     var="thk",
-    method=HDBSCAN(min_cluster_size=10),
-    time_weight=1.5,
+    method=HDBSCAN(min_cluster_size=25),
+    time_weight=2.0,
 )
 
 # Plot largest clusters in ccrs.SouthPolarStereo() projection
-td.plot.overview("thk", map_style={"projection": "south_pole"})
+td.plot.overview("thk", map_style={"projection": "south_pole"}, mode="aggregated");
 ```
 
 <div align="center">
-    <img src="docs/source/resources/cluster_overview_example.png" width="1000px" alt="Cluster Overview Example">
+    <img src="https://raw.githubusercontent.com/tipmip-methods/toad/main/docs/source/resources/cluster_overview_example.png" width="1000px" alt="Cluster Overview Example">
 </div>
 
 For more details, check out the tutorials.

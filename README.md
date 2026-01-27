@@ -5,7 +5,7 @@
 # TOAD: **T**ipping and **O**ther **A**brupt events **D**etector
 
 [![Documentation](https://img.shields.io/badge/docs-toad--docs-blue)](https://toad-docs.pages.dev)
-[![PyPI version](https://img.shields.io/pypi/v/tipmip-toad)](https://pypi.org/project/tipmip-toad/)
+[![PyPI version](https://img.shields.io/pypi/v/tipmip-toad?)](https://pypi.org/project/tipmip-toad/)
 [![CI](https://github.com/tipmip-methods/toad/actions/workflows/build_and_tests.yml/badge.svg)](https://github.com/tipmip-methods/toad/actions/workflows/build_and_tests.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue)](https://www.python.org/) [![License](https://img.shields.io/badge/license-BSD--2--Clause-blue)](LICENSE.txt) <br>
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18316437.svg)](https://doi.org/10.5281/zenodo.18316437) 

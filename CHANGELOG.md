@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-01-27
+
+### Fixed
+- Fixed image paths in README.md to use absolute URLs for proper display on PyPI
+
 ## [1.0.2] - 2026-01-27
 
 ### Changed
@@ -30,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - First public release of the TOAD package
 
-[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/tipmip-methods/toad/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/tipmip-methods/toad/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/tipmip-methods/toad/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/tipmip-methods/toad/releases/tag/v1.0.0

@@ -45,5 +45,31 @@ When creating a new release, maintainers should update the following files:
    - `version`: Set to the new version number
    - `date-released`: Set to the release date (format: `YYYY-MM-DD`)
 Note: `doi` always points to the latest release. 
+3. **`CHANGELOG.md`**: Fill in changes. 
 
-After updating these files, create a git tag with the version number (e.g. `v1.0.1`) and push it to trigger the release process.
+Then: 
+1. Commit these changes with the commit message like `Release v1.0.1`:
+   ```bash
+   git add toad/_version.py CITATION.cff CHANGELOG.md
+   git commit -m "Release v1.0.1"
+   ```
+2. Push the commit to `main`:
+   ```bash
+   git push origin main
+   ```
+3. Create a git tag like `v1.0.1` and push it:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+   A Github Action Workflow [(create-draft-release.yml)](https://github.com/tipmip-methods/toad/blob/main/.github/workflows/create-draft-release.yml) will automatically create a **draft** GitHub release with a link to `CHANGELOG.md`.
+
+4. Review and publish the draft release on GitHub.com:
+   - Go to the [Releases page](https://github.com/tipmip-methods/toad/releases)
+   - Find the draft release
+   - Optionally edit the release notes if needed
+   - Click "Publish release"
+   
+   Publishing the release will:
+   - Trigger the PyPI publishing workflow [(publish-to-pypi.yml)](https://github.com/tipmip-methods/toad/blob/main/.github/workflows/publish-to-pypi.yml) automatically
+   - Trigger Zenodo to archive the release and generate a new DOI

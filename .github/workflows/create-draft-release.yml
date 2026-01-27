@@ -1,0 +1,40 @@
+name: Create Draft Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on tags starting with 'v' (e.g., v1.0.1)
+
+jobs:
+  create-draft-release:
+    name: Create draft GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for changelog
+    
+    - name: Extract version from tag
+      id: tag_version
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        echo "version=${TAG_NAME#v}" >> $GITHUB_OUTPUT
+        echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+    
+    - name: Create draft release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${{ steps.tag_version.outputs.tag }}"
+        VERSION="${{ steps.tag_version.outputs.version }}"
+        TITLE="TOAD ${TAG}"
+        NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md#${VERSION//./}) for release notes."
+        
+        gh release create "$TAG" \
+          --title "$TITLE" \
+          --notes "$NOTES" \
+          --draft \
+          --repo "${{ github.repository }}"

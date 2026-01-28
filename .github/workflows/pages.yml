@@ -43,6 +43,13 @@ jobs:
           cd docs/
           make toad
 
+      # GitHub Pages runs Jekyll by default, which ignores folders starting with "_"
+      # (like the Sphinx "_static" directory). The presence of a .nojekyll file
+      # tells GitHub Pages to serve the files as-is so static assets are not 404.
+      - name: Add .nojekyll to published docs
+        run: |
+          touch docs/build/docs/.nojekyll
+
       - name: Run ghp-import
         run: |
           ghp-import -p -f docs/build/

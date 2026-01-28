@@ -1,0 +1,19 @@
+toad.postprocessing.aggregation
+===============================
+
+.. automodule:: toad.postprocessing.aggregation
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      jaccard_similarity
+      precompute_spatial_memberships
+   
+   .. rubric:: Classes
+
+   .. autosummary::
+   
+      Aggregation
+   

@@ -1,0 +1,14 @@
+﻿toad.postprocessing
+===================
+
+.. automodule:: toad.postprocessing
+
+   
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+   aggregation
+   stats

@@ -1,0 +1,65 @@
+﻿toad.TOAD
+=========
+
+.. currentmodule:: toad
+
+.. autoclass:: TOAD
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~TOAD.__init__
+      ~TOAD.apply_cluster_mask
+      ~TOAD.apply_cluster_mask_spatial
+      ~TOAD.apply_cluster_mask_temporal
+      ~TOAD.cluster_vars_for_var
+      ~TOAD.compute_clusters
+      ~TOAD.compute_shifts
+      ~TOAD.drop_clusters
+      ~TOAD.drop_shifts
+      ~TOAD.get_active_clusters_count_per_timestep
+      ~TOAD.get_base_var
+      ~TOAD.get_cluster_counts
+      ~TOAD.get_cluster_data
+      ~TOAD.get_cluster_density_spatial
+      ~TOAD.get_cluster_density_temporal
+      ~TOAD.get_cluster_ids
+      ~TOAD.get_cluster_mask
+      ~TOAD.get_cluster_mask_permanent
+      ~TOAD.get_cluster_mask_permanent_noise
+      ~TOAD.get_cluster_mask_spatial
+      ~TOAD.get_cluster_mask_temporal
+      ~TOAD.get_cluster_timeseries
+      ~TOAD.get_clusters
+      ~TOAD.get_shifts
+      ~TOAD.numeric_time_values_unit
+      ~TOAD.save
+      ~TOAD.set_log_level
+      ~TOAD.shift_vars_for_var
+      ~TOAD.stats
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+   
+      ~TOAD.aggregate
+      ~TOAD.base_vars
+      ~TOAD.cluster_vars
+      ~TOAD.numeric_time_values
+      ~TOAD.path
+      ~TOAD.plot
+      ~TOAD.preprocess
+      ~TOAD.shift_vars
+      ~TOAD.space_dims
+      ~TOAD.data
+   
+   

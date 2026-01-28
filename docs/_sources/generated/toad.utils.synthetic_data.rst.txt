@@ -1,0 +1,14 @@
+toad.utils.synthetic\_data
+==========================
+
+.. automodule:: toad.utils.synthetic_data
+
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      add_shift_blob
+      add_xyz_coords
+      create_global_dataset
+   

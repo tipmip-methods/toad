@@ -13,7 +13,7 @@ logger = logging.getLogger("TOAD")
 
 
 def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float:
-    """Compute a weighted combination of spatial autocorrelation and nonlinearity scores.
+    """Compute a weighted combination of spatial autocorrelation and nonlinearity scores for the largest 10 clusters.
 
     Args:
         td: ToadDataset object containing the data
@@ -189,6 +189,8 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
             # fmt: off
             # Map objective names to their corresponding scoring functions
             # Note: all the score functions are really slow and take ~90% of the optimization time
+            # We pass output_label (cluster variable) to stats() - the smart inference in
+            # get_cluster_timeseries will extract the base variable for actual data values.
             score_funcs = {
                 "median_heaviside":           lambda: np.median([td.stats(output_label).general.score_heaviside(cid, aggregation="median") for cid in cluster_ids[:10]]),
                 "mean_heaviside":               lambda: np.mean([td.stats(output_label).general.score_heaviside(cid, aggregation="mean") for cid in cluster_ids[:10]]),
@@ -202,7 +204,6 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
             if objective not in score_funcs:
                 raise ValueError("Invalid objective")
             score = float(score_funcs[objective]())
-
         score_computation_time += time.time() - time_start
         return score
 

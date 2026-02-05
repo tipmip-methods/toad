@@ -48,7 +48,7 @@ class TOAD:
 
     def __init__(
         self,
-        data: Union[xr.Dataset, str],
+        data: xr.Dataset | str,
         time_dim: str = "time",
         log_level: str = "INFO",
         engine: str = "netcdf4",
@@ -890,7 +890,7 @@ class TOAD:
         else:
             return self.data[shift_vars[0]]
 
-    def get_clusters(self, var: str) -> xr.DataArray:
+    def get_clusters(self, var: str | None = None) -> xr.DataArray:
         """Get cluster xr.DataArray for the specified variable.
 
         Args:
@@ -905,6 +905,9 @@ class TOAD:
                 xr.DataArray is only considered a cluster label if it contains _cluster in
                 its name.
         """
+
+        var = self._get_base_var_if_none(var)
+
         # Check if the variable is a cluster variable
         if self._is_cluster_variable(var):
             return self.data[var]
@@ -940,7 +943,9 @@ class TOAD:
 
         return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
 
-    def get_cluster_ids(self, var: str, exclude_noise: bool = True) -> np.ndarray:
+    def get_cluster_ids(
+        self, var: str | None = None, exclude_noise: bool = True
+    ) -> np.ndarray:
         """Return list of cluster ids sorted by total number of cells in each cluster.
 
         Args:
@@ -957,7 +962,9 @@ class TOAD:
         else:
             return cluster_ids
 
-    def get_active_clusters_count_per_timestep(self, var: str) -> xr.DataArray:
+    def get_active_clusters_count_per_timestep(
+        self, var: str | None = None
+    ) -> xr.DataArray:
         """Get number of active clusters for each timestep.
 
         Args:
@@ -978,7 +985,10 @@ class TOAD:
         ).rename(f"Number of active clusters for {var}")
 
     def get_cluster_mask(
-        self, var: str, cluster_id: Union[int, List[int]], numeric_times: bool = False
+        self,
+        var: str | None = None,
+        cluster_id: int | List[int] | range | None = None,
+        numeric_times: bool = False,
     ) -> xr.DataArray:
         """Returns a 3D boolean mask (time x space x space) indicating which points belong to the specified cluster(s).
 
@@ -996,14 +1006,17 @@ class TOAD:
         clusters = self.get_clusters(var)
 
         all_cluster_ids = clusters.cluster_ids
-        valid_cluster_ids = [
-            id for id in np.array(cluster_id).flatten() if id in all_cluster_ids
-        ]
-        if len(valid_cluster_ids) == 0:
-            raise ValueError(
-                f"None of the specified clusters {cluster_id} for var {var} exists. Did you mean any of these: {all_cluster_ids}?"
-            )
-        cluster_id = valid_cluster_ids
+        if cluster_id is None:
+            cluster_id = all_cluster_ids
+        else:
+            valid_cluster_ids = [
+                id for id in np.array(cluster_id).flatten() if id in all_cluster_ids
+            ]
+            if len(valid_cluster_ids) == 0:
+                raise ValueError(
+                    f"None of the specified clusters {cluster_id} for var {var} exists. Did you mean any of these: {all_cluster_ids}?"
+                )
+            cluster_id = valid_cluster_ids
 
         mask = clusters.isin(cluster_id)
 
@@ -1041,7 +1054,9 @@ class TOAD:
         return result
 
     def get_cluster_mask_spatial(
-        self, var: str, cluster_id: Union[int, List[int]]
+        self,
+        var: str | None = None,
+        cluster_id: int | list[int] | range | None = None,
     ) -> xr.DataArray:
         """Returns a 2D boolean mask indicating which grid cells belonged to the specified cluster at any point in time.
 
@@ -1049,8 +1064,8 @@ class TOAD:
 
         Args:
             var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: Cluster id to apply the mask for.
+                or custom cluster variable name. If None, infers the variable.
+            cluster_id: Cluster id(s) to apply the mask for. If None, uses all clusters.
 
         Returns:
             Mask for the cluster id.
@@ -1058,19 +1073,25 @@ class TOAD:
         return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
 
     def apply_cluster_mask_spatial(
-        self, var: str, apply_to_var: str, cluster_id: int
+        self,
+        var: str | None = None,
+        apply_to_var: str | None = None,
+        cluster_id: int | list[int] | range | None = None,
     ) -> xr.DataArray:
         """Apply the spatial cluster mask to a variable.
 
         Args:
             var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to.
-            cluster_id: The cluster id to apply the mask for.
+                or custom cluster variable name. If None, infers the variable.
+            apply_to_var: The variable to apply the mask to. If None, uses the inferred base variable.
+            cluster_id: The cluster id(s) to apply the mask for. If None, uses all clusters.
 
         Returns:
             All data (regardless of cluster) masked by the spatial extend of the specified cluster.
         """
+        var = self._get_base_var_if_none(var)
+        if apply_to_var is None:
+            apply_to_var = var
         mask = self.get_cluster_mask_spatial(var, cluster_id)
         return self.data[apply_to_var].where(mask)
 
@@ -1151,9 +1172,7 @@ class TOAD:
         footprint = footprint.rename(f"{footprint.name}_temporal_footprint")
         return footprint
 
-    def get_cluster_data(
-        self, var: str, cluster_id: Union[int, List[int]]
-    ) -> xr.Dataset:
+    def get_cluster_data(self, var: str, cluster_id: int | list[int]) -> xr.Dataset:
         """Get raw data for specified cluster(s) with mask applied.
 
         Args:

@@ -292,7 +292,7 @@ class TimeStats:
         return dict
 
     def compute_transition_time(
-        self, cluster_ids: int | list[int] | None = None, shift_threshold=0.5
+        self, cluster_ids: int | list[int] | range | None = None, shift_threshold=0.5
     ) -> xr.DataArray:
         """Computes the transition time for each grid cell.
 

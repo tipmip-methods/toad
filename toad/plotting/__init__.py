@@ -607,33 +607,50 @@ class Plotter:
             assert ax is not None, "ax should be set when subplots=False"
         return fig, ax
 
-    # TODO: add variable auto inference
     def max_shift_map(
         self,
-        var: str,
-        cmap: Optional[Union[str, Colormap]] = "RdBu_r",
+        var: str | None = None,
+        *,
+        cluster_ids: int | list[int] | range | None = None,
+        ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
+        cmap: Optional[Union[str, Colormap]] = "RdBu_r",
     ):
         """Plot a map showing the value in the time dimension where the absolute value of the shift is maximal, keeping sign.
 
         Args:
-            var (str): Name of the variable for which to compute the maximum shift.
-            cmap (Optional[Union[str, Colormap]], optional): Colormap to use for the plot. Can be a string name of a colormap
-                recognized by matplotlib, or an actual Colormap object. Defaults to 'coolwarm'.
-            map_style (Optional[Union[MapStyle, dict]], optional): Configuration for the map style.
-                This can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
+            var: Name of the variable for which to compute the maximum shift.
+                If None, TOAD will attempt to infer which variable to use. A ValueError is raised
+                if the variable cannot be uniquely determined.
+            cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
+                If None, analyzes all clusters. If specified, only analyzes grid cells belonging
+                to the given cluster(s).
+            ax: Matplotlib axes to plot on. Creates new figure if None.
+            map_style: Configuration for the map style.
+                Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
+            cmap: Colormap to use for the plot. Can be a string name of a colormap
+                recognized by matplotlib, or an actual Colormap object. Defaults to 'RdBu_r'.
 
         Returns:
-            Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]: The created matplotlib Figure and Axes objects.
+            Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
+                The created matplotlib Figure (None if ax was provided) and Axes objects.
 
         Notes:
             For each location, this plots the value along the time axis whose absolute value is maximal. Locations with all-NaN
             values will be masked out.
         """
+        # Infer variable if not provided
+        var = self.td._get_base_var_if_none(var)
+
         # Normalize map_style to MapStyle
         config = _normalize_map_style(map_style)
 
-        fig, ax = self.map(map_style=config)
+        # Create map if ax not provided
+        if ax is None:
+            fig, ax = self.map(map_style=config)
+        else:
+            fig = None
+
         shifts = self.td.get_shifts(var)
 
         # Prepare plot parameters for different grid types
@@ -658,6 +675,11 @@ class Plotter:
         # Select from original shifts (with sign) at max indices, masking all-NaN locations
         has_valid_data = ~abs_shifts.isnull().all(dim=self.td.time_dim)
         shifts_max = shifts.isel({self.td.time_dim: abs_argmax}).where(has_valid_data)
+
+        # Apply cluster mask if cluster_ids specified
+        if cluster_ids is not None:
+            cluster_mask = self.td.get_cluster_mask_spatial(var, cluster_ids)
+            shifts_max = shifts_max.where(cluster_mask)
 
         if use_pcolormesh:
             # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling

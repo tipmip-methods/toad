@@ -1,0 +1,314 @@
+"""Tests for basic plotting functions in toad.plotting."""
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pytest
+from sklearn.cluster import HDBSCAN  # type: ignore
+
+from toad import TOAD
+
+# Use non-interactive backend for tests
+matplotlib.use("Agg")
+
+
+@pytest.fixture(scope="module")
+def td_with_clusters():
+    """Create a TOAD object with clusters for testing plotting functions.
+
+    Uses a very coarse dataset to keep tests fast.
+    """
+    td = TOAD("tutorials/test_data/synth_data.nc")
+    # Make data very coarse for fast tests
+    td.data = td.data.coarsen(lat=5, lon=5, boundary="trim").reduce(np.mean)
+    td.drop_clusters()
+    td.compute_clusters(method=HDBSCAN(min_cluster_size=5))
+    return td
+
+
+class TestClusterMap:
+    """Test cluster_map plotting function."""
+
+    def test_cluster_map_returns_figure_and_axes(self, td_with_clusters):
+        """Test that cluster_map returns a figure and axes."""
+        td = td_with_clusters
+        fig, ax = td.plot.cluster_map()
+
+        assert fig is not None
+        assert ax is not None
+        plt.close(fig)
+
+    def test_cluster_map_single_cluster(self, td_with_clusters):
+        """Test cluster_map with a single cluster ID."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            # Convert to Python int to avoid numpy.int64 type issues
+            fig, ax = td.plot.cluster_map(cluster_ids=int(cluster_ids[0]))
+            assert fig is not None
+            assert ax is not None
+            plt.close(fig)
+
+    def test_cluster_map_multiple_clusters(self, td_with_clusters):
+        """Test cluster_map with multiple cluster IDs."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, ax = td.plot.cluster_map(cluster_ids=list(cluster_ids[:2]))
+            assert fig is not None
+            assert ax is not None
+            plt.close(fig)
+
+    def test_cluster_map_with_subplots(self, td_with_clusters):
+        """Test cluster_map with subplots=True."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, axes = td.plot.cluster_map(
+                cluster_ids=list(cluster_ids[:2]), subplots=True
+            )
+            assert fig is not None
+            assert axes is not None
+            assert isinstance(axes, np.ndarray)
+            plt.close(fig)
+
+    def test_cluster_map_with_custom_cmap(self, td_with_clusters):
+        """Test cluster_map with a custom colormap."""
+        td = td_with_clusters
+        fig, ax = td.plot.cluster_map(cmap="viridis")
+
+        assert fig is not None
+        plt.close(fig)
+
+    def test_cluster_map_with_provided_geoax(self, td_with_clusters):
+        """Test cluster_map with a pre-created GeoAxes."""
+        import cartopy.crs as ccrs
+
+        td = td_with_clusters
+        fig_external, ax_external = plt.subplots(
+            subplot_kw={"projection": ccrs.PlateCarree()}
+        )
+
+        fig, ax = td.plot.cluster_map(ax=ax_external)
+
+        # When ax is provided, fig should be None
+        assert fig is None
+        assert ax is ax_external
+        plt.close(fig_external)
+
+
+class TestTimeseries:
+    """Test timeseries plotting function."""
+
+    def test_timeseries_returns_figure_and_axes(self, td_with_clusters):
+        """Test that timeseries returns a figure and axes."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            # Convert to Python int to avoid numpy.int64 type issues
+            fig, ax = td.plot.timeseries(cluster_ids=int(cluster_ids[0]))
+            assert fig is not None
+            assert ax is not None
+            plt.close(fig)
+
+    def test_timeseries_single_cluster(self, td_with_clusters):
+        """Test timeseries with a single cluster ID."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, ax = td.plot.timeseries(cluster_ids=int(cluster_ids[0]))
+            assert fig is not None
+            plt.close(fig)
+
+    def test_timeseries_multiple_clusters(self, td_with_clusters):
+        """Test timeseries with multiple cluster IDs."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, ax = td.plot.timeseries(cluster_ids=list(cluster_ids[:2]))
+            assert fig is not None
+            plt.close(fig)
+
+    def test_timeseries_with_subplots(self, td_with_clusters):
+        """Test timeseries with subplots=True."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, axes = td.plot.timeseries(
+                cluster_ids=list(cluster_ids[:2]), subplots=True
+            )
+            assert fig is not None
+            assert axes is not None
+            plt.close(fig)
+
+    def test_timeseries_with_median(self, td_with_clusters):
+        """Test timeseries with median line."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, ax = td.plot.timeseries(
+                cluster_ids=int(cluster_ids[0]),
+                plot_median=True,
+                plot_trajectories=False,
+            )
+            assert fig is not None
+            plt.close(fig)
+
+    def test_timeseries_with_trajectory_range(self, td_with_clusters):
+        """Test timeseries with trajectory range shading."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, ax = td.plot.timeseries(
+                cluster_ids=int(cluster_ids[0]),
+                plot_trajectory_range=True,
+            )
+            assert fig is not None
+            plt.close(fig)
+
+    def test_timeseries_with_map(self, td_with_clusters):
+        """Test timeseries with embedded map."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, result = td.plot.timeseries(
+                cluster_ids=int(cluster_ids[0]),
+                plot_map=True,
+            )
+            assert fig is not None
+            plt.close(fig)
+
+    def test_timeseries_with_provided_ax(self, td_with_clusters):
+        """Test timeseries with a pre-created axes."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig_external, ax_external = plt.subplots()
+
+            fig, ax = td.plot.timeseries(
+                cluster_ids=int(cluster_ids[0]), ax=ax_external
+            )
+
+            # When ax is provided, fig should be None
+            assert fig is None
+            assert ax is ax_external
+            plt.close(fig_external)
+
+
+class TestOverview:
+    """Test overview plotting function."""
+
+    def test_overview_returns_figure_and_dict(self, td_with_clusters):
+        """Test that overview returns a figure and dict with axes."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, axes_dict = td.plot.overview(cluster_ids=list(cluster_ids[:1]))
+
+            assert fig is not None
+            assert isinstance(axes_dict, dict)
+            assert "map" in axes_dict
+            assert "timeseries" in axes_dict
+            plt.close(fig)
+
+    def test_overview_single_cluster(self, td_with_clusters):
+        """Test overview with a single cluster."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            # Convert to Python int to avoid numpy.int64 type issues
+            fig, axes_dict = td.plot.overview(cluster_ids=int(cluster_ids[0]))
+            assert fig is not None
+            assert axes_dict["map"] is not None
+            plt.close(fig)
+
+    def test_overview_multiple_clusters(self, td_with_clusters):
+        """Test overview with multiple clusters."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, axes_dict = td.plot.overview(cluster_ids=list(cluster_ids[:2]))
+            assert fig is not None
+            assert "timeseries" in axes_dict
+            plt.close(fig)
+
+    def test_overview_timeseries_mode(self, td_with_clusters):
+        """Test overview in timeseries mode (default)."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, axes_dict = td.plot.overview(
+                cluster_ids=list(cluster_ids[:1]),
+                mode="timeseries",
+            )
+            assert fig is not None
+            plt.close(fig)
+
+    def test_overview_aggregated_mode(self, td_with_clusters):
+        """Test overview in aggregated mode."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) > 0:
+            fig, axes_dict = td.plot.overview(
+                cluster_ids=list(cluster_ids[:1]),
+                mode="aggregated",
+            )
+            assert fig is not None
+            plt.close(fig)
+
+
+class TestPlottingWithExplicitVar:
+    """Test plotting functions with explicit variable specification."""
+
+    def test_cluster_map_with_var(self, td_with_clusters):
+        """Test cluster_map with explicit variable name."""
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+
+        fig, ax = td.plot.cluster_map(var=cluster_var)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_timeseries_with_var(self, td_with_clusters):
+        """Test timeseries with explicit variable name."""
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+        cluster_ids = td.get_cluster_ids(cluster_var)
+
+        if len(cluster_ids) > 0:
+            # Convert to Python int to avoid numpy.int64 type issues
+            fig, ax = td.plot.timeseries(
+                var=cluster_var, cluster_ids=int(cluster_ids[0])
+            )
+            assert fig is not None
+            plt.close(fig)
+
+    def test_overview_with_var(self, td_with_clusters):
+        """Test overview with explicit variable name."""
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+        cluster_ids = td.get_cluster_ids(cluster_var)
+
+        if len(cluster_ids) > 0:
+            # Convert to Python int to avoid numpy.int64 type issues
+            fig, axes_dict = td.plot.overview(
+                var=cluster_var, cluster_ids=int(cluster_ids[0])
+            )
+            assert fig is not None
+            plt.close(fig)

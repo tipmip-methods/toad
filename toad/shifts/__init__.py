@@ -190,7 +190,7 @@ def compute_shifts(
 
     # Save method params
     method_params = {
-        f"method_{param}": str(value)
+        f"shifts_{param}": str(value)
         for param, value in dict(sorted(vars(method).items())).items()
         if value is not None and not param.startswith("_")
     }

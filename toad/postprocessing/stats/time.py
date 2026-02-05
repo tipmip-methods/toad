@@ -92,7 +92,7 @@ class TimeStats:
 
         if len(max_indices) == 0:
             # Fallback to argmax if no exact matches (shouldn't happen)
-            peak_idx = ctd.argmax()
+            peak_idx = int(np.argmax(ctd.values))
         else:
             # Get the center of the plateau
             peak_idx = max_indices[len(max_indices) // 2]
@@ -137,7 +137,7 @@ class TimeStats:
         grad = ts.diff(self.td.time_dim)
 
         # Get the index of the steepest gradient
-        steepest_idx = grad.argmin()
+        steepest_idx = int(np.argmin(grad.values))
 
         # Get the numeric time value at that index
         steepest_time_numeric = float(self.td.numeric_time_values[steepest_idx])
@@ -169,7 +169,7 @@ class TimeStats:
             return 0.0
 
         grad = ts.diff(self.td.time_dim)
-        return int(grad.argmin())
+        return int(np.argmin(grad.values))
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float

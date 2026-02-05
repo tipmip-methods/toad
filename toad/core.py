@@ -22,8 +22,6 @@ from toad.clustering.optimizing import (
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
-    _contains_value,
-    _is_equal_to,
     detect_latlon_names,
     get_space_dims,
 )
@@ -994,7 +992,19 @@ class TOAD:
         Returns:
             Mask for the cluster label.
         """
+
         clusters = self.get_clusters(var)
+
+        all_cluster_ids = clusters.cluster_ids
+        valid_cluster_ids = [
+            id for id in np.array(cluster_id).flatten() if id in all_cluster_ids
+        ]
+        if len(valid_cluster_ids) == 0:
+            raise ValueError(
+                f"None of the specified clusters {cluster_id} for var {var} exists. Did you mean any of these: {all_cluster_ids}?"
+            )
+        cluster_id = valid_cluster_ids
+
         mask = clusters.isin(cluster_id)
 
         if numeric_times:
@@ -1045,12 +1055,6 @@ class TOAD:
         Returns:
             Mask for the cluster id.
         """
-        # Notify user of better masking for cluster_id = -1
-        if _contains_value(cluster_id, -1):
-            self.logger.info(
-                "Hint: If you want to get the mask for unclustered cells, use get_cluster_mask_permanent_noise() instead."
-            )
-
         return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
 
     def apply_cluster_mask_spatial(
@@ -1086,32 +1090,6 @@ class TOAD:
         """
         mask = self.get_cluster_mask_temporal(var, cluster_id)
         return self.data[apply_to_var].where(mask)
-
-    def get_cluster_mask_permanent(self, var: str, cluster_id: int) -> xr.DataArray:
-        """Create a mask for cells that always have the same cluster label (such as completely unclustered cells by passing -1).
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: The cluster id.
-
-        Returns:
-            Boolean mask where True indicates cells that always belonged to the specified cluster.
-        """
-        clusters = self.get_clusters(var)
-        return (clusters == cluster_id).all(dim=self.time_dim)
-
-    def get_cluster_mask_permanent_noise(self, var: str) -> xr.DataArray:
-        """Create the spatial mask for cells that are always unclustered (i.e. -1).
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-
-        Returns:
-            Boolean mask where True indicates cells that were never clustered (always had value -1).
-        """
-        return self.get_cluster_mask_permanent(var, -1)
 
     def get_cluster_density_temporal(self, var: str, cluster_id: int) -> xr.DataArray:
         """Calculate the temporal density of a cluster at each grid cell.
@@ -1187,18 +1165,9 @@ class TOAD:
             Full dataset masked by the cluster id.
 
         Note:
-            - If cluster_id == -1, returns the unclustered mask.
             - If cluster_id is a list, returns the union of the masks for each cluster id.
         """
-        # use the unclustered mask if cluster_id == -1
-        if _is_equal_to(
-            cluster_id, -1
-        ):  # checks if cluster_id is a scalar and equals -1
-            mask = self.get_cluster_mask_permanent_noise(var)
-        else:
-            mask = self.get_cluster_mask(var, cluster_id)
-
-        return self.data.where(mask)
+        return self.data.where(self.get_cluster_mask(var, cluster_id))
 
     def _get_base_var_if_none(self, var: str | None) -> str:
         """Get the default base variable if none specified, or return the provided variable.

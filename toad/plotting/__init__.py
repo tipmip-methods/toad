@@ -83,7 +83,7 @@ class MapStyle:
     projection: Optional[str | ccrs.Projection] = (
         None  # if lat/lon PlateCarree is used by default
     )
-    extent: Optional[Tuple[float, float, float, float]] = None
+    extent: Tuple[float | int, float | int, float | int, float | int] | None = None
     map_frame: bool = True
     continent_shading: bool = False
     continent_shading_color: str = "#E9E9E9"
@@ -480,12 +480,8 @@ class Plotter:
             # Get the colormap for this cluster
             cluster_cmap = cmap_list[i]
 
-            # Get mask for clustered or unclustered cells
-            mask = (
-                self.td.get_cluster_mask_permanent_noise(var)
-                if id == -1
-                else self.td.get_cluster_mask_spatial(var, id)
-            )
+            # Get mask for clustered cells (including -1 if specified in cluster_ids)
+            mask = self.td.get_cluster_mask_spatial(var, id)
 
             # prepare common plot parameters
             plot_params = {
@@ -673,12 +669,12 @@ class Plotter:
 
         return fig, ax
 
-    # TODO: add variable auto inference, make it take an ax
     def time_of_max_shift_map(
         self,
-        var: str,
+        var: str | None = None,
         *,
-        cluster_ids: int | list[int] | None = None,
+        cluster_ids: int | list[int] | range | None = None,
+        ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "turbo",
         shift_threshold: float = 0.5,
@@ -687,9 +683,12 @@ class Plotter:
 
         Args:
             var: Name of the variable for which to compute the time of maximum shift.
+                If None, TOAD will attempt to infer which variable to use. A ValueError is raised
+                if the variable cannot be uniquely determined.
             cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
                 If None, analyzes all clusters. If specified, only analyzes grid cells belonging
                 to the given cluster(s).
+            ax: Matplotlib axes to plot on. Creates new figure if None.
             map_style: Configuration for the map style.
                 Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
             cmap: Colormap to use for the plot. Can be a string name of a colormap
@@ -698,13 +697,21 @@ class Plotter:
                 is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
 
         Returns:
-            Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
-                The created matplotlib Figure and Axes objects.
+            Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
+                The created matplotlib Figure (None if ax was provided) and Axes objects.
         """
+        # Infer variable if not provided
+        var = self.td._get_base_var_if_none(var)
+
         # Normalize map_style to MapStyle
         config = _normalize_map_style(map_style)
 
-        fig, ax = self.map(map_style=config)
+        # Create map if ax not provided
+        if ax is None:
+            fig, ax = self.map(map_style=config)
+        else:
+            fig = None
+
         transition_time = self.td.stats(var).time.compute_transition_time(
             cluster_ids=cluster_ids, shift_threshold=shift_threshold
         )

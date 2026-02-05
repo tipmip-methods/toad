@@ -349,36 +349,17 @@ def compute_clusters(
         time_mean = np.mean(time_values)
         time_std = np.std(time_values)
 
-        if time_std > 0:
-            # Scale time: (time - mean) / std * spatial_std
-            coords[:, 0] = (time_values - time_mean) / time_std * space_std
-        # else: time_std is 0, keep time as is (all same value)
-
-        # Scale time values by scaler value
-        if time_weight != 1:
-            coords[:, 0] = coords[:, 0] * time_weight
-
-        # convert method to instance if class was passed
+        # Convert method to instance early (needed for skip_time_scaling check)
         method = method() if isinstance(method, type) else method
+        skip_time_scaling = getattr(method, "skip_time_scaling", False)
 
-        # Save method params before clustering (because they might change during clustering)
-        method_params = {
-            f"method_{param}": str(value)
-            for param, value in dict(sorted(vars(method).items())).items()
-            if value is not None and not param.startswith("_")
-        }
-
-        # Save regridder params
-        regridder_params = {}
-        if regridder:
-            regridder_params["regridder_name"] = regridder.__class__.__name__
-            regridder_params.update(
-                {
-                    f"regridder_{param}": str(value)
-                    for param, value in dict(sorted(vars(regridder).items())).items()
-                    if value is not None and isinstance(value, (int, float, str))
-                }
-            )
+        # If time scaling is not disabled, scale time (defined in the method)
+        if not skip_time_scaling:
+            if time_std > 0:
+                # Scale time: (time - mean) / std * spatial_std
+                coords[:, 0] = (time_values - time_mean) / time_std * space_std
+            if time_weight != 1:
+                coords[:, 0] = coords[:, 0] * time_weight
 
         # Measure preprocessing time
         preprocessing_time = time_now() - start_time
@@ -429,6 +410,25 @@ def compute_clusters(
     # Get base variable from shifts attrs
     base_variable = td.data[shifts_variable].attrs.get(_attrs.BASE_VARIABLE)
     base_variable = base_variable if base_variable else "Unknown"
+
+    # Save method params (specifically after clustering, to get all final parameters)
+    method_params = {
+        f"cluster_{param}": str(value)
+        for param, value in dict(sorted(vars(method).items())).items()
+        if value is not None and not param.startswith("_")
+    }
+
+    # Save regridder params
+    regridder_params = {}
+    if regridder:
+        regridder_params["regridder_name"] = regridder.__class__.__name__
+        regridder_params.update(
+            {
+                f"regridder_{param}": str(value)
+                for param, value in dict(sorted(vars(regridder).items())).items()
+                if value is not None and isinstance(value, (int, float, str))
+            }
+        )
 
     # Save details as attributes (single update block)
     clusters.attrs.update(

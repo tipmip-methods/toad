@@ -1317,9 +1317,11 @@ class TOAD:
         If cluster_id is None, returns all data from the dataset in timeseries format.
 
         Args:
-            var: Variable name to extract time series from.
-            cluster_var: Variable name to extract cluster ids from. Default to None and is
-                attempted to be inferred from var.
+            var: Variable name to extract time series from. Can be a base variable
+                (e.g., 'thk') or a cluster variable (e.g., 'thk_dts_cluster'). If a
+                cluster variable is passed, the base variable is auto-inferred.
+            cluster_var: Variable name to extract cluster ids from. Defaults to None,
+                in which case it is inferred from var.
             cluster_id: Single cluster ID, list of cluster IDs, or None to return all data.
             aggregation: How to aggregate spatial data:
                 - "mean": Average across space
@@ -1340,8 +1342,29 @@ class TOAD:
 
         Returns:
             The time series data for the specified cluster(s), or all data if cluster_id is None.
+
+
+        Note:
+            If var is a cluster variable (e.g., 'thk_dts_cluster'), the base variable
+            is automatically inferred from its attributes and used for data extraction,
+            while the cluster variable is used for masking. This ensures you get actual
+            data values rather than cluster labels.
+
         """
-        cluster_var = cluster_var if cluster_var else var
+        # Smart inference: if var is a cluster variable, extract base variable for data
+        # and use the cluster variable for masking
+        if self._is_cluster_variable(var):
+            inferred_cluster_var = var
+            base_var = self.data[var].attrs.get(_attrs.BASE_VARIABLE)
+            if base_var is None:
+                raise ValueError(
+                    f"Cluster variable '{var}' has no BASE_VARIABLE attribute. "
+                    f"Cannot infer which data variable to use."
+                )
+            var = base_var  # Use base variable for data extraction
+            cluster_var = cluster_var if cluster_var else inferred_cluster_var
+        else:
+            cluster_var = cluster_var if cluster_var else var
 
         # Handle case when cluster_id is None - return all data
         if cluster_id is None:
@@ -1357,11 +1380,7 @@ class TOAD:
                 # Already 1D timeseries, expand to match format
                 data = data.expand_dims("cell_xy")
         else:
-            # Handle unclustered case (-1)
-            if _is_equal_to(cluster_id, -1):
-                mask = self.get_cluster_mask_permanent_noise(cluster_var)
-            else:
-                mask = self.get_cluster_mask_spatial(cluster_var, cluster_id)
+            mask = self.get_cluster_mask_spatial(cluster_var, cluster_id)
 
             # Apply mask
             data = self.data[var].where(mask)

@@ -266,8 +266,8 @@ def compute_clusters(
         logger.warning(
             f'No gridcells left after applying shift_threshold={shift_threshold} and shift_direction="{shift_direction}"'
         )
-        # create cluster variable with all -1
-        clusters = xr.full_like(sh, -1).rename(new_output_label)
+        # create cluster variable with all NaN (no points were clustered)
+        clusters = xr.full_like(sh, np.nan).rename(new_output_label)
         preprocessing_time = 0.0
         clustering_time = 0.0
         cluster_labels = np.array([-1], dtype=int)
@@ -397,9 +397,10 @@ def compute_clusters(
         )
 
         # Scatter labels back into xarray without DataFrame
-        clusters = xr.full_like(sh, -1).rename(new_output_label)
-        clusters.data = clusters.data.astype(np.int32, copy=False)
-        clusters.data[idx] = np.asarray(cluster_labels, dtype=np.int32)
+        # Start with NaN (points not included in clustering remain NaN)
+        clusters = xr.full_like(sh, np.nan).rename(new_output_label)
+        # Assign cluster labels (including -1 for noise) only to points that were clustered
+        clusters.data[idx] = np.asarray(cluster_labels, dtype=np.float64)
 
         # Transpose if dimensions don't match (shouldn't be needed but keep)
         if clusters.dims != td.data[shifts_variable].dims:

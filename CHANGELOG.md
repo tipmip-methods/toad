@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added comprehensive tests for plotting and postprocessing functions
+
+### Changed
+- Non-clustered points now output NaN instead of -1 in cluster labels
+- Enhanced type hinting and variable inference in TOAD methods
+
+### Fixed
+- Fixed base variable inference in `get_cluster_timeseries` for scoring functions
+- Fixed cluster methods to allow disabling temporal scaling
+- Fixed docs workflow for deployment to GitHub Pages
+
 ## [1.0.4] - 2026-01-27
 
 ### Changed

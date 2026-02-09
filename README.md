@@ -102,10 +102,8 @@ If you use TOAD in your research, please cite:
 **TOAD package:**
 Harteg, J., Roehrich, L., De Maeyer, K., Garbe, J., Sakschewski, B., Klose, A. K., Donges, J., Winkelmann, R., and Loriani, S.: TOAD: Tipping and Other Abrupt events Detector, Zenodo, https://doi.org/10.5281/zenodo.18316437, 2026.
 
-*Note: This DOI always points to the latest release version.*
-
-**TOAD methodology paper (submitted):**
-Harteg, J., Roehrich, L., De Maeyer, K., Garbe, J., Sakschewski, B., Klose, A. K., Donges, J., Winkelmann, R., and Loriani, S.: TOAD v1.0: A Python Framework for Detecting Abrupt Shifts and Coherent Spatial Domains in Earth-System Data, Geosci. Model Dev., submitted, 2026.
+**TOAD methodology paper (preprint):**
+Harteg, J., Röhrich, L., De Maeyer, K., Garbe, J., Sakschewski, B., Klose, A. K., Donges, J. F., Winkelmann, R., and Loriani, S.: TOAD v1.0: A Python Framework for Detecting Abrupt Shifts and Coherent Spatial Domains in Earth-System Data, EGUsphere [preprint], https://doi.org/10.5194/egusphere-2026-356, 2026.
 
 ## License
 

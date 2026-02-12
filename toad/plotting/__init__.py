@@ -96,6 +96,7 @@ class MapStyle:
     add_labels: bool = True
     contour_linewidth: float = 1.5
     other_legend_pos: Optional[Tuple[float, float]] = None
+    other_legend: bool = True
     cluster_alpha: float = 0.75
     other_cluster_alpha: float = 0.5
 
@@ -584,17 +585,18 @@ class Plotter:
                 )  # type: ignore
 
                 # Pass the colormap to the legend function
-                _add_gradient_legend(
-                    ax,
-                    remaining_cluster_ids[0],
-                    remaining_cluster_ids[-1],
-                    legend_pos=config.other_legend_pos,
-                    var=var,
-                    alpha=config.other_cluster_alpha,
-                    cmap=plt.get_cmap(map_cmap_other)
-                    if isinstance(map_cmap_other, str)
-                    else map_cmap_other,
-                )
+                if config.other_legend:
+                    _add_gradient_legend(
+                        ax,
+                        remaining_cluster_ids[0],
+                        remaining_cluster_ids[-1],
+                        legend_pos=config.other_legend_pos,
+                        var=var,
+                        alpha=config.other_cluster_alpha,
+                        cmap=plt.get_cmap(map_cmap_other)
+                        if isinstance(map_cmap_other, str)
+                        else map_cmap_other,
+                    )
 
         # Return appropriate axes based on subplots setting
         if subplots:
@@ -615,6 +617,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "RdBu_r",
+        **kwargs: Any,
     ):
         """Plot a map showing the value in the time dimension where the absolute value of the shift is maximal, keeping sign.
 
@@ -663,6 +666,7 @@ class Plotter:
             "cbar_kwargs": {
                 "label": "Maximum shift magnitude",
             },
+            **kwargs,
         }
 
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
@@ -700,6 +704,7 @@ class Plotter:
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "turbo",
         shift_threshold: float = 0.5,
+        **kwargs: Any,
     ):
         """Plot a map showing the time at which the maximal shift occurs for a given variable.
 
@@ -743,6 +748,7 @@ class Plotter:
             "ax": ax,
             "add_colorbar": True,
             "cmap": cmap,
+            **kwargs,
         }
 
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)

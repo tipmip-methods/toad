@@ -8,6 +8,7 @@ import xarray as xr
 
 # from scipy.sparse import coo_matrix  # only used in utils helpers
 from scipy.sparse.csgraph import connected_components
+from tqdm import tqdm
 
 # from sklearn.neighbors import NearestNeighbors  # unused here; kept in utils
 from toad.clustering import sorted_cluster_labels
@@ -195,6 +196,7 @@ class Aggregation:
         neighbor_connectivity: int = 8,
         regridder: HealPixRegridder | None = None,
         k_neighbors: int = 8,
+        show_progress: bool = True,
     ) -> Tuple[xr.Dataset, pd.DataFrame]:
         """Build a spatial consensus clustering from multiple clustering results.
 
@@ -228,6 +230,7 @@ class Aggregation:
                 available. Higher values provide more connectivity but may be less spatially
                 selective. Default: 8. For very high-resolution grids, consider increasing to
                 12-16; for coarse grids, 4-6 may suffice.
+            show_progress: Whether to show the progress bar. Default: True.
 
         Returns:
             Tuple[xr.Dataset, pd.DataFrame]: A tuple containing:
@@ -406,7 +409,7 @@ class Aggregation:
             present_mask2d = np.ones((y_len, x_len), dtype=bool)
 
         # Process each clustering
-        for cvar in cluster_vars:
+        for cvar in tqdm(cluster_vars, disable=not show_progress):
             # Get cluster IDs, optionally filter to top N largest (shared logic)
             unique_ids = self.td.get_cluster_ids(cvar)
             if unique_ids.size == 0:

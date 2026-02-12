@@ -44,10 +44,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy>=2.2.0,<2.3.0",  # Pin to NumPy 2.2.x to ensure consistent BLAS/LAPACK implementation across platforms
+    "numpy>=2.2.0",
     "matplotlib",
-    "scipy>=1.15.0,<1.17.0",  # Python 3.10 gets 1.15.x, Python 3.11+ gets 1.16.x
-    "scikit-learn>=1.7.1,<1.8.0",  # Pin to scikit-learn 1.7.x for consistent HDBSCAN clustering results
+    "scipy>=1.15.0",
+    "scikit-learn>=1.7.1",
     "xarray",
     "netcdf4",          # pipreqs didn't find this, but needed for xarray as optional dep to read *.nc files
     "cartopy",
@@ -57,6 +57,7 @@ dependencies = [
     "optuna",
     "cftime",
     "joblib",
+    "tqdm",
     "tqdm-joblib"
 ]
 
@@ -83,11 +84,11 @@ toad = ["py.typed"]
 [tool.setuptools.dynamic]
 version = {attr = "toad._version.__version__"}
 
-[tool.deptry.per_rule_ignores]
-DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry"]
-
 [tool.deptry]
 ignore_notebooks = true
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["netcdf4", "pre-commit", "ruff", "pytest", "pytest-cov", "deptry", "sphinxawesome_theme"]
 
 # suppress warning about assuming corresponding module name
 [tool.deptry.package_module_name_map]
@@ -104,7 +105,11 @@ healpix = "healpix"
 optuna = "optuna"
 cftime = "cftime"
 joblib = "joblib"
+tqdm = "tqdm"
 tqdm-joblib = "tqdm_joblib"
+pre-commit = "pre_commit"
+ruff = "ruff"
+sphinxawesome_theme = "sphinxawesome_theme"
 
 [tool.mypy]
 python_version = "3.12"

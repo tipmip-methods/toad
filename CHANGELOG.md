@@ -7,17 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-02-12
+
 ### Added
+- Allow custom cluster methods to turn off temporal scaling by adding `skip_time_scaling = True` as a class variable to the method.
+- Allow disabling the gradient legend in cluster maps (set `other_legend=False` in `MapStyle`)
+- Added progress bar for cluster consensus computation (`show_progress` parameter)
 - Added comprehensive tests for plotting and postprocessing functions
 
 ### Changed
-- Non-clustered points now output NaN instead of -1 in cluster labels
-- Enhanced type hinting and variable inference in TOAD methods
+- Cluster output now distinguishes between grid cells classified as noise by the clustering algorithm (-1) and grid cells with no detected abrupt shifts (NaN). Previously both were labeled -1.
+- Enhanced variable inference in TOAD methods
+- Relaxed dependency version pins for numpy, scipy, and scikit-learn (removed upper bounds)
 
 ### Fixed
 - Fixed base variable inference in `get_cluster_timeseries` for scoring functions
-- Fixed cluster methods to allow disabling temporal scaling
-- Fixed docs workflow for deployment to GitHub Pages
+- Fixed dependency configuration: added `tqdm` as direct dependency, corrected deptry module name mappings and ignore lists
 
 ## [1.0.4] - 2026-01-27
 
@@ -52,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - First public release of the TOAD package
 
-[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/tipmip-methods/toad/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/tipmip-methods/toad/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/tipmip-methods/toad/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/tipmip-methods/toad/compare/v1.0.1...v1.0.2

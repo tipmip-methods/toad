@@ -1345,7 +1345,7 @@ class Plotter:
         plot_var = self.td._get_base_var_if_none(plot_var)
 
         # Handle map setup and determine plot_var for timeseries when map=True
-        if map and var is not None:
+        if var is not None:
             # Get base variable from clusters attrs for timeseries if plot_var wasn't explicitly set
             # (i.e., if it equals var, meaning user didn't specify a different variable)
             clusters_obj = self.td.get_clusters(var)

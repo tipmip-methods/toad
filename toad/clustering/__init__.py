@@ -365,7 +365,7 @@ def compute_clusters(
         preprocessing_time = time_now() - start_time
 
         logger.debug(
-            f"Applying clusterer {method.__class__.__name__} to {shifts_variable}"
+            f"Applying clusterer {method.__class__.__name__} to {shifts_variable} with {n_pts} points"
         )
 
         # ==================== APPLY CLUSTERING METHOD ====================

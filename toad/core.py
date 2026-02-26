@@ -853,6 +853,7 @@ class TOAD:
         else:
             return self.data[var].attrs.get(_attrs.BASE_VARIABLE)
 
+    # TODO: add variable inference like in get_clusters()
     def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
         """Get shifts xr.DataArray for the specified variable.
 

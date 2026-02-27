@@ -72,6 +72,17 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level)
 
+        # Check that all variables have the same dimensions
+        dims = [self.data[var].dims for var in self.data.data_vars]
+        if len(set(dims)) > 1:
+            dims_info = "\n".join(
+                f"{var}: {self.data[var].dims}" for var in self.data.data_vars
+            )
+            raise ValueError(
+                "All variables must have the same dimensions. Consider dropping variables not needed in TOAD.\n"
+                f"Dimensions for each variable:\n{dims_info}"
+            )
+
         # rename longitude and latitude to lon and lat
         if "longitude" in self.data.dims:
             self.data = self.data.rename({"longitude": "lon"})

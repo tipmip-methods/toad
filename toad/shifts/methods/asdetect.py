@@ -242,6 +242,13 @@ def construct_detection_ts(
     if lmax is None:
         lmax = int(n_tot / 3)
 
+    if lmax < lmin:
+        # Tell user *why* this happened for common default, but allow assert to catch all cases
+        if lmin == 5 and lmax == int(n_tot / 3):
+            raise ValueError(
+                f"Time series is too short for ASDETECT: with n={n_tot}, default lmin={lmin}, and default lmax=int(n/3)={lmax}. lmin must be smaller than lmax; your time series must be at least {lmin * 3} steps long. "
+                f"Either increase the length of your input time series, or decrease lmin."
+            )
     assert lmin < lmax, "lmin must be smaller than lmax"
 
     # return zeros if timeseries contains nan values

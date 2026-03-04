@@ -6,7 +6,10 @@ __all__ = ["TimeStats", "SpaceStats", "GeneralStats", "Stats"]
 
 
 class Stats:
-    """Interface to access specialized statistics calculators for clusters: time, space, and general metrics."""
+    """Interface to access specialized statistics calculators for clusters: time, space, and general metrics.
+
+    Used when calling td.stats(var) explicitly; _StatsAccessor in core.py delegates here for td.stats.time etc.
+    """
 
     def __init__(self, toad, var):
         """Initialize the ClusterStats object.

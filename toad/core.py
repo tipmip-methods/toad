@@ -19,12 +19,51 @@ from toad import (
 from toad.clustering.optimizing import (
     default_opt_params,
 )
+from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
     detect_latlon_names,
     get_space_dims,
 )
+
+
+class _StatsAccessor:
+    """Callable accessor for Stats: use td.stats(var) for explicit var, or td.stats.time etc. for inferred var.
+
+    time/space/general delegate to Stats (postprocessing.stats) for inferred var; explicit properties needed for IDE autocomplete.
+    """
+
+    def __init__(self, td: "TOAD") -> None:
+        self._td = td
+
+    def __call__(self, var: str | None = None) -> postprocessing.Stats:
+        var = (
+            var
+            if var
+            else str(self._td.get_clusters(self._td._get_base_var_if_none(None)).name)
+        )
+        if self._td._is_shift_variable(var):
+            var = str(self._td.get_clusters(var).name)
+        return postprocessing.Stats(self._td, var)
+
+    @property
+    def time(self) -> TimeStats:
+        """Access time-related statistics for clusters (uses inferred variable)."""
+        return self(None).time
+
+    @property
+    def space(self) -> SpaceStats:
+        """Access space-related statistics for clusters (uses inferred variable)."""
+        return self(None).space
+
+    @property
+    def general(self) -> GeneralStats:
+        """Access general statistics for clusters (uses inferred variable)."""
+        return self(None).general
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self(None), name)
 
 
 class TOAD:
@@ -395,29 +434,21 @@ class TOAD:
         """Access preprocessing methods."""
         return preprocessing.Preprocess(self)
 
-    def stats(self, var: str | None = None) -> postprocessing.Stats:
+    @property
+    def stats(self) -> "_StatsAccessor":
         """Access statistics about clusters and their properties, such as time, space, and general metrics.
 
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
+        Use as a property when you have a single base variable (var is inferred):
+            >>> td.stats.time.start(cluster_id=0)
+
+        Call with a variable name when you have multiple base variables or need to specify:
+            >>> td.stats("temperature").time.start(cluster_id=0)
+            >>> td.stats(var="temperature").space.mean(cluster_id=0)
 
         Returns:
-            Stats object for analyzing cluster statistics.
-
-        Examples:
-            >>> td.stats(var="temperature").time.start(cluster_id=0)
-            >>> td.stats(var="temperature").space.mean(cluster_id=0)
-            >>> td.stats(var="temperature").general.score_heaviside(cluster_id=0)
+            StatsAccessor: callable for explicit var, or use .time/.space/.general for inferred var.
         """
-
-        # attempt to infer var
-        var = (
-            var
-            if var
-            else str(self.get_clusters(self._get_base_var_if_none(None)).name)
-        )
-        return postprocessing.Stats(self, var)
+        return _StatsAccessor(self)
 
     @property
     def aggregate(self) -> postprocessing.Aggregation:

@@ -762,6 +762,154 @@ class TOAD:
             if self._is_cluster_variable(x)
         ]
 
+    def remove_cluster(self, cluster_id: int, var: str | None = None):
+        """Remove a cluster from the dataset.
+
+        Args:
+            cluster_id: The cluster ID to remove.
+            var: The variable to remove the cluster from. If None, the cluster variable will be inferred automatically.
+        """
+        cluster_var_name = self.get_clusters(var).name
+        if cluster_var_name is None:
+            raise ValueError("Resolved cluster variable has no name.")
+        cluster_var = str(cluster_var_name)
+        original_attrs = dict(self.data[cluster_var].attrs)
+
+        # Remove cluster from cluster variable
+        self.data[cluster_var] = self.data[cluster_var].where(
+            self.data[cluster_var] != cluster_id
+        )
+
+        # Update cluster ids attribute
+        existing_ids = np.array(original_attrs.get(_attrs.CLUSTER_IDS, []))
+        new_ids = existing_ids[existing_ids != cluster_id]
+        updated_attrs = dict(original_attrs)
+        updated_attrs[_attrs.CLUSTER_IDS] = new_ids
+        self.data[cluster_var].attrs = updated_attrs
+
+    def sort_clusters(
+        self,
+        var: str | None = None,
+        *,
+        sort_by: Literal[
+            "size",
+            "footprint_cumulative_area",
+            "median_shift_magnitude",
+            "median_shift_time",
+            "start_shift_time",
+        ] = "size",
+        order: list[int] | None = None,
+    ):
+        """Sort cluster IDs by a given criterion (largest/earliest becomes ID 0).
+
+        Keeps NaN values unchanged and preserves noise label ``-1`` if present.
+        Useful after filtering/removing clusters to restore contiguous cluster IDs.
+
+        Args:
+            var: Base variable or cluster variable. If None, inferred automatically.
+            sort_by: Criterion for sorting when order is None. Options:
+                - "size" or "footprint_cumulative_area": by cluster cell count
+                  (largest first). Equivalent.
+                - "median_shift_magnitude": by median magnitude change (largest first).
+                - "median_shift_time": by median time of shifts (earliest first).
+                - "start_shift_time": by start time of cluster (earliest first).
+            order: Manual order: list of current cluster IDs in the order they should
+                become 0, 1, 2, ... When provided, sort_by is ignored. Must be a
+                permutation of existing cluster IDs (each ID exactly once).
+        """
+        var = self._get_base_var_if_none(var)
+        cluster_var = self.get_clusters(var).name
+        if cluster_var is None:
+            raise ValueError("Resolved cluster variable has no name.")
+        cluster_var = str(cluster_var)
+        original_attrs = dict(self.data[cluster_var].attrs)
+
+        cluster_ids = self.get_cluster_ids(var=str(cluster_var), exclude_noise=True)
+        if len(cluster_ids) == 0:
+            return
+
+        if order is not None:
+            cluster_ids_set = set(cluster_ids)
+            if set(order) != cluster_ids_set:
+                raise ValueError(
+                    "order must contain exactly the cluster IDs (each once). "
+                    f"Got {order}, expected permutation of {sorted(cluster_ids_set)}."
+                )
+            sorted_ids = list(order)
+        else:
+            if sort_by in ("size", "footprint_cumulative_area"):
+                sort_keys = {
+                    cid: self.stats(var).space.footprint_cumulative_area(cid)
+                    for cid in cluster_ids
+                }
+                reverse = True  # largest first
+            elif sort_by == "median_shift_magnitude":
+                base_var = self.data[cluster_var].attrs.get(_attrs.BASE_VARIABLE)
+                if base_var is None or base_var not in self.data:
+                    raise ValueError(
+                        f"sort_by='median_shift_magnitude' requires a base variable. "
+                        f"Cluster variable '{cluster_var}' has no BASE_VARIABLE attribute "
+                        "or the base variable is missing from the dataset."
+                    )
+                sort_keys = {
+                    cid: abs(
+                        self.stats(var).time.value_change(cid, aggregation="median")
+                    )
+                    for cid in cluster_ids
+                }
+                # Treat NaN as smallest (sorts last when reverse=True)
+                sort_keys = {
+                    k: (v if np.isfinite(v) else -np.inf) for k, v in sort_keys.items()
+                }
+                reverse = True  # largest magnitude first
+            elif sort_by == "median_shift_time":
+                ts = self.stats(var).time
+                sort_keys = {
+                    cid: float(np.median(ts._get_cluster_numeric_times(cid)))
+                    for cid in cluster_ids
+                }
+                reverse = False  # earliest first
+            elif sort_by == "start_shift_time":
+                ts = self.stats(var).time
+                sort_keys = {
+                    cid: float(np.min(ts._get_cluster_numeric_times(cid)))
+                    for cid in cluster_ids
+                }
+                reverse = False  # earliest first
+            else:
+                raise ValueError(
+                    "sort_by must be one of "
+                    "'size', 'footprint_cumulative_area', 'median_shift_magnitude', "
+                    "'median_shift_time', 'start_shift_time'"
+                )
+            sorted_ids = sorted(
+                sort_keys.keys(), key=lambda c: sort_keys[c], reverse=reverse
+            )
+        old_to_new = {old_id: new_id for new_id, old_id in enumerate(sorted_ids)}
+        cluster_da = self.data[cluster_var]
+
+        # Build result from the original data to avoid remapping collisions.
+        # TODO(dask): When dask support is added, the xr.where loop may need
+        # vectorised remapping to avoid a large computation graph; .item() below
+        # triggers eager compute for dask-backed arrays.
+        sorted_clusters = cluster_da.copy()
+        for old_id, new_id in old_to_new.items():
+            sorted_clusters = xr.where(
+                cluster_da == old_id, float(new_id), sorted_clusters
+            )
+
+        self.data[cluster_var] = sorted_clusters
+
+        # Update cluster ids metadata.
+        existing_ids = np.array(original_attrs.get(_attrs.CLUSTER_IDS, []))
+        new_ids = np.array(list(range(len(old_to_new))), dtype=int)
+        has_noise_label = bool((cluster_da == -1).any().item())
+        if (-1 in existing_ids) or has_noise_label:
+            new_ids = np.concatenate((np.array([-1], dtype=int), new_ids))
+        updated_attrs = dict(original_attrs)
+        updated_attrs[_attrs.CLUSTER_IDS] = np.unique(new_ids)
+        self.data[cluster_var].attrs = updated_attrs
+
     def drop_clusters(self):
         """
         Remove all cluster variables from the dataset.

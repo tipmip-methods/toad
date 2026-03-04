@@ -75,6 +75,56 @@ class TimeStats:
         """Return duration of the cluster in timesteps."""
         return int(self.end_timestep(cluster_id) - self.start_timestep(cluster_id))
 
+    def value_at_start(self, cluster_id, aggregation: str = "median") -> float:
+        """Return aggregated cluster value at the start timestep."""
+        ts = self.td.get_cluster_timeseries(
+            self.var, cluster_id=cluster_id, aggregation=aggregation
+        )
+        start = self.start_timestep(cluster_id)
+        return float(ts.isel({self.td.time_dim: start}))
+
+    def value_at_end(self, cluster_id, aggregation: str = "median") -> float:
+        """Return aggregated cluster value at the end timestep."""
+        ts = self.td.get_cluster_timeseries(
+            self.var, cluster_id=cluster_id, aggregation=aggregation
+        )
+        end = self.end_timestep(cluster_id)
+        return float(ts.isel({self.td.time_dim: end}))
+
+    def value_change(self, cluster_id, aggregation: str = "median") -> float:
+        """Return signed aggregated value change across full span (end - start)."""
+        return float(
+            self.value_at_end(cluster_id, aggregation=aggregation)
+            - self.value_at_start(cluster_id, aggregation=aggregation)
+        )
+
+    def value_at_iqr_90_start(self, cluster_id, aggregation: str = "median") -> float:
+        """Return aggregated cluster value at the lower iqr_90 bound."""
+        ts = self.td.get_cluster_timeseries(
+            self.var, cluster_id=cluster_id, aggregation=aggregation
+        )
+        start_idx, _ = self._iqr_timestep_bounds(cluster_id, 0.05, 0.95)
+        return float(ts.isel({self.td.time_dim: start_idx}))
+
+    def value_at_iqr_90_end(self, cluster_id, aggregation: str = "median") -> float:
+        """Return aggregated cluster value at the upper iqr_90 bound."""
+        ts = self.td.get_cluster_timeseries(
+            self.var, cluster_id=cluster_id, aggregation=aggregation
+        )
+        _, end_idx = self._iqr_timestep_bounds(cluster_id, 0.05, 0.95)
+        return float(ts.isel({self.td.time_dim: end_idx}))
+
+    def value_change_iqr_90(self, cluster_id, aggregation: str = "median") -> float:
+        """Return signed aggregated value change across iqr_90 bounds (upper - lower)."""
+        return float(
+            self.value_at_iqr_90_end(cluster_id, aggregation=aggregation)
+            - self.value_at_iqr_90_start(cluster_id, aggregation=aggregation)
+        )
+
+    def mean_shift_magnitude(self, cluster_id) -> float:
+        """Alias for value_change(aggregation="mean")."""
+        return self.value_change(cluster_id, aggregation="mean")
+
     def membership_peak(
         self, cluster_id
     ) -> Union[float, cftime.datetime, np.datetime64]:
@@ -187,30 +237,37 @@ class TimeStats:
         Returns:
             tuple: Start time and end time of the interquantile range in original time format
         """
-        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
-        cum_dist = ctd.cumsum()
-
-        # Find indices where quantiles are reached
-        lower_idx = np.where(cum_dist >= lower_quantile * cum_dist[-1])[0]
-        upper_idx = np.where(cum_dist >= upper_quantile * cum_dist[-1])[0]
+        lower_idx, upper_idx = self._iqr_timestep_bounds(
+            cluster_id, lower_quantile, upper_quantile
+        )
 
         # Get numeric time values at those indices
-        lower_numeric = (
-            float(self.td.numeric_time_values[lower_idx[0]])
-            if len(lower_idx) > 0
-            else np.nan
-        )
-        upper_numeric = (
-            float(self.td.numeric_time_values[upper_idx[0]])
-            if len(upper_idx) > 0
-            else np.nan
-        )
+        lower_numeric = float(self.td.numeric_time_values[lower_idx])
+        upper_numeric = float(self.td.numeric_time_values[upper_idx])
 
         # Convert back to original time format
         lower_original = self._return_time(lower_numeric)
         upper_original = self._return_time(upper_numeric)
 
         return (lower_original, upper_original)
+
+    def _iqr_timestep_bounds(
+        self, cluster_id, lower_quantile: float, upper_quantile: float
+    ) -> tuple[int, int]:
+        """Return lower and upper timestep indices for a cluster interquantile range."""
+        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        cum_dist = ctd.cumsum()
+
+        lower_idx = np.where(cum_dist >= lower_quantile * cum_dist[-1])[0]
+        upper_idx = np.where(cum_dist >= upper_quantile * cum_dist[-1])[0]
+
+        if len(lower_idx) == 0 or len(upper_idx) == 0:
+            raise ValueError(
+                f"Could not determine IQR bounds for cluster {cluster_id}. "
+                "Check cluster density and quantile settings."
+            )
+
+        return int(lower_idx[0]), int(upper_idx[0])
 
     def iqr_50(
         self, cluster_id
@@ -283,11 +340,19 @@ class TimeStats:
         """Return all cluster stats"""
         dict = {}
         for method_name in _all_functions(self):
-            if (
-                not method_name.startswith("all_stats")
-                and not method_name.startswith("_")
-                and len(inspect.signature(getattr(self, method_name)).parameters) == 1
-            ):
+            if method_name.startswith("all_stats") or method_name.startswith("_"):
+                continue
+            signature = inspect.signature(getattr(self, method_name))
+            parameters = list(signature.parameters.values())
+            if len(parameters) == 0:
+                continue
+            # Only include methods whose first argument is cluster_id and all other
+            # arguments are optional (have defaults), so we can call with cluster_id only.
+            has_cluster_id_first = parameters[0].name == "cluster_id"
+            has_only_optional_rest = all(
+                p.default is not inspect._empty for p in parameters[1:]
+            )
+            if has_cluster_id_first and has_only_optional_rest:
                 dict[method_name] = getattr(self, method_name)(cluster_id)
         return dict
 

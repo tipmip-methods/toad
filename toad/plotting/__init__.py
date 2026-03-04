@@ -497,6 +497,12 @@ class Plotter:
                 current_ax, plot_params
             )
 
+            # Z-order: each cluster gets fill and contour in same layer so later clusters
+            # correctly stack on top. Contour has higher default z-order than pcolormesh,
+            # so without this, Cluster 0's contour would appear above Cluster 5's fill.
+            base_z = 2 * i
+            plot_params["zorder"] = base_z
+
             if plot_fill:
                 # Don't plot values outside mask: FALSE -> np.nan
                 # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
@@ -521,6 +527,7 @@ class Plotter:
                     color_rgba[3],
                 )
                 plot_params["cmap"] = ListedColormap([darker_color])
+                plot_params["zorder"] = base_z + 1  # contour just above its own fill
 
                 mask.plot.contour(
                     levels=1,

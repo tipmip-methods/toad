@@ -395,11 +395,16 @@ class TimeStats:
         if cluster_ids is not None:
             mask = self.td.get_cluster_mask_spatial(self.var, cluster_ids)
             shifts = shifts.where(mask)
+            start = self.td.stats(self.var).time.start(cluster_ids)
+            end = self.td.stats(self.var).time.end(cluster_ids)
+            shifts = shifts.where(shifts[self.td.time_dim] >= start, 0.0)
+            shifts = shifts.where(shifts[self.td.time_dim] <= end, 0.0)
 
+        # TODO could this be made faster by replacing with argmax(shifts)?
         max_dts_mask = _compute_dts_peak_sign_mask(
             shifts,
             self.td.time_dim,
-            shift_selection="global",
+            shift_selection="global",  # use global to largest shift
             shift_threshold=shift_threshold,
         )
 

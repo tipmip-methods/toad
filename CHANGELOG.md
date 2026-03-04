@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Stats can now be accessed as a property (e.g. `td.stats.time.start(cluster_id=0)`) when using a single cluster variable
+- Function for removing specific clusters by id (useful for filtering clusters of no interest)
+- Function for sorting clusters (e.g. by magnitude, median shift time, or to reset indexing after removal)
+- New time stats: `value_at_start`, `value_at_end`, `value_change`, `value_at_iqr_90_start`/`value_at_iqr_90_end`, `value_change_iqr_90`
+
+### Fixed
+- More robust variable selection in consensus clustering (cluster variable is now specified directly instead of inferred from shifts)
+- `compute_transition_time` now restricted to cluster period (previously used largest shift in each grid cell regardless of period)
+- Z-order of contours in cluster maps (clusters now correctly layered)
+- Enhanced error handling in asdetect for short time series (validates `lmin` < `lmax` with guiding error message for common defaults)
+- Assert that all variables have the same dimensions (fixes inference from first base variable in `space_dims`)
+
 ## [1.0.5] - 2026-02-12
 
 ### Added

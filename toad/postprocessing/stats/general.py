@@ -470,27 +470,10 @@ class GeneralStats:
 
         if shift_var is not None:
             try:
-                # Compute transition time map (2D spatial array)
-                transition_time_map = self.td.stats(
-                    shift_var
-                ).time.compute_transition_time(shift_threshold=shift_threshold)
-
                 for cluster_id in cluster_ids:
-                    # Get spatial mask for this cluster (2D boolean mask)
-                    cluster_mask_2d = self.td.get_cluster_mask_spatial(
-                        self.var, cluster_id
+                    valid_times = self.td.get_cluster_times(
+                        cluster_ids=cluster_id, numeric=True
                     )
-
-                    # Extract transition times for this cluster
-                    cluster_transition_times = transition_time_map.where(
-                        cluster_mask_2d
-                    ).values
-
-                    # Filter out NaN values
-                    valid_times = cluster_transition_times[
-                        np.isfinite(cluster_transition_times)
-                    ]
-
                     if len(valid_times) > 0:
                         mean_shift_times.append(float(np.mean(valid_times)))
                         std_shift_times.append(float(np.std(valid_times)))

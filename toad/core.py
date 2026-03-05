@@ -117,16 +117,17 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level)
 
-        # Check that all variables have the same dimensions
-        dims = [self.data[var].dims for var in self.data.data_vars]
-        if len(set(dims)) > 1:
-            dims_info = "\n".join(
-                f"{var}: {self.data[var].dims}" for var in self.data.data_vars
-            )
-            raise ValueError(
-                "All variables must have the same dimensions. Consider dropping variables not needed in TOAD.\n"
-                f"Dimensions for each variable:\n{dims_info}"
-            )
+        # Check that all base vars have the same dimensions
+        if len(self.base_vars) >= 2:
+            dims = [tuple(self.data[var].dims) for var in self.base_vars]
+            if len(set(dims)) > 1:
+                dims_info = "\n".join(
+                    f"{var}: {self.data[var].dims}" for var in self.base_vars
+                )
+                raise ValueError(
+                    "All base variables must have the same dimensions.\n"
+                    f"Dimensions for each base variable:\n{dims_info}"
+                )
 
         # rename longitude and latitude to lon and lat
         if "longitude" in self.data.dims:
@@ -523,25 +524,31 @@ class TOAD:
 
     @property
     def space_dims(self):
-        return get_space_dims(self.data, self.time_dim)
+        # Prefer base vars, then shift, then cluster (base_vars excludes consensus types)
+        prefer = self.base_vars or self.shift_vars or self.cluster_vars
+        return get_space_dims(self.data, self.time_dim, prefer_vars=prefer or None)
 
     @property
     def base_vars(self) -> list[str]:
         """Gets the list of base variables in the dataset.
 
-        Base variables are those that have not been derived from shift detection or
-            clustering. A variable is considered a base variable if either:
-                1. It has no 'variable_type' attribute, or
-                2. Its 'variable_type' is neither 'shift' nor 'cluster'
+        Base variables are those that have not been derived from shift detection,
+        clustering, or consensus clustering. Excludes: shift, cluster, consensus_cluster,
+        consensus_consistency.
 
         Returns:
             A list of strings containing the base variable names in the dataset.
         """
+        exclude = [
+            _attrs.TYPE_SHIFT,
+            _attrs.TYPE_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CONSISTENCY,
+        ]
         return [
             str(x)
             for x in list(self.data.data_vars.keys())
-            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
-            not in [_attrs.TYPE_SHIFT, _attrs.TYPE_CLUSTER]
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE) not in exclude
         ]
 
     @property
@@ -575,6 +582,31 @@ class TOAD:
             str(x)
             for x in list(self.data.data_vars.keys())
             if self._is_cluster_variable(x)
+        ]
+
+    @property
+    def consensus_cluster_vars(self) -> list[str]:
+        """Get the list of consensus cluster variables in the dataset.
+
+        Consensus cluster variables are derived from one or more cluster variables via
+        aggregation. They are 2D (spatial only) and do not fit in the base→shift→cluster
+        hierarchy.
+        """
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
+            == _attrs.TYPE_CONSENSUS_CLUSTER
+        ]
+
+    @property
+    def consensus_consistency_vars(self) -> list[str]:
+        """Get the list of consensus consistency variables (derived from consensus cluster)."""
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
+            == _attrs.TYPE_CONSENSUS_CONSISTENCY
         ]
 
     def remove_cluster(self, cluster_id: int, var: str | None = None):
@@ -1113,7 +1145,9 @@ class TOAD:
             >>> plt.hist(times, bins=50)
         """
         var = self._get_base_var_if_none(cluster_var)
-        in_cluster = self.get_clusters(var) != -1
+        clusters = self.get_clusters(var)
+        # Must exclude NaN: (clusters != -1) is True for NaN, but NaN = not a peak
+        in_cluster = (clusters != -1) & clusters.notnull()
         combined_mask = region_mask.broadcast_like(in_cluster) & in_cluster
         return self.get_times_where(combined_mask, numeric=numeric)
 

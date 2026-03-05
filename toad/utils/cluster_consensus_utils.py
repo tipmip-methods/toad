@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Tuple
 
 import numpy as np
@@ -6,8 +7,214 @@ import xarray as xr
 from scipy.sparse import coo_matrix
 from sklearn.neighbors import NearestNeighbors
 
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
+
+from tqdm import tqdm
+
+from toad.clustering import sorted_cluster_labels
 from toad.regridding.base import BaseRegridder
 from toad.regridding.healpix import HealPixRegridder
+
+
+@dataclass
+class _EdgeCollectionContext:
+    """Context for consensus edge collection. Built once, passed to _collect_consensus_edges."""
+
+    spatial_dims: Tuple[str, str]
+    y_len: int
+    x_len: int
+    flat_idx_2d: np.ndarray
+    regrid_enabled: bool
+    use_knn: bool
+    neighbor_connectivity: int
+    top_n_clusters: int | None
+    show_progress: bool
+    # For regrid case
+    hp_index_flat: np.ndarray | None = None
+    N_hp: int = 0
+    mask_hp: np.ndarray | None = None
+    valid_hp: np.ndarray | None = None
+    knn_rows: np.ndarray | None = None
+    knn_cols: np.ndarray | None = None
+    # For non-regrid case
+    present_mask2d: np.ndarray | None = None
+
+
+def _collect_consensus_edges(
+    td,
+    cluster_vars: list[str],
+    ctx: _EdgeCollectionContext,
+) -> tuple[list[int], list[int], list[int], list[int]]:
+    """Collect vote and availability edges from all cluster variables.
+
+    Returns:
+        Tuple of (rows_V, cols_V, rows_A, cols_A) for weighted consensus.
+    """
+    rows_V, cols_V = [], []
+    rows_A, cols_A = [], []
+
+    for cvar in tqdm(cluster_vars, disable=not ctx.show_progress):
+        unique_ids = td.get_cluster_ids(cvar)
+        if unique_ids.size == 0:
+            continue
+        if ctx.top_n_clusters is not None and ctx.top_n_clusters > 0:
+            unique_ids = unique_ids[: ctx.top_n_clusters]
+
+        if ctx.regrid_enabled:
+            assert ctx.mask_hp is not None and ctx.valid_hp is not None
+            assert (
+                ctx.hp_index_flat is not None
+                and ctx.knn_rows is not None
+                and ctx.knn_cols is not None
+            )
+            labels3d = td.data[cvar].values
+            labels_2d = np.logical_or.reduce(
+                [(labels3d == cid).any(axis=0) for cid in unique_ids]
+            )
+            ctx.mask_hp.fill(False)
+            ctx.mask_hp[np.unique(ctx.hp_index_flat[labels_2d.ravel()])] = True
+            rA, cA = _knn_edges_from_mask(ctx.valid_hp, ctx.knn_rows, ctx.knn_cols)
+            rows_A.extend(rA)
+            cols_A.extend(cA)
+            rV, cV = _knn_edges_from_mask(ctx.mask_hp, ctx.knn_rows, ctx.knn_cols)
+            rows_V.extend(rV)
+            cols_V.extend(cV)
+        else:
+            labels = td.data[cvar].values
+            map_edges_V: set[tuple[int, int]] = set()
+            for cid in unique_ids:
+                mask2d = (labels == cid).any(axis=0)
+                if ctx.use_knn:
+                    assert ctx.knn_rows is not None and ctx.knn_cols is not None
+                    mask_flat = mask2d.ravel()
+                    both_true = mask_flat[ctx.knn_rows] & mask_flat[ctx.knn_cols]
+                    for i, j in zip(ctx.knn_rows[both_true], ctx.knn_cols[both_true]):
+                        map_edges_V.add((int(i), int(j)))
+                else:
+                    _add_adjacent_true_pairs(
+                        mask2d,
+                        map_edges_V,
+                        ctx.flat_idx_2d,
+                        ctx.neighbor_connectivity == 8,
+                    )
+            if map_edges_V:
+                r, c = zip(*map_edges_V)
+                rows_V.extend(r)
+                cols_V.extend(c)
+            assert ctx.present_mask2d is not None
+            rA, cA = (
+                _knn_edges_from_mask(
+                    ctx.present_mask2d.ravel(), ctx.knn_rows, ctx.knn_cols
+                )
+                if ctx.use_knn
+                else _native_edges_from_mask(
+                    ctx.present_mask2d, ctx.flat_idx_2d, ctx.neighbor_connectivity == 8
+                )
+            )
+            rows_A.extend(rA)
+            cols_A.extend(cA)
+
+    return rows_V, cols_V, rows_A, cols_A
+
+
+def _graph_to_labels_and_consistency(
+    W: csr_matrix,
+    ever_clustered: np.ndarray,
+    y_len: int,
+    x_len: int,
+    min_cluster_size: int,
+    regrid_enabled: bool,
+    hp_index_flat: np.ndarray | None,
+    lat_shape: tuple[int, ...] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert weighted consensus graph to labels_2d and consistency arrays."""
+    node_sum = np.array(W.sum(axis=1)).ravel()
+    node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
+    consistency_hp = np.divide(
+        node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
+    )
+
+    if regrid_enabled and hp_index_flat is not None and lat_shape is not None:
+        consistency = consistency_hp[hp_index_flat].reshape(lat_shape)
+    else:
+        consistency = consistency_hp.reshape((y_len, x_len))
+
+    bin_adj = W.copy()
+    bin_adj.data[:] = 1.0
+    bin_adj = bin_adj.maximum(bin_adj.T)
+    _, labels_flat = connected_components(bin_adj, directed=False, return_labels=True)
+
+    if regrid_enabled and hp_index_flat is not None and lat_shape is not None:
+        labels_flat_orig = labels_flat[hp_index_flat]
+        labels_2d = labels_flat_orig.reshape(lat_shape)
+        deg_hp = np.array(bin_adj.getnnz(axis=1))
+        deg_orig = deg_hp[hp_index_flat]
+        deg_2d = deg_orig.reshape(lat_shape)
+        labels_2d[deg_2d == 0] = -1
+    else:
+        labels_2d = labels_flat.reshape((y_len, x_len))
+        deg = np.array(bin_adj.getnnz(axis=1)).reshape((y_len, x_len))
+        labels_2d[deg == 0] = -1
+
+    labels_2d = sorted_cluster_labels(labels_2d.flatten()).reshape(labels_2d.shape)
+
+    if min_cluster_size > 1:
+        flat = labels_2d.flatten()
+        valid_mask = (flat >= 0) & np.isfinite(flat)
+        for cid in np.unique(flat[valid_mask]):
+            if np.sum(flat == cid) < min_cluster_size:
+                flat[flat == cid] = -1
+        labels_2d = flat.reshape(labels_2d.shape)
+        labels_2d = sorted_cluster_labels(labels_2d.flatten()).reshape(labels_2d.shape)
+
+    labels_2d = labels_2d.astype(np.float32)
+    labels_2d[~ever_clustered] = np.nan
+    consistency[~ever_clustered] = np.nan
+
+    return labels_2d, consistency
+
+
+def _create_consensus_output_arrays(
+    labels_2d: np.ndarray,
+    consistency: np.ndarray,
+    coords_spatial: dict,
+    spatial_dims: Tuple[str, str],
+    shared_attrs: dict,
+    cluster_name: str = "consensus_clusters",
+    consistency_name: str = "consensus_consistency",
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Create consensus cluster and consistency DataArrays with proper attributes."""
+    from toad.utils import _attrs
+
+    da_consensus_labels = xr.DataArray(
+        labels_2d,
+        coords=coords_spatial,
+        dims=list(spatial_dims),
+        name=cluster_name,
+    )
+    da_consistency = xr.DataArray(
+        consistency,
+        coords=coords_spatial,
+        dims=list(spatial_dims),
+        name=consistency_name,
+    )
+    da_consensus_labels.attrs.update(
+        {
+            **shared_attrs,
+            "description": "Spatial consensus clusters (time-collapsed).",
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CLUSTER,
+        }
+    )
+    da_consensus_labels.attrs[_attrs.CONSENSUS_CONSISTENCY_VARIABLE] = consistency_name
+    da_consistency.attrs.update(
+        {
+            **shared_attrs,
+            "description": "Consitency scores for each grid cell.",
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CONSISTENCY,
+        }
+    )
+    return da_consensus_labels, da_consistency
 
 
 def _add_adjacent_true_pairs(
@@ -190,51 +397,6 @@ def _build_knn_edges_from_regridder(
     return knn_rows, knn_cols, hp_index_flat
 
 
-def _build_empty_consensus_summary_df(
-    td,
-    y_len: int,
-    x_len: int,
-    coords_spatial: dict,
-    spatial_dims: Tuple[str, str],
-) -> Tuple[xr.Dataset, pd.DataFrame]:
-    """Construct empty consensus outputs (all noise, zero consistency).
-
-    Used for early returns when no edges or surviving edges exist.
-
-    Args:
-        td: TOAD object containing clustering results.
-        y_len: Length of first spatial dimension.
-        x_len: Length of second spatial dimension.
-        coords_spatial: Dictionary of spatial coordinates.
-        spatial_dims: Tuple of spatial dimension names.
-
-    Returns:
-        Tuple of (Dataset, DataFrame) with empty consensus results (all pixels marked as noise).
-    """
-    da_consensus_labels = xr.DataArray(
-        np.full((y_len, x_len), -1, dtype=np.int32),
-        coords=coords_spatial,
-        dims=spatial_dims,
-        name="clusters",
-    )
-    da_consistency = xr.DataArray(
-        np.full((y_len, x_len), 0, dtype=np.float32),
-        coords=coords_spatial,
-        dims=spatial_dims,
-        name="consistency",
-    )
-    ds_out = xr.Dataset(
-        {
-            "clusters": da_consensus_labels,
-            "consistency": da_consistency,
-        }
-    )
-    summary_df = _build_consensus_summary_df(
-        td, da_consensus_labels, da_consistency, spatial_dims
-    )
-    return ds_out, summary_df
-
-
 def _build_consensus_summary_df(
     td,
     labels2d: xr.DataArray,
@@ -245,7 +407,9 @@ def _build_consensus_summary_df(
 
     Args:
         td: TOAD object containing clustering results.
-        labels2d: 2D DataArray of consensus cluster labels (-1 for noise).
+        labels2d: 2D DataArray of consensus cluster labels. NaN = no abrupt shifts
+            detected in any input; -1 = shifts detected but not in consensus cluster;
+            values >= 0 = cluster membership.
         consistency2d: 2D DataArray of consensus consistency scores.
         spatial_dims: Tuple of spatial dimension names.
 
@@ -255,9 +419,11 @@ def _build_consensus_summary_df(
     """
     sd0, sd1 = spatial_dims
     dim = labels2d.name if labels2d.name else "cluster"
-    cluster_map = labels2d.where(labels2d != -1)
+    cluster_map = labels2d.where((labels2d >= 0) & labels2d.notnull())
 
-    if np.all(labels2d.values == -1):
+    valid_labels = labels2d.values
+    has_any_cluster = np.any((valid_labels >= 0) & ~np.isnan(valid_labels))
+    if not has_any_cluster:
         cols = [
             "mean_consistency",
             "size",
@@ -321,9 +487,7 @@ def _build_consensus_summary_df(
                 )
                 if len(times) > 0:
                     means_per_var.append(np.nanmean(times))
-                    stds_per_var.append(
-                        np.nanstd(times) if len(times) > 1 else 0.0
-                    )
+                    stds_per_var.append(np.nanstd(times) if len(times) > 1 else 0.0)
 
             valid_means = [m for m in means_per_var if np.isfinite(m)]
             valid_stds = [s for s in stds_per_var if np.isfinite(s)]

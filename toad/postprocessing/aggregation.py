@@ -1,30 +1,26 @@
 import logging
 from itertools import combinations
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 # from scipy.sparse import coo_matrix  # only used in utils helpers
-from scipy.sparse.csgraph import connected_components
-from tqdm import tqdm
+from toad._version import __version__
 
 # from sklearn.neighbors import NearestNeighbors  # unused here; kept in utils
-from toad.clustering import sorted_cluster_labels
 from toad.regridding.healpix import HealPixRegridder
-
-# from toad.regridding.healpix import HealPixRegridder  # unused here; used in utils
-from toad.utils import get_latlon_info, get_unique_variable_name
+from toad.utils import _attrs, get_latlon_info, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
-    _add_adjacent_true_pairs,
     _build_consensus_summary_df,
-    _build_empty_consensus_summary_df,
     _build_knn_edges_from_latlon,
     _build_knn_edges_from_regridder,
+    _collect_consensus_edges,
     _compute_weighted_consensus,
-    _knn_edges_from_mask,
-    _native_edges_from_mask,
+    _create_consensus_output_arrays,
+    _EdgeCollectionContext,
+    _graph_to_labels_and_consistency,
 )
 
 logger = logging.getLogger("TOAD")
@@ -192,12 +188,14 @@ class Aggregation:
         self,
         cluster_vars: List[str] | None = None,
         min_consensus: float = 0.75,
+        min_cluster_size: int = 5,
         top_n_clusters: int | None = None,
         neighbor_connectivity: int = 8,
         regridder: HealPixRegridder | None = None,
         k_neighbors: int = 8,
         show_progress: bool = True,
-    ) -> Tuple[xr.Dataset, pd.DataFrame]:
+        overwrite: bool = False,
+    ) -> pd.DataFrame:
         """Build a spatial consensus clustering from multiple clustering results.
 
         Implements a consensus aggregation method closely related to evidence accumulation clustering (EAC)
@@ -214,6 +212,8 @@ class Aggregation:
             min_consensus: Minimum fraction (in [0,1]) of clusterings that must support an edge
                 (pixel adjacency) for it to be included in the consensus graph. Higher values =
                 stricter consensus. Default: 0.5.
+            min_cluster_size: Minimum number of grid cells for a consensus cluster to be retained.
+                Clusters smaller than this are relabelled to -1 (noise). Default: 5.
             top_n_clusters: If set, only top N largest clusters (per clustering) are used when
                 voting for edges. If None, all clusters are included. Default: None.
             neighbor_connectivity: Neighborhood connectivity for spatial adjacency when lat/lon
@@ -231,14 +231,19 @@ class Aggregation:
                 selective. Default: 8. For very high-resolution grids, consider increasing to
                 12-16; for coarse grids, 4-6 may suffice.
             show_progress: Whether to show the progress bar. Default: True.
+            overwrite: If True and output variables already exist, replace them. If False,
+                unique names (e.g. consensus_clusters_1, consensus_consistency_1) are used. Default: False.
 
         Returns:
-            Tuple[xr.Dataset, pd.DataFrame]: A tuple containing:
+            pd.DataFrame: Summary statistics for each consensus cluster (cluster_id,
+            mean_consistency, size, etc.). The consensus ``consensus_clusters`` and
+            ``consensus_consistency`` variables are merged in-place into ``td.data``.
 
-            Dataset with two variables:
-                - ``clusters`` (int32, shape (y, x)): Consensus cluster/component labels.
-                  Values >= 0 indicate cluster membership; -1 indicates noise/unassigned.
-                - ``consistency`` (float32, shape (y, x)): Local mean of co-association edge
+            The merged Dataset has two new variables:
+                - ``consensus_clusters`` (float32, shape (y, x)): Consensus cluster/component labels.
+                  NaN = no abrupt shifts detected in any input clustering; -1 = shifts
+                  detected but not in any consensus cluster; values >= 0 = cluster membership.
+                - ``consensus_consistency`` (float32, shape (y, x)): Local mean of co-association edge
                   weights around each pixel, reflecting neighborhood agreement across input
                   cluster maps.
 
@@ -273,7 +278,8 @@ class Aggregation:
                labeling.
             7. Relabel clusters in order of descending size for interpretability; assign -1 to
                isolated (noise) pixels.
-            8. Compute, for each pixel, the mean strength (consistency) of its incident consensus
+            8. Demote clusters smaller than min_cluster_size to -1 (noise).
+            9. Compute, for each pixel, the mean strength (consistency) of its incident consensus
                edges.
 
             Additional implementation details:
@@ -293,10 +299,10 @@ class Aggregation:
             * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
 
         Example:
-            >>> ds, summary_df = td.aggregate.cluster_consensus(
+            >>> summary_df = td.aggregate.cluster_consensus(
             ...     cluster_vars=['clust_a', 'clust_b'], min_consensus=0.7
             ... )
-            >>> ds.clusters.plot()  # Visualize consensus clusters
+            >>> td.data.consensus_clusters.plot()  # Visualize consensus clusters
             >>> summary_df.head()  # View cluster statistics
 
         Raises:
@@ -317,6 +323,10 @@ class Aggregation:
         if neighbor_connectivity not in (4, 8):
             raise ValueError(
                 f"`neighbor_connectivity` must be 4 or 8, but got {neighbor_connectivity}."
+            )
+        if min_cluster_size < 1:
+            raise ValueError(
+                f"`min_cluster_size` must be >= 1, but got {min_cluster_size}."
             )
 
         # Get dimensions from first clustering
@@ -348,6 +358,14 @@ class Aggregation:
 
         # Recast naming for readability
         regrid_enabled = is_latlon_dims
+
+        # Build mask of grid cells that were ever in any cluster (label >= 0) in any
+        # input clustering. Used to differentiate: NaN = no abrupt shifts detected;
+        # -1 = shifts detected but not in consensus cluster (matches regular clustering).
+        ever_clustered = np.zeros((y_len, x_len), dtype=bool)
+        for cvar in cluster_vars:
+            labels = self.td.data[cvar].values  # (T, Y, X)
+            ever_clustered |= (labels >= 0).any(axis=0)
 
         # Initialize variables that may be conditionally defined (for type checking)
         lat: np.ndarray | None = None
@@ -401,121 +419,33 @@ class Aggregation:
             mask_hp = np.zeros(N_hp, dtype=bool)
             valid_hp = np.ones(N_hp, dtype=bool)
         else:
-            # Preallocate availability mask for non-regrid case (same shape every iteration)
             present_mask2d = np.ones((y_len, x_len), dtype=bool)
 
-        # Process each clustering
-        for cvar in tqdm(cluster_vars, disable=not show_progress):
-            # Get cluster IDs, optionally filter to top N largest (shared logic)
-            unique_ids = self.td.get_cluster_ids(cvar)
-            if unique_ids.size == 0:
-                continue
-            if top_n_clusters is not None and top_n_clusters > 0:
-                unique_ids = unique_ids[:top_n_clusters]
+        ctx = _EdgeCollectionContext(
+            spatial_dims=tuple(spatial_dims),
+            y_len=y_len,
+            x_len=x_len,
+            flat_idx_2d=flat_idx_2d,
+            regrid_enabled=regrid_enabled,
+            use_knn=use_knn,
+            neighbor_connectivity=neighbor_connectivity,
+            top_n_clusters=top_n_clusters,
+            show_progress=show_progress,
+            hp_index_flat=hp_index_flat,
+            N_hp=N_hp,
+            mask_hp=mask_hp if regrid_enabled else None,
+            valid_hp=valid_hp if regrid_enabled else None,
+            knn_rows=knn_rows,
+            knn_cols=knn_cols,
+            present_mask2d=present_mask2d if not regrid_enabled else None,
+        )
+        rows_V, cols_V, rows_A, cols_A = _collect_consensus_edges(
+            self.td, cluster_vars, ctx
+        )
 
-            if regrid_enabled:
-                assert mask_hp is not None, (
-                    "mask_hp must be set when regrid_enabled is True"
-                )
-                assert valid_hp is not None, (
-                    "valid_hp must be set when regrid_enabled is True"
-                )
-                assert hp_index_flat is not None, (
-                    "hp_index_flat must be set when regrid_enabled is True"
-                )
-                assert knn_rows is not None, (
-                    "knn_rows must be set when regrid_enabled is True"
-                )
-                assert knn_cols is not None, (
-                    "knn_cols must be set when regrid_enabled is True"
-                )
-                labels3d = self.td.data[cvar].values  # (T, Y, X)
-
-                # Build 2D mask: pixels in any of the selected clusters at any time
-                labels_2d = np.logical_or.reduce(
-                    [(labels3d == cid).any(axis=0) for cid in unique_ids]
-                )  # (Y,X), boolean
-
-                # Convert mask to HealPix indexing
-                # hp_index_flat maps original pixels → HealPix pixels
-                # Reuse preallocated mask, fill with False for this iteration
-                mask_hp.fill(False)
-                mask_hp[np.unique(hp_index_flat[labels_2d.ravel()])] = True
-
-                # Availability: all HP pixels valid (same every iteration)
-                rA, cA = _knn_edges_from_mask(valid_hp, knn_rows, knn_cols)
-                rows_A.extend(rA)
-                cols_A.extend(cA)
-
-                # Votes: both endpoints in footprint
-                rV, cV = _knn_edges_from_mask(mask_hp, knn_rows, knn_cols)
-                rows_V.extend(rV)
-                cols_V.extend(cV)
-            else:
-                labels = self.td.data[cvar].values  # (T, Y, X)
-
-                # Per-map deduplication of edges (votes)
-                map_edges_V: set[tuple[int, int]] = set()
-
-                # build adjacency edges for each cluster footprint (votes)
-                for cid in unique_ids:
-                    mask2d = (labels == cid).any(axis=0)  # (Y, X)
-
-                    if use_knn:
-                        assert knn_rows is not None, (
-                            "knn_rows must be set when use_knn is True"
-                        )
-                        assert knn_cols is not None, (
-                            "knn_cols must be set when use_knn is True"
-                        )
-                        # cluster footprint mask (reuse mask2d computation)
-                        mask_flat = mask2d.ravel()
-                        both_true = mask_flat[knn_rows] & mask_flat[knn_cols]
-                        for i, j in zip(knn_rows[both_true], knn_cols[both_true]):
-                            map_edges_V.add((int(i), int(j)))
-                    else:
-                        _add_adjacent_true_pairs(
-                            mask2d,
-                            map_edges_V,
-                            flat_idx_2d,
-                            neighbor_connectivity == 8,
-                        )
-
-                if map_edges_V:
-                    r, c = zip(*map_edges_V)
-                    rows_V.extend(r)
-                    cols_V.extend(c)
-
-                # Availability per map (all pixels valid → all adjacency edges)
-                # present_mask2d preallocated before loop since it's the same every iteration
-                if use_knn:
-                    assert present_mask2d is not None, (
-                        "present_mask2d must be set when not regrid_enabled"
-                    )
-                    assert knn_rows is not None, (
-                        "knn_rows must be set when use_knn is True"
-                    )
-                    assert knn_cols is not None, (
-                        "knn_cols must be set when use_knn is True"
-                    )
-                    rA, cA = _knn_edges_from_mask(
-                        present_mask2d.ravel(), knn_rows, knn_cols
-                    )
-                else:
-                    assert present_mask2d is not None, (
-                        "present_mask2d must be set when not regrid_enabled"
-                    )
-                    rA, cA = _native_edges_from_mask(
-                        present_mask2d, flat_idx_2d, neighbor_connectivity == 8
-                    )
-                rows_A.extend(rA)
-                cols_A.extend(cA)
-
-        # If no edges found, return all cells as noise
+        # If no edges found, return empty summary without modifying td.data
         if len(rows_V) == 0:
-            return _build_empty_consensus_summary_df(
-                self.td, y_len, x_len, coords_spatial, spatial_dims
-            )
+            return pd.DataFrame()
 
         # Build weighted consensus
         if regrid_enabled:
@@ -527,97 +457,85 @@ class Aggregation:
             rows_V, cols_V, rows_A, cols_A, shape, min_consensus
         )
 
-        # If no edges remain after thresholding, return all noise
+        # If no edges remain after thresholding, return empty summary without modifying td.data
         if W.nnz == 0:
-            return _build_empty_consensus_summary_df(
-                self.td, y_len, x_len, coords_spatial, spatial_dims
-            )
+            return pd.DataFrame()
 
-        # Compute per-node average edge weight
-        node_sum = np.array(W.sum(axis=1)).ravel()
-        node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
-
-        if regrid_enabled:
-            assert hp_index_flat is not None, (
-                "hp_index_flat must be set when regrid_enabled is True"
-            )
-            assert lat is not None, "lat must be set when regrid_enabled is True"
-            consistency_hp = np.divide(
-                node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
-            )
-
-            # map back to original grid
-            consistency_orig = consistency_hp[hp_index_flat]  # shape: (N_orig,)
-            consistency = consistency_orig.reshape(lat.shape)  # shape: (Y, X)
-        else:
-            consistency = np.divide(
-                node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
-            ).reshape((y_len, x_len))
-
-        # Find connected components in thresholded graph
-        bin_adj = W.copy()
-        bin_adj.data[:] = 1.0
-        bin_adj = bin_adj.maximum(bin_adj.T)
-        _, labels_flat = connected_components(
-            bin_adj, directed=False, return_labels=True
+        labels_2d, consistency = _graph_to_labels_and_consistency(
+            W,
+            ever_clustered,
+            y_len,
+            x_len,
+            min_cluster_size,
+            regrid_enabled,
+            hp_index_flat,
+            lat.shape if (regrid_enabled and lat is not None) else None,
         )
 
-        # Reshape labels back to 2D and mark isolated points as noise
-        if regrid_enabled:
-            assert hp_index_flat is not None, (
-                "hp_index_flat must be set when regrid_enabled is True"
+        # Get unique variable names for clusters and consistency
+        cluster_label = "consensus_clusters"
+        consistency_label = "consensus_consistency"
+        if not overwrite:
+            cluster_label = get_unique_variable_name(
+                cluster_label, self.td.data, self.td.logger
             )
-            assert lat is not None, "lat must be set when regrid_enabled is True"
-            labels_flat_orig = labels_flat[hp_index_flat]  # shape (N,)
-            labels_2d = labels_flat_orig.reshape(lat.shape)  # restored (Y,X)
-            deg_hp = np.array(bin_adj.getnnz(axis=1))
-            deg_orig = deg_hp[hp_index_flat]
-            deg_2d = deg_orig.reshape(lat.shape)
-            labels_2d[deg_2d == 0] = -1
-        else:
-            labels_2d = labels_flat.reshape((y_len, x_len))
-            deg = np.array(bin_adj.getnnz(axis=1)).reshape((y_len, x_len))
-            labels_2d[deg == 0] = -1
+            consistency_label = get_unique_variable_name(
+                consistency_label, self.td.data, self.td.logger
+            )
+        elif overwrite:
+            if cluster_label in self.td.data:
+                self.td.data = self.td.data.drop_vars(cluster_label)
+            if consistency_label in self.td.data:
+                self.td.data = self.td.data.drop_vars(consistency_label)
 
-        # Sort cluster labels by size
-        labels_2d = sorted_cluster_labels(labels_2d.flatten()).reshape(labels_2d.shape)
-
-        # Create output DataArrays
-        da_consensus_labels = xr.DataArray(
+        shared_attrs = {
+            "cluster_vars": cluster_vars,
+            "min_consensus": min_consensus,
+            "min_cluster_size": min_cluster_size,
+            "top_n_clusters": top_n_clusters,
+            "neighbor_connectivity": neighbor_connectivity,
+            "k_neighbors": k_neighbors,
+            _attrs.TIME_DIM: self.td.time_dim,
+            _attrs.METHOD_NAME: "cluster_consensus",
+            _attrs.TOAD_VERSION: __version__,
+        }
+        da_consensus_labels, da_consistency = _create_consensus_output_arrays(
             labels_2d,
-            coords=coords_spatial,
-            dims=spatial_dims,
-            name="clusters",
-        )
-        da_consensus_labels.attrs.update(
-            {
-                "cluster_vars": cluster_vars,
-                "min_consensus": min_consensus,
-                "top_n_clusters": top_n_clusters,
-                "neighbor_connectivity": neighbor_connectivity,
-                "k_neighbors": k_neighbors,
-                "description": "Spatial consensus clusters (time-collapsed).",
-            }
-        )
-
-        da_consistency = xr.DataArray(
             consistency,
-            coords=coords_spatial,
-            dims=spatial_dims,
-            name="consistency",
-        )
-
-        ds_out = xr.Dataset(
-            {
-                "clusters": da_consensus_labels,
-                "consistency": da_consistency,
-            }
+            coords_spatial,
+            spatial_dims,
+            shared_attrs,
+            cluster_name=cluster_label,
+            consistency_name=consistency_label,
         )
 
         summary_df = _build_consensus_summary_df(
             self.td, da_consensus_labels, da_consistency, spatial_dims
         )
-        return ds_out, summary_df
+
+        # Log and merge
+        unique_ids = np.unique(labels_2d[(labels_2d >= 0) & np.isfinite(labels_2d)])
+        n_clusters = len(unique_ids)
+        n_noise = int(np.sum(labels_2d == -1))
+        n_nan = int(np.sum(np.isnan(labels_2d)))
+        valid_cons = np.isfinite(consistency)
+        c_min = float(consistency[valid_cons].min()) if valid_cons.any() else np.nan
+        c_mean = float(consistency[valid_cons].mean()) if valid_cons.any() else np.nan
+        c_max = float(consistency[valid_cons].max()) if valid_cons.any() else np.nan
+
+        self.td.logger.info(
+            f"New consensus variable \033[1m{cluster_label}\033[0m: {n_clusters} clusters, "
+            f"{n_noise} noise, {n_nan} NaN. Consistency \033[1m{consistency_label}\033[0m: "
+            f"min/mean/max={c_min:.3f}/{c_mean:.3f}/{c_max:.3f}"
+        )
+
+        self.td.data = xr.merge(
+            [self.td.data, da_consensus_labels, da_consistency],
+            combine_attrs="override",
+            compat="override",
+        )
+
+        return summary_df
 
 
 def jaccard_similarity(set_a, set_b):

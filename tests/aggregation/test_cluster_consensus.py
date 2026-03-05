@@ -43,14 +43,14 @@ def setup_regular_latlon_grid():
 @pytest.mark.parametrize(
     "setup_func,time_weights,expected_min_clusters,expected_max_clusters,expected_mean_shift_time,time_tolerance",
     [
-            (
-                setup_irregular_grid,
-                [0.5, 1.0, 1.5, 2.0],
-                7,  # min clusters
-                9,  # max clusters
-                1925.0,  # Mean of all times when in cluster (differs from peak transition time)
-                5.0,  # tolerance in years
-            ),
+        (
+            setup_irregular_grid,
+            [0.5, 1.0, 1.5, 2.0],
+            4,  # min clusters (with min_cluster_size=5, small clusters demoted to -1)
+            7,  # max clusters
+            1890.0,  # Mean of peak times when in cluster (excludes NaN; was 1925 with bug)
+            5.0,  # tolerance in years
+        ),
         (
             setup_native_grid,
             [0.25, 0.5, 1.0, 1.5],
@@ -126,27 +126,30 @@ def test_cluster_consensus(
         f"Expected {len(time_weights)} clusterings, got {len(td.cluster_vars)}"
     )
 
-    # Call consensus clustering spatial function
-    ds_consensus, summary_df = td.aggregate.cluster_consensus(
-        min_consensus=0.8, top_n_clusters=5
-    )
+    # Call consensus clustering spatial function (merges into td.data)
+    summary_df = td.aggregate.cluster_consensus(min_consensus=0.8, top_n_clusters=5)
 
     # Assert that the dataset contains valid clusters
-    assert "clusters" in ds_consensus, "clusters not in output dataset"
-    assert "consistency" in ds_consensus, "consistency not in output dataset"
+    assert "consensus_clusters" in td.data, "consensus_clusters not in output dataset"
+    assert "consensus_consistency" in td.data, (
+        "consensus_consistency not in output dataset"
+    )
 
-    clusters = ds_consensus["clusters"]
-    consistency = ds_consensus["consistency"]
+    clusters = td.data["consensus_clusters"]
+    consistency = td.data["consensus_consistency"]
 
     # Assert that clusters has valid shape and values
     assert clusters.shape == consistency.shape, (
         "clusters and consistency must have the same shape"
     )
 
-    # Assert that values are valid (including -1 for noise)
-    assert np.all(np.isfinite(clusters.values) | (clusters.values == -1)), (
-        "clusters contains invalid (non-finite) values"
+    # Assert that values are valid: NaN (no shifts), -1 (noise), or cluster IDs (>= 0)
+    valid_mask = (
+        np.isfinite(clusters.values)
+        | (clusters.values == -1)
+        | np.isnan(clusters.values)
     )
+    assert np.all(valid_mask), "clusters contains invalid (e.g. inf) values"
 
     # Assert that consistency values are valid (0-1 range or NaN)
     valid_consistency = np.isfinite(consistency.values)
@@ -158,9 +161,11 @@ def test_cluster_consensus(
             "consistency contains values > 1"
         )
 
-    # Get unique cluster IDs (excluding noise = -1)
+    # Get unique cluster IDs (excluding NaN and noise = -1)
     unique_clusters = np.unique(clusters.values)
-    unique_clusters = unique_clusters[unique_clusters >= 0]
+    unique_clusters = unique_clusters[
+        (unique_clusters >= 0) & np.isfinite(unique_clusters)
+    ]
 
     # Assert that the summary dataframe contains the same number of clusters
     if len(unique_clusters) > 0:

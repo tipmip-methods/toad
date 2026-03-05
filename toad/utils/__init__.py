@@ -39,6 +39,8 @@ class _Attrs:
     # Attribute names
     VARIABLE_TYPE: str = "variable_type"
     BASE_VARIABLE: str = "base_variable"
+    CONSENSUS_CLUSTER_VARIABLE: str = "consensus_cluster_variable"
+    CONSENSUS_CONSISTENCY_VARIABLE: str = "consensus_consistency_variable"
     SHIFTS_VARIABLE: str = "shifts_variable"
     CLUSTER_IDS: str = "cluster_ids"
     SHIFT_THRESHOLD: str = "shift_threshold"
@@ -67,6 +69,8 @@ class _Attrs:
     # Attribute values
     TYPE_SHIFT: str = "shift"
     TYPE_CLUSTER: str = "cluster"
+    TYPE_CONSENSUS_CLUSTER: str = "consensus_cluster"
+    TYPE_CONSENSUS_CONSISTENCY: str = "consensus_consistency"
 
 
 _attrs = _Attrs()
@@ -75,12 +79,20 @@ _attrs = _Attrs()
 DEFAULT_SHIFT_THRESHOLD: float = 0.5
 
 
-def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:
+def get_space_dims(
+    xr_da: Union[xr.DataArray, xr.Dataset],
+    tdim: str,
+    prefer_vars: Optional[list[str]] = None,
+) -> list[str]:
     """Get spatial dimensions from an xarray DataArray or Dataset.
 
     Args:
         xr_da: Input DataArray or Dataset to get dimensions from
         tdim: Name of temporal dimension. All other dims are considered spatial.
+        prefer_vars: Optional list of variable names to use for dimension lookup, in
+            order of preference. Use base vars first, then shift vars, then cluster vars.
+            If not provided, falls back to base_vars, shift_vars, cluster_vars attrs
+            on xr_da (when present).
 
     Returns:
         List of spatial dimension names as strings. If standard spatial dims
@@ -90,8 +102,27 @@ def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[st
         ValueError: If provided temporal dim is not in the dimensions
     """
 
-    # get dims from first data variable (not from the dataset, as these are more prone to change order..)
-    dims = xr_da[list(xr_da.data_vars)[0]].dims
+    # Prefer base_vars, then shift_vars, then cluster_vars
+    prefers: list[str] = []
+    if prefer_vars:
+        data_vars = getattr(xr_da, "data_vars", None)
+        if data_vars is not None:
+            prefers = [v for v in prefer_vars if v in data_vars]
+    if not prefers and hasattr(xr_da, "base_vars") and xr_da.base_vars:
+        prefers = xr_da.base_vars
+    if not prefers and hasattr(xr_da, "shift_vars") and xr_da.shift_vars:
+        prefers = xr_da.shift_vars
+    if not prefers and hasattr(xr_da, "cluster_vars") and xr_da.cluster_vars:
+        prefers = xr_da.cluster_vars
+
+    if not prefers:
+        raise ValueError(
+            "Could not find any base_vars, shift_vars, or cluster_vars in the input. "
+            "Most likely only consensus cluster variables are present, which do not retain dimensionality information."
+        )
+
+    # get dims from the first appropriate variable
+    dims = xr_da[prefers[0]].dims
 
     if tdim not in dims:
         raise ValueError(f"Provided temporal dim '{tdim}' is not in the dimensions!")

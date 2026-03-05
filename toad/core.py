@@ -1379,6 +1379,42 @@ class TOAD:
         """
         return self.data.where(self.get_cluster_mask(var, cluster_id))
 
+    def get_cluster_times(
+        self,
+        var: str | None = None,
+        cluster_ids: int | list[int] | range | None = None,
+        numeric: bool = True,
+    ) -> np.ndarray:
+        """Extract all time values when/where the cluster is present.
+
+        Args:
+            var: Base variable name or custom cluster variable name.
+            cluster_ids: Single cluster ID, list of IDs, range, or None for all clusters.
+            numeric: If True (default), return numeric time values (e.g. seconds).
+                If False, return native time coordinate (e.g. datetime64 or cftime).
+
+        Returns:
+            Flattened array of time values for every (time, y, x) cell in the cluster.
+        """
+        var = self._get_base_var_if_none(var)
+        mask = self.get_cluster_mask(var, cluster_ids)  # (time,y,x) bool
+        time_values = (
+            self.numeric_time_values if numeric else self.data[self.time_dim].values
+        )
+        t = xr.DataArray(
+            time_values,
+            dims=[self.time_dim],
+            coords={self.time_dim: self.data[self.time_dim]},
+        )
+        t3 = t.broadcast_like(mask)  # (time,y,x)
+        event_times = t3.where(mask).values
+        if numeric:
+            event_times = event_times[np.isfinite(event_times)]
+        else:
+            # NaN and NaT do not equal themselves; filters both
+            event_times = event_times[event_times == event_times]
+        return event_times
+
     def _get_base_var_if_none(self, var: str | None) -> str:
         """Get the default base variable if none specified, or return the provided variable.
 

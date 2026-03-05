@@ -11,6 +11,7 @@ import xarray as xr
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, ListedColormap, to_hex, to_rgb, to_rgba
+from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 
 from toad.utils import (
@@ -1305,6 +1306,318 @@ class Plotter:
             )
             axs[i].set_yscale(yscale)
         return fig, axs
+
+    def violinplot(
+        self,
+        var: Optional[str] = None,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        *,
+        ax: Optional[Axes] = None,
+        **kwargs: Any,
+    ) -> Optional[Axes]:
+        """Plot a violin plot of transition times for the given variable and cluster IDs.
+
+        Args:
+            var: Base variable or cluster variable. If None, TOAD will attempt to infer
+                which variable to use. A ValueError is raised if the variable cannot be
+                uniquely determined.
+            cluster_ids: Cluster IDs to plot. If None, plots all clusters (excluding -1).
+                Invalid or non-existent cluster IDs are filtered out.
+            ax: Matplotlib axes to plot on. Creates a new figure if None.
+            **kwargs: Additional arguments passed to the violinplot function.
+
+        Returns:
+            The axes used for the plot, or None if no valid clusters.
+        """
+        var = self.td._get_base_var_if_none(var)
+        clusters_obj = self.td.get_clusters(var)
+        all_cluster_ids = clusters_obj.cluster_ids
+
+        # Default to all clusters (except -1) when cluster_ids is None
+        ids_to_filter = (
+            all_cluster_ids[all_cluster_ids != -1]
+            if cluster_ids is None
+            else cluster_ids
+        )
+        valid_cluster_ids = _filter_by_existing_clusters(self.td, ids_to_filter, var)
+
+        if len(valid_cluster_ids) == 0:
+            logger.warning(f"No valid clusters found in clusters for variable {var}")
+            return ax
+
+        # Prepare to collect transition times and value changes for clusters
+        transition_times_per_cluster = []
+        median_magnitude_change = []
+        mass_change = []
+
+        for cluster_id in valid_cluster_ids:
+            # Get cluster times (all times when shift peak has this label; -1 = unclustered shift peaks)
+            times_clean = self.td.get_cluster_times(var=var, cluster_ids=cluster_id)
+            transition_times_per_cluster.append(times_clean)
+            # Compute value change for cluster
+            median_magnitude_change.append(
+                self.td.stats(var).time.value_change(cluster_id, aggregation="median")
+            )
+            mass_change.append(
+                self.td.stats(var).time.value_change(cluster_id, aggregation="sum")
+            )
+
+        # Transition times for all clusters
+        times_total_clean = self.td.get_cluster_times(var=var, cluster_ids=None)
+
+        # Unclustered cells (-1): only compute separately when -1 exists but is
+        # not in valid_cluster_ids (to avoid duplicate when user explicitly asks for -1)
+        times_total_clean_unclustered = np.array([], dtype=float)
+        show_unclustered_separately = (
+            -1 in all_cluster_ids and -1 not in valid_cluster_ids
+        )
+        if show_unclustered_separately:
+            times_total_clean_unclustered = self.td.get_cluster_times(
+                var=var, cluster_ids=-1
+            )
+
+        colors = _get_cmap_seq(default_cmap, stops=len(valid_cluster_ids))
+
+        # Build violin_order and dataset for matplotlib
+        violin_order = [
+            "Unclustered" if c == -1 else str(c) for c in valid_cluster_ids
+        ] + ["All"]
+        if show_unclustered_separately:
+            violin_order.append("Unclustered")
+        palette = {
+            ("Unclustered" if cid == -1 else str(cid)): color
+            for cid, color in zip(valid_cluster_ids, colors)
+        }
+        palette["All"] = "#666666"  # slightly more subtle and modern gray
+        if "Unclustered" in violin_order:
+            palette["Unclustered"] = "#bbbbbb"
+
+        # Build dataset: list of arrays, one per violin (same order as violin_order)
+        data_by_label = []
+        for cluster_id, arr in zip(valid_cluster_ids, transition_times_per_cluster):
+            label = "Unclustered" if cluster_id == -1 else str(cluster_id)
+            data_by_label.append((label, arr))
+        data_by_label.append(("All", times_total_clean))
+        if show_unclustered_separately:
+            data_by_label.append(("Unclustered", times_total_clean_unclustered))
+
+        dataset = [arr for _, arr in data_by_label]
+        # Use at least one point for empty violins so matplotlib can draw them
+        dataset = [arr if len(arr) > 0 else np.array([np.nan]) for arr in dataset]
+        positions = np.arange(len(violin_order))
+        width = 0.75
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(16, 6))
+            show_figure = True
+        else:
+            show_figure = False
+
+        parts = ax.violinplot(
+            dataset,
+            positions=positions,
+            widths=width,
+            showmeans=False,
+            showextrema=False,
+            showmedians=False,
+            quantiles=None,
+            bw_method=0.18,
+        )
+
+        # Style violin bodies and add IQR shade + median line (clipped to violin)
+        for i, pc in enumerate(parts["bodies"]):  # type: ignore[arg-type]
+            color = palette[violin_order[i]]
+            pc.set_facecolor(color)
+            pc.set_alpha(0.85)
+            pc.set_edgecolor("#333333")
+            pc.set_linewidth(1.2)
+
+            # Shade color: black or white based on violin brightness for contrast
+            shade_color = _get_high_constrast_text_color(color)
+
+            # Get violin path for clipping (keeps inner elements within shape)
+            paths = pc.get_paths()
+            if len(paths) == 0:
+                continue
+            clip_path = paths[0]
+
+            arr = dataset[i]
+            arr_valid = arr[~np.isnan(arr)]
+            if len(arr_valid) < 1:
+                continue
+            q1, q2, q3 = np.percentile(arr_valid, [25, 50, 75])
+            pos = positions[i]
+            half_w = width / 2
+            iqr_height = max(q3 - q1, 1e-6)  # avoid zero height
+
+            # IQR shaded region (clipped to violin)
+            iqr_rect = Rectangle(
+                (pos - half_w, q1),
+                width,
+                iqr_height,
+                facecolor=shade_color,
+                alpha=0.25,
+                zorder=10,
+            )
+            iqr_rect.set_clip_path(clip_path, ax.transData)
+            ax.add_patch(iqr_rect)
+
+            # Median dashed line (clipped to violin)
+            median_line = Line2D(
+                [pos - half_w, pos + half_w],
+                [q2, q2],
+                color=shade_color,
+                linestyle="--",
+                linewidth=1.2,
+                zorder=11,
+            )
+            median_line.set_clip_path(clip_path, ax.transData)
+            ax.add_line(median_line)
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(violin_order)
+
+        # Make axes pretty
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_linewidth(1.2)
+        ax.spines["bottom"].set_linewidth(1.2)
+        ax.grid(True, axis="y", color="#d9d9d9", linestyle="-", linewidth=0.8, zorder=0)
+        ax.set_axisbelow(True)
+
+        # Add title and labels
+        ax.set_title("Distribution of transition times")
+        ax.set_ylabel("Global warming level (°C)")
+        if show_figure:
+            plt.show()
+        return ax
+
+    def sle_bars(
+        self,
+        var: Optional[str] = None,
+        cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
+        *,
+        ax: Optional[Axes] = None,
+        use_absolute_values: bool = True,
+        **kwargs: Any,
+    ) -> Optional[Axes]:
+        """Plot bar chart of total SLE (sea-level equivalent) contribution per cluster.
+
+        Ice-sheet specific: converts cumulative value change (m) to volume (km³) using
+        grid cell area, then to SLE (m) using ocean area 362e9 km².
+
+        Args:
+            var: Base variable or cluster variable. If None, TOAD will attempt to infer
+                which variable to use.
+            cluster_ids: Cluster IDs to plot. If None, plots all clusters (excluding -1).
+                Invalid or non-existent cluster IDs are filtered out.
+            ax: Matplotlib axes to plot on. Creates a new figure if None.
+            use_absolute_values: If True, use the absolute values of the SLE. If False, use the relative values.
+            **kwargs: Additional arguments passed to ax.bar().
+
+        Returns:
+            The axes used for the plot, or None if no valid clusters.
+        """
+        var = self.td._get_base_var_if_none(var)
+        clusters_obj = self.td.get_clusters(var)
+        all_cluster_ids = clusters_obj.cluster_ids
+
+        ids_to_filter = (
+            all_cluster_ids[all_cluster_ids != -1]
+            if cluster_ids is None
+            else cluster_ids
+        )
+        valid_cluster_ids = _filter_by_existing_clusters(self.td, ids_to_filter, var)
+
+        if len(valid_cluster_ids) == 0:
+            logger.warning(f"No valid clusters found in clusters for variable {var}")
+            return ax
+
+        # Collect value_change (sum) per cluster
+        bars_raw = []
+        for cluster_id in valid_cluster_ids:
+            bars_raw.append(
+                self.td.stats(var).time.value_change(cluster_id, aggregation="sum")
+            )
+
+        # Total: sum of all valid clusters
+        total_val = sum(
+            self.td.stats(var).time.value_change(cid, aggregation="sum")
+            for cid in valid_cluster_ids
+        )
+        # Unclustered: only if -1 exists and not in valid_cluster_ids
+        show_unclustered = -1 in all_cluster_ids and -1 not in valid_cluster_ids
+        unclustered_val = 0.0
+        if show_unclustered:
+            unclustered_val = self.td.stats(var).time.value_change(
+                -1, aggregation="sum"
+            )
+
+        # Build bar labels and values (clusters + Total + Unclustered)
+        bar_labels = [
+            "Unclustered" if c == -1 else str(c) for c in valid_cluster_ids
+        ] + ["All"]
+        if show_unclustered:
+            bar_labels.append("Unclustered")
+        bar_values = bars_raw + [total_val]
+        if show_unclustered:
+            bar_values.append(unclustered_val)
+
+        # Get grid cell area (ice-sheet specific: assumes x, y in meters)
+        space_dims = self.td.space_dims
+        if len(space_dims) < 2:
+            logger.warning("Need 2 spatial dimensions for SLE conversion")
+            return ax
+        x_coord = self.td.data[space_dims[1]].values
+        y_coord = self.td.data[space_dims[0]].values
+        x_mean = np.diff(x_coord).mean()
+        y_mean = np.diff(y_coord).mean()
+        area_m2 = x_mean * y_mean
+        area_km2 = area_m2 / 1e6
+
+        # Convert sum of thickness change (meters) to SLE (Sea Level Equivalent, meters):
+        # - bars: sum of value_change (meters) over cells
+        # - (bars / 1000) * area_km2 = km³ volume change
+        # - SLE (m) = volume_km³ / 362,000 (global ocean area in km²)
+        bars = np.array(bar_values, dtype=float)
+        bars = bars / 1000  # m -> km
+        bars = bars * area_km2  # km * km² -> km³ (assuming sum is per-cell sum)
+        bars = bars / 362_000  # km³ to SLE (m)
+
+        # convert neg to positive
+        if use_absolute_values:
+            bars = np.abs(bars)
+
+        colors = _get_cmap_seq(default_cmap, stops=len(valid_cluster_ids))
+        palette = {
+            ("Unclustered" if cid == -1 else str(cid)): color
+            for cid, color in zip(valid_cluster_ids, colors)
+        }
+        palette["All"] = "#666666"
+        palette["Unclustered"] = "#bbbbbb"
+        bar_colors = [palette[label] for label in bar_labels]
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(16, 6))
+
+        x_pos = np.arange(len(bar_labels))
+        ax.bar(x_pos, bars, color=bar_colors, **kwargs)
+        ax.axhline(0, color="k", linewidth=0.5)
+
+        # Add value labels on each bar
+        y_range = np.ptp(bars) or 1.0
+        for pos, val in zip(x_pos, bars):
+            fmt = f"{val:.3f}" if abs(val) >= 0.01 else f"{val:.2e}"
+            va = "bottom" if val >= 0 else "top"
+            y_off = 0.02 * y_range if val >= 0 else -0.02 * y_range
+            ax.text(float(pos), val + y_off, fmt, ha="center", va=va, fontsize=9)
+
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(bar_labels)
+        ax.set_ylabel("SLE (m)")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        return ax
 
     # ========================================================================================
     # Private helper functions

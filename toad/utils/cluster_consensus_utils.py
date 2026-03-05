@@ -294,13 +294,7 @@ def _build_consensus_summary_df(
         }
     )
 
-    transition_time_maps = []
-    for cluster_var in td.cluster_vars:
-        transition_time_maps.append(
-            td.stats(cluster_var).time.compute_transition_time(shift_threshold=0.0)
-        )
-
-    if len(transition_time_maps) == 0:
+    if len(td.cluster_vars) == 0:
         df_transitions = pd.DataFrame(
             {
                 "cluster_id": df["cluster_id"].values.astype(int),
@@ -311,48 +305,48 @@ def _build_consensus_summary_df(
             }
         )
     else:
-        cluster_var_index = pd.Index(td.cluster_vars, name="cluster_var")
-        transition_time_stack = xr.concat(transition_time_maps, dim=cluster_var_index)
+        consensus_cluster_ids = df["cluster_id"].values.astype(int)
+        mean_mean_list = []
+        std_mean_list = []
+        mean_std_list = []
+        std_std_list = []
 
-        per_cluster_per_model_mean = transition_time_stack.groupby(cluster_map).mean(
-            skipna=True
-        )
-        per_cluster_per_model_std = transition_time_stack.groupby(cluster_map).std(
-            skipna=True
-        )
+        for cid in consensus_cluster_ids:
+            region_mask = labels2d == cid
+            means_per_var = []
+            stds_per_var = []
+            for cluster_var in td.cluster_vars:
+                times = td.get_cluster_times_in_region(
+                    region_mask, cluster_var=cluster_var, numeric=True
+                )
+                if len(times) > 0:
+                    means_per_var.append(np.nanmean(times))
+                    stds_per_var.append(
+                        np.nanstd(times) if len(times) > 1 else 0.0
+                    )
 
-        # Average across clusterings using only finite values.
-        # NumPy 2.2.x handles NaN differently, so we explicitly filter NaN before computing stats
-        # This prevents warnings when computing std with insufficient data
-        mean_mean_shift_time = per_cluster_per_model_mean.where(
-            np.isfinite(per_cluster_per_model_mean)
-        ).mean(dim="cluster_var", skipna=True)
+            valid_means = [m for m in means_per_var if np.isfinite(m)]
+            valid_stds = [s for s in stds_per_var if np.isfinite(s)]
+            mean_mean_list.append(
+                np.float32(np.nanmean(valid_means)) if valid_means else np.nan
+            )
+            std_mean_list.append(
+                np.float32(np.nanstd(valid_means)) if len(valid_means) > 1 else 0.0
+            )
+            mean_std_list.append(
+                np.float32(np.nanmean(valid_stds)) if valid_stds else 0.0
+            )
+            std_std_list.append(
+                np.float32(np.nanstd(valid_stds)) if len(valid_stds) > 1 else 0.0
+            )
 
-        # Filter NaN before computing std to avoid "degrees of freedom <= 0" warnings
-        std_mean_shift_time_by = (
-            per_cluster_per_model_mean.where(np.isfinite(per_cluster_per_model_mean))
-            .std(dim="cluster_var", skipna=True)
-            .fillna(0.0)
-        )
-        mean_std_shift_time = (
-            per_cluster_per_model_std.where(np.isfinite(per_cluster_per_model_std))
-            .mean(dim="cluster_var", skipna=True)
-            .fillna(0.0)
-        )
-        std_std_shift_time = (
-            per_cluster_per_model_std.where(np.isfinite(per_cluster_per_model_std))
-            .std(dim="cluster_var", skipna=True)
-            .fillna(0.0)
-        )
-
-        group_dim = mean_consistency.dims[0]
         df_transitions = pd.DataFrame(
             {
-                "cluster_id": mean_mean_shift_time[group_dim].values.astype(int),
-                "mean_mean_shift_time": mean_mean_shift_time.values.astype(np.float32),
-                "std_mean_shift_time": std_mean_shift_time_by.values.astype(np.float32),
-                "mean_std_shift_time": mean_std_shift_time.values.astype(np.float32),
-                "std_std_shift_time": std_std_shift_time.values.astype(np.float32),
+                "cluster_id": consensus_cluster_ids,
+                "mean_mean_shift_time": np.array(mean_mean_list, dtype=np.float32),
+                "std_mean_shift_time": np.array(std_mean_list, dtype=np.float32),
+                "mean_std_shift_time": np.array(mean_std_list, dtype=np.float32),
+                "std_std_shift_time": np.array(std_std_list, dtype=np.float32),
             }
         )
 

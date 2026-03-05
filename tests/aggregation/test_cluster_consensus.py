@@ -43,14 +43,14 @@ def setup_regular_latlon_grid():
 @pytest.mark.parametrize(
     "setup_func,time_weights,expected_min_clusters,expected_max_clusters,expected_mean_shift_time,time_tolerance",
     [
-        (
-            setup_irregular_grid,
-            [0.5, 1.0, 1.5, 2.0],
-            7,  # min clusters
-            9,  # max clusters
-            1890.0,  # Typical value from [1910.7632, 1899.7142, 1887., 1873.4286]
-            5.0,  # tolerance in years
-        ),
+            (
+                setup_irregular_grid,
+                [0.5, 1.0, 1.5, 2.0],
+                7,  # min clusters
+                9,  # max clusters
+                1925.0,  # Mean of all times when in cluster (differs from peak transition time)
+                5.0,  # tolerance in years
+            ),
         (
             setup_native_grid,
             [0.25, 0.5, 1.0, 1.5],

@@ -1042,6 +1042,81 @@ class TOAD:
             event_times = event_times[event_times == event_times]
         return event_times
 
+    def get_times_where(
+        self,
+        mask: xr.DataArray,
+        numeric: bool = True,
+    ) -> np.ndarray:
+        """Extract time values at all (time, y, x) positions where mask is True.
+
+        Generic low-level helper for extracting event times from any custom mask.
+        The mask must be broadcastable to (time, y, x); 2D masks (y, x) are
+        broadcast across the time dimension.
+
+        Args:
+            mask: Boolean DataArray with shape (time, y, x) or (y, x).
+                True at positions whose time values should be included.
+            numeric: If True (default), return numeric time values (e.g. seconds).
+                If False, return native time coordinate (e.g. datetime64 or cftime).
+
+        Returns:
+            Flattened array of time values at all True positions in the mask.
+
+        Example:
+            >>> mask = (ds.clusters == 1) & (td.get_clusters(var) > -1)
+            >>> times = td.get_times_where(mask)
+        """
+        time_values = (
+            self.numeric_time_values if numeric else self.data[self.time_dim].values
+        )
+        t = xr.DataArray(
+            time_values,
+            dims=[self.time_dim],
+            coords={self.time_dim: self.data[self.time_dim]},
+        )
+        t3 = t.broadcast_like(mask)
+        event_times = t3.where(mask).values
+        if numeric:
+            event_times = event_times[np.isfinite(event_times)]
+        else:
+            event_times = event_times[event_times == event_times]
+        return event_times
+
+    def get_cluster_times_in_region(
+        self,
+        region_mask: xr.DataArray,
+        cluster_var: str | None = None,
+        numeric: bool = True,
+    ) -> np.ndarray:
+        """Extract all times when cells in region_mask are in a cluster.
+
+        Convenience method for the common pattern: restrict to a spatial region
+        (e.g. consensus cluster) and collect all times when cells there have a
+        non-noise cluster label.
+
+        Args:
+            region_mask: 2D boolean DataArray (y, x). True for grid cells to include.
+            cluster_var: Cluster variable name. If None, uses the default (single
+                base variable) or raises if multiple exist.
+            numeric: If True (default), return numeric time values (e.g. seconds).
+
+        Returns:
+            Flattened array of time values for every (time, y, x) where the cell
+            is in region_mask and has a non-noise cluster label.
+
+        Example:
+            >>> ds, _ = td.aggregate.cluster_consensus()
+            >>> times = td.get_cluster_times_in_region(
+            ...     ds.clusters == 1,
+            ...     cluster_var=td.cluster_vars[0],
+            ... )
+            >>> plt.hist(times, bins=50)
+        """
+        var = self._get_base_var_if_none(cluster_var)
+        in_cluster = self.get_clusters(var) != -1
+        combined_mask = region_mask.broadcast_like(in_cluster) & in_cluster
+        return self.get_times_where(combined_mask, numeric=numeric)
+
     def _get_base_var_if_none(self, var: str | None) -> str:
         """Get the default base variable if none specified, or return the provided variable.
 

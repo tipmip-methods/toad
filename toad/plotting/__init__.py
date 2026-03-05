@@ -7,6 +7,7 @@ import cartopy.feature as cfeature
 import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
+import xarray as xr
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, ListedColormap, to_hex, to_rgb, to_rgba
@@ -641,8 +642,8 @@ class Plotter:
                 If None, TOAD will attempt to infer which variable to use. A ValueError is raised
                 if the variable cannot be uniquely determined.
             cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
-                If None, analyzes all clusters. If specified, only analyzes grid cells belonging
-                to the given cluster(s).
+                If None, uses the full timeseries. If specified, restricts to grid cells belonging
+                to the given cluster(s) and to the cluster period (start to end).
             ax: Matplotlib axes to plot on. Creates new figure if None.
             map_style: Configuration for the map style.
                 Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
@@ -654,8 +655,9 @@ class Plotter:
                 The created matplotlib Figure (None if ax was provided) and Axes objects.
 
         Notes:
-            For each location, this plots the value along the time axis whose absolute value is maximal. Locations with all-NaN
-            values will be masked out.
+            For each location, this plots the value along the time axis whose absolute value is maximal.
+            When ``cluster_ids`` is specified, only shifts within the cluster period (start to end) are
+            considered. Locations with all-NaN values will be masked out.
         """
         # Infer variable if not provided
         var = self.td._get_base_var_if_none(var)
@@ -671,7 +673,31 @@ class Plotter:
 
         shifts = self.td.get_shifts(var)
 
-        # Prepare plot parameters for different grid types
+        # Restrict to cluster period when cluster_ids specified
+        if cluster_ids is not None:
+            cluster_mask = self.td.get_cluster_mask_spatial(var, cluster_ids)
+            shifts = shifts.where(cluster_mask)
+            start = self.td.stats(var).time.start(cluster_ids)
+            end = self.td.stats(var).time.end(cluster_ids)
+            in_period = (shifts[self.td.time_dim] >= start) & (
+                shifts[self.td.time_dim] <= end
+            )
+            shifts = shifts.where(in_period)
+
+        # Find the shift with largest magnitude (max abs value), keeping the original sign
+        abs_shifts = abs(shifts)
+        # Fill NaN with -inf so argmax ignores them (won't affect valid data since we're finding max)
+        # This prevents ValueError for all-NaN slices
+        abs_argmax = abs_shifts.fillna(float("-inf")).argmax(dim=self.td.time_dim)
+        # Select from original shifts (with sign) at max indices, masking all-NaN locations
+        has_valid_data = ~abs_shifts.isnull().all(dim=self.td.time_dim)
+        shifts_max = shifts.isel({self.td.time_dim: abs_argmax}).where(has_valid_data)
+
+        # Apply spatial cluster mask if cluster_ids specified (redundant with above but ensures clean output)
+        if cluster_ids is not None:
+            cluster_mask = self.td.get_cluster_mask_spatial(var, cluster_ids)
+            shifts_max = shifts_max.where(cluster_mask)
+
         plot_params = {
             "ax": ax,
             "add_colorbar": True,
@@ -683,22 +709,7 @@ class Plotter:
             },
             **kwargs,
         }
-
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
-
-        # Find the shift with largest magnitude (max abs value), keeping the original sign
-        abs_shifts = abs(shifts)
-        # Fill NaN with -inf so argmax ignores them (won't affect valid data since we're finding max)
-        # This prevents ValueError for all-NaN slices
-        abs_argmax = abs_shifts.fillna(float("-inf")).argmax(dim=self.td.time_dim)
-        # Select from original shifts (with sign) at max indices, masking all-NaN locations
-        has_valid_data = ~abs_shifts.isnull().all(dim=self.td.time_dim)
-        shifts_max = shifts.isel({self.td.time_dim: abs_argmax}).where(has_valid_data)
-
-        # Apply cluster mask if cluster_ids specified
-        if cluster_ids is not None:
-            cluster_mask = self.td.get_cluster_mask_spatial(var, cluster_ids)
-            shifts_max = shifts_max.where(cluster_mask)
 
         if use_pcolormesh:
             # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
@@ -723,58 +734,82 @@ class Plotter:
     ):
         """Plot a map showing the time at which the maximal shift occurs for a given variable.
 
+        When ``cluster_ids`` is None, uses the time of maximum |shift| across the entire
+        timeseries (argmax of |dts| per cell). When ``cluster_ids`` is specified, uses the
+        cluster variable directly: cluster labels are assigned at shift peaks (from
+        :meth:`_compute_dts_peak_sign_mask` during clustering), so the times when a cell
+        has a cluster label are exactly the peak times. For each cell, takes the first such time.
+        Only considers times where the cluster variable is defined (non-NaN).
+
         Args:
             var: Name of the variable for which to compute the time of maximum shift.
                 If None, TOAD will attempt to infer which variable to use. A ValueError is raised
                 if the variable cannot be uniquely determined.
             cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
-                If None, analyzes all clusters. If specified, only analyzes grid cells belonging
-                to the given cluster(s).
+                If None, uses the time of maximum |shift| across the full timeseries. If specified,
+                only analyzes grid cells belonging to the given cluster(s) using cluster labels.
             ax: Matplotlib axes to plot on. Creates new figure if None.
             map_style: Configuration for the map style.
                 Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
             cmap: Colormap to use for the plot. Can be a string name of a colormap
                 recognized by matplotlib, or an actual Colormap object. Defaults to 'turbo'.
-            shift_threshold: Threshold value for shift magnitude above which a transition
-                is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
+            shift_threshold: Minimum absolute shift magnitude; cells with max |shift| below
+                this are masked as NaN. Defaults to 0.5.
 
         Returns:
             Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
                 The created matplotlib Figure (None if ax was provided) and Axes objects.
         """
-        # Infer variable if not provided
         var = self.td._get_base_var_if_none(var)
 
-        # Normalize map_style to MapStyle
         config = _normalize_map_style(map_style)
-
-        # Create map if ax not provided
         if ax is None:
             fig, ax = self.map(map_style=config)
         else:
             fig = None
 
-        transition_time = self.td.stats(var).time.compute_transition_time(
-            cluster_ids=cluster_ids, shift_threshold=shift_threshold
+        shifts = self.td.get_shifts(var)
+        abs_shifts = abs(shifts)
+        max_abs = abs_shifts.max(dim=self.td.time_dim)
+        time_da = xr.DataArray(
+            self.td.numeric_time_values,
+            dims=[self.td.time_dim],
+            coords={self.td.time_dim: self.td.data[self.td.time_dim]},
         )
 
-        # Prepare plot parameters for different grid types
+        if cluster_ids is None:
+            # Time of maximum |shift| across entire timeseries
+            idx_max = abs_shifts.fillna(0).argmax(dim=self.td.time_dim)
+            transition_time = time_da.isel({self.td.time_dim: idx_max})
+            has_valid_data = ~abs_shifts.isnull().all(dim=self.td.time_dim)
+            transition_time = transition_time.where(has_valid_data)
+        else:
+            # Cluster-based: times when cell has a label in one of cluster_ids
+            clusters = self.td.get_clusters(var)
+            in_cluster = clusters.isin(np.atleast_1d(cluster_ids)) & clusters.notnull()
+            t_broadcast = time_da.broadcast_like(clusters)
+            transition_time = t_broadcast.where(in_cluster).min(
+                dim=self.td.time_dim, skipna=True
+            )
+            region_mask = self.td.get_cluster_mask_spatial(var, cluster_ids)
+            transition_time = transition_time.where(region_mask)
+
+        transition_time = transition_time.where(max_abs >= shift_threshold)
+        transition_time = transition_time.rename("transition_time")
+        transition_time.attrs["long_name"] = self.td.data[self.td.time_dim].name
+        transition_time.attrs["units"] = self.td.numeric_time_values_unit()
+
         plot_params = {
             "ax": ax,
             "add_colorbar": True,
             "cmap": cmap,
             **kwargs,
         }
-
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
-
-        # Use appropriate plotting method based on grid type
         if use_pcolormesh:
-            # Use pcolormesh explicitly for regular axes to ensure proper coordinate handling
             transition_time.plot.pcolormesh(**plot_params)
         else:
             transition_time.plot(**plot_params)
-
         ax.set_title(f"Time of maximum shift for {var}")
 
         return fig, ax
@@ -1270,6 +1305,10 @@ class Plotter:
             )
             axs[i].set_yscale(yscale)
         return fig, axs
+
+    # ========================================================================================
+    # Private helper functions
+    # ========================================================================================
 
     def _prepare_map_plot_params(
         self, ax: Axes, plot_params: dict[str, Any]

@@ -7,11 +7,13 @@ import toad._warnings  # noqa: F401
 from toad._version import __version__
 from toad.clustering import compute_clusters
 from toad.core import TOAD
+from toad.mma import MMA
 from toad.plotting import MapStyle, Plotter
 from toad.shifts import compute_shifts
 
 __all__ = [
     "TOAD",
+    "MMA",
     "compute_shifts",
     "compute_clusters",
     "Plotter",

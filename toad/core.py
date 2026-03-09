@@ -355,6 +355,8 @@ class TOAD:
         output_label: str | None = None,
         overwrite: bool = False,
         sort_by_size: bool = True,
+        export_for_mma: str | None = None,
+        mma_grid: Literal["healpix", "native"] = "healpix",
         # optimization related params
         optimize: bool = False,
         optimize_params: dict = default_opt_params,
@@ -396,6 +398,10 @@ class TOAD:
             output_label_suffix: A suffix to add to the output label. Defaults to "".
             overwrite: Whether to overwrite existing variable. Defaults to False.
             sort_by_size: Whether to reorder clusters by size. Defaults to True.
+            export_for_mma: If set to a file path, exports cluster labels for MMA
+                (multi-model aggregation). Format depends on mma_grid.
+            mma_grid: Grid format for MMA export: "healpix" (from regridder.df_healpix
+                when regridding was used) or "native". Defaults to "healpix".
             optimize: Whether to optimize the clustering parameters. Defaults to False.
             optimize_params: Parameters for the optimization. Defaults to clustering.default_opt_params.
             optimize_objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
@@ -435,6 +441,8 @@ class TOAD:
             output_label=output_label,
             overwrite=overwrite,
             sort_by_size=sort_by_size,
+            export_for_mma=export_for_mma,
+            mma_grid=mma_grid,
             optimize=optimize,
             optimize_params=optimize_params,
             optimize_objective=optimize_objective,

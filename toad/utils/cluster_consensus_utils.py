@@ -309,6 +309,144 @@ def _build_knn_edges_from_latlon(
     return rows[mask], cols[mask]
 
 
+def _build_knn_edges_healpix_full(
+    nside: int, k: int = 8
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build KNN edges for the full HealPix grid (all npix pixels).
+
+    Args:
+        nside: HealPix nside parameter.
+        k: Number of nearest neighbors.
+
+    Returns:
+        Tuple (knn_rows, knn_cols) of undirected edges between HealPix pixel indices.
+    """
+    regridder = HealPixRegridder(nside=nside)
+    npix = 12 * nside**2
+    lats = np.zeros(npix)
+    lons = np.zeros(npix)
+    for i in range(npix):
+        lats[i], lons[i] = regridder.healpix_to_latlon(i)
+    xyz = _latlon_to_unit_xyz(lats, lons)
+    nn = NearestNeighbors(n_neighbors=min(k + 1, npix))
+    nn.fit(xyz)
+    _, nbrs = nn.kneighbors(xyz)
+    flat_idx = np.arange(npix, dtype=np.int64)
+    rows = np.repeat(flat_idx, nbrs.shape[1] - 1)
+    cols = nbrs[:, 1:].ravel()
+    mask = rows < cols
+    return rows[mask], cols[mask]
+
+
+def run_healpix_consensus(
+    hp_label_arrays: list[np.ndarray],
+    nside: int,
+    min_consensus: float = 0.5,
+    min_cluster_size: int = 1,
+    k_neighbors: int = 8,
+    top_n_clusters: int | None = None,
+    show_progress: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run consensus clustering on HealPix-native cluster label arrays.
+
+    All input arrays must have shape (npix,) with npix = 12 * nside**2.
+
+    Args:
+        hp_label_arrays: List of 1D arrays, each (npix,) with cluster labels per pixel.
+        nside: HealPix nside (must match the arrays).
+        min_consensus: Minimum consensus threshold in [0, 1].
+        min_cluster_size: Minimum cluster size; smaller clusters demoted to -1.
+        k_neighbors: K for KNN graph on HealPix.
+        top_n_clusters: If set, only consider top N clusters by size per input.
+        show_progress: Whether to show tqdm progress.
+
+    Returns:
+        Tuple (labels, consistency) each of shape (npix,).
+        labels: -1 = noise, NaN = no cluster in any input, >= 0 = cluster id.
+        consistency: Per-pixel mean consensus strength.
+    """
+    npix = 12 * nside**2
+    for arr in hp_label_arrays:
+        if arr.shape != (npix,):
+            raise ValueError(
+                f"All arrays must have shape ({npix},) for nside={nside}. "
+                f"Got {arr.shape}."
+            )
+
+    ever_clustered = np.zeros(npix, dtype=bool)
+    for arr in hp_label_arrays:
+        ever_clustered |= (arr >= 0) & np.isfinite(arr)
+
+    knn_rows, knn_cols = _build_knn_edges_healpix_full(nside, k=k_neighbors)
+
+    rows_V, cols_V = [], []
+    rows_A, cols_A = [], []
+    valid_hp = ever_clustered  # availability: only pixels that had clusters
+
+    for arr in tqdm(hp_label_arrays, disable=not show_progress):
+        unique_ids = np.unique(arr[(arr >= 0) & np.isfinite(arr)])
+        if len(unique_ids) == 0:
+            continue
+        if top_n_clusters is not None and top_n_clusters > 0:
+            counts = [(cid, np.sum(arr == cid)) for cid in unique_ids]
+            counts.sort(key=lambda x: x[1], reverse=True)
+            unique_ids = np.array([c[0] for c in counts[:top_n_clusters]])
+
+        for cid in unique_ids:
+            mask_hp = (arr == cid) & np.isfinite(arr)
+            rV, cV = _knn_edges_from_mask(mask_hp, knn_rows, knn_cols)
+            rows_V.extend(rV)
+            cols_V.extend(cV)
+        rA, cA = _knn_edges_from_mask(valid_hp, knn_rows, knn_cols)
+        rows_A.extend(rA)
+        cols_A.extend(cA)
+
+    if len(rows_V) == 0:
+        labels = np.full(npix, np.nan, dtype=np.float32)
+        labels[ever_clustered] = -1
+        consistency = np.full(npix, np.nan, dtype=np.float32)
+        return labels, consistency
+
+    W = _compute_weighted_consensus(
+        rows_V, cols_V, rows_A, cols_A, (npix, npix), min_consensus
+    )
+    if W.nnz == 0:
+        labels = np.full(npix, np.nan, dtype=np.float32)
+        labels[ever_clustered] = -1
+        consistency = np.full(npix, np.nan, dtype=np.float32)
+        return labels, consistency
+
+    node_sum = np.array(W.sum(axis=1)).ravel()
+    node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
+    consistency = np.divide(
+        node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
+    ).astype(np.float32)
+
+    bin_adj = W.copy()
+    bin_adj.data[:] = 1.0
+    bin_adj = bin_adj.maximum(bin_adj.T)
+    _, labels_flat = connected_components(bin_adj, directed=False, return_labels=True)
+
+    deg = np.array(bin_adj.getnnz(axis=1))
+    labels_flat = labels_flat.astype(np.float32)
+    labels_flat[deg == 0] = -1
+
+    labels_flat = sorted_cluster_labels(labels_flat)
+
+    if min_cluster_size > 1:
+        valid_mask = (labels_flat >= 0) & np.isfinite(labels_flat)
+        for cid in np.unique(labels_flat[valid_mask]):
+            if np.sum(labels_flat == cid) < min_cluster_size:
+                labels_flat[labels_flat == cid] = -1
+        labels_flat = sorted_cluster_labels(labels_flat)
+
+    labels_flat = labels_flat.astype(np.float32)  # allow NaN for ~ever_clustered
+    labels_flat[~ever_clustered] = np.nan
+    consistency[~ever_clustered] = np.nan
+
+    return labels_flat, consistency
+
+
 def _build_knn_edges_from_regridder(
     lat2d: np.ndarray,
     lon2d: np.ndarray,

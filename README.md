@@ -83,17 +83,9 @@ For more details, check out the tutorials.
 - [Custom Clustering](https://github.com/tipmip-methods/toad/blob/main/tutorials/clustering_methods.ipynb): Implement your own clustering methods
 - [Custom Shift Detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/shift_detection_methods.ipynb): Create new shift detection algorithms
 
-## Development
+## About
 
-```bash
-$ git clone https://github.com/tipmip-methods/toad.git
-$ cd toad
-$ pip install -e .[dev]
-```
-
-The `-e` flag installs the package in "editable" mode, which means changes to the source code are immediately reflected without needing to reinstall.
-
-For more information on contributing, code formatting, and our development workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
+TOAD is developed at the [Potsdam Institute for Climate Impact Research (PIK)](https://www.pik-potsdam.de/en) and the [Max Planck Institute of Geoanthropology](https://www.gea.mpg.de/). The project originated from early prototype work by [Sina Loriani](https://www.pik-potsdam.de/members/sinal) in 2022. Since 2024, [Jakob Harteg](https://www.pik-potsdam.de/members/jakobha) has led the full development of the package as part of his PhD project. Over time, numerous contributors have played important roles at various stages, including [Lukas Röhrich](https://www.pik-potsdam.de/members/lukasro) and [Fritz Kühlein](https://www.pik-potsdam.de/members/fritzku/homepage). The project has also benefited greatly from scientific advice and guidance from [Sina Loriani](https://www.pik-potsdam.de/members/sinal), [Jonathan Donges](https://www.pik-potsdam.de/members/donges), [Ricarda Winkelmann](https://www.pik-potsdam.de/members/ricardaw), and many others. Community contributions, such as feature suggestions, bug reporting, or even extensions like new detection algorithms, are very welcome. 
 
 ## Citation
 

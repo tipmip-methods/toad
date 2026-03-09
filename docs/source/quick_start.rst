@@ -29,21 +29,11 @@ Here's a simple example that demonstrates the core TOAD workflow:
     # Visualize the results
     td.plot.overview("tas")
 
-What This Does
---------------
-
-1. **``TOAD("data.nc")``**: Loads your gridded data from a NetCDF file
-2. **``compute_shifts()``**: Analyzes each grid cell to detect abrupt transitions
-3. **``compute_clusters()``**: Groups spatially and temporally co-occurring shifts
-4. **``plot.overview()``**: Creates a visualization of the detected clusters
-
 Next Steps
 ----------
 
 - **Learn the basics**: Check out the :doc:`tutorials/basics` tutorial for a comprehensive introduction
-- **Explore visualization**: See the plotting capabilities in the tutorials
-- **Customize methods**: Learn how to implement custom clustering or shift detection methods
-- **API reference**: Browse the :doc:`api_ref` for detailed documentation of all classes and methods
+- **Customize methods**: Learn how to :doc:`tutorials/custom_clustering` and :doc:`tutorials/custom_shifts_detection` 
 
 Data Format
 -----------

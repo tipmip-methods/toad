@@ -161,7 +161,8 @@ class TimeStats:
     def steepest_gradient(
         self, cluster_id
     ) -> Union[float, cftime.datetime, np.datetime64]:
-        """Return the time of the steepest gradient of the median cluster timeseries"""
+        """Return the time of the steepest gradient (largest rate of change, up or down)
+        of the median cluster timeseries."""
         cluster_var = str(self.td.get_clusters(self.var).name)
         base_var = str(self.td.get_base_var(self.var))
 
@@ -186,17 +187,26 @@ class TimeStats:
 
         grad = ts.diff(self.td.time_dim)
 
-        # Get the index of the steepest gradient
-        steepest_idx = int(np.argmin(grad.values))
+        # Use nanargmax on abs(grad) for steepest (up or down); grad's own coords
+        # (diff[i] corresponds to t[i+1], not t[i])
+        if np.all(np.isnan(grad.values)):
+            import warnings
 
-        # Get the numeric time value at that index
-        steepest_time_numeric = float(self.td.numeric_time_values[steepest_idx])
+            warnings.warn(
+                f"All-NaN gradient for cluster {cluster_id}. Returning first timestamp."
+            )
+            first_time_numeric = self.td.numeric_time_values[0]
+            return self._return_time(first_time_numeric)
+
+        steepest_idx = int(np.nanargmax(np.abs(grad.values)))
+        steepest_time_numeric = float(grad[self.td.time_dim].values[steepest_idx])
 
         # Convert back to original time format
         return self._return_time(steepest_time_numeric)
 
     def steepest_gradient_timestep(self, cluster_id) -> float:
-        """Return the index of the steepest gradient of the mean cluster timeseries inside the cluster time bounds"""
+        """Return the index of the steepest gradient (largest rate of change, up or down)
+        of the median cluster timeseries inside the cluster time bounds."""
 
         cluster_var = str(self.td.get_clusters(self.var).name)
         base_var = str(self.td.get_base_var(self.var))
@@ -219,7 +229,13 @@ class TimeStats:
             return 0.0
 
         grad = ts.diff(self.td.time_dim)
-        return int(np.argmin(grad.values))
+        if np.all(np.isnan(grad.values)):
+            import warnings
+
+            warnings.warn(f"All-NaN gradient for cluster {cluster_id}. Returning 0.")
+            return 0
+
+        return int(np.nanargmax(np.abs(grad.values)))
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float

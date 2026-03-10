@@ -1036,6 +1036,7 @@ class TOAD:
                 if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
             ]
 
+    # TODO: add variable inference like in get_clusters()
     def get_base_var(self, var: str) -> Optional[str]:
         """Get the base variable for a given variable."""
         if var in self.base_vars:
@@ -1153,28 +1154,6 @@ class TOAD:
         else:
             return cluster_ids
 
-    def get_active_clusters_count_per_timestep(
-        self, var: str | None = None
-    ) -> xr.DataArray:
-        """Get number of active clusters for each timestep.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-
-        Returns:
-            Number of active clusters for each timestep.
-        """
-        clusters = self.get_clusters(var)
-        return xr.DataArray(
-            [
-                len(np.unique(clusters.sel(**{self.time_dim: t})))
-                for t in self.data[self.time_dim]
-            ],
-            coords={self.time_dim: self.data[self.time_dim]},
-            dims=[self.time_dim],
-        ).rename(f"Number of active clusters for {var}")
-
     def get_cluster_mask(
         self,
         var: str | None = None,
@@ -1217,33 +1196,6 @@ class TOAD:
 
         return mask
 
-    def apply_cluster_mask(
-        self, var: str, apply_to_var: str, cluster_id: int, numeric_times: bool = False
-    ) -> xr.DataArray:
-        """Apply the cluster mask to a variable.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to.
-            cluster_id: The cluster id to apply the mask for.
-            numeric_times: If True, returns result with numeric time coordinates instead of original time format.
-                Defaults to False.
-
-        Returns:
-            The masked variable.
-        """
-        mask = self.get_cluster_mask(
-            var, cluster_id, numeric_times=False
-        )  # Always get mask with original coordinates
-        result = self.data[apply_to_var].where(mask)
-
-        if numeric_times:
-            # Replace time coordinates with numeric values after applying the mask
-            result = result.assign_coords({self.time_dim: self.numeric_time_values})
-
-        return result
-
     def get_cluster_mask_spatial(
         self,
         var: str | None = None,
@@ -1262,122 +1214,6 @@ class TOAD:
             Mask for the cluster id.
         """
         return self.get_cluster_mask(var, cluster_id).any(dim=self.time_dim)
-
-    def apply_cluster_mask_spatial(
-        self,
-        var: str | None = None,
-        apply_to_var: str | None = None,
-        cluster_id: int | list[int] | range | None = None,
-    ) -> xr.DataArray:
-        """Apply the spatial cluster mask to a variable.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name. If None, infers the variable.
-            apply_to_var: The variable to apply the mask to. If None, uses the inferred base variable.
-            cluster_id: The cluster id(s) to apply the mask for. If None, uses all clusters.
-
-        Returns:
-            All data (regardless of cluster) masked by the spatial extend of the specified cluster.
-        """
-        var = self._get_base_var_if_none(var)
-        if apply_to_var is None:
-            apply_to_var = var
-        mask = self.get_cluster_mask_spatial(var, cluster_id)
-        return self.data[apply_to_var].where(mask)
-
-    def apply_cluster_mask_temporal(
-        self, var: str, apply_to_var: str, cluster_id: int
-    ) -> xr.DataArray:
-        """Apply the temporal cluster mask to a variable.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            apply_to_var: The variable to apply the mask to.
-            cluster_id: The cluster id to apply the mask for.
-
-        Returns:
-            All data (regardless of cluster) masked by the temporal extend of the specified cluster.
-        """
-        mask = self.get_cluster_mask_temporal(var, cluster_id)
-        return self.data[apply_to_var].where(mask)
-
-    def get_cluster_density_temporal(self, var: str, cluster_id: int) -> xr.DataArray:
-        """Calculate the temporal density of a cluster at each grid cell.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: The cluster id to calculate density for.
-
-        Returns:
-            2D spatial array where each grid cell contains a fraction (0-1) representing the proportion of timesteps that cell belonged to the specified cluster.
-        """
-        density = self.get_cluster_mask(var, cluster_id).mean(dim=self.time_dim)
-        density = density.rename(f"{density.name}_temporal_density")
-        return density
-
-    def get_cluster_density_spatial(
-        self, var: str, cluster_id: Optional[int] = None
-    ) -> xr.DataArray:
-        """Calculate the spatial density of a cluster across all grid cells.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: The cluster id to calculate density for. If None, calculates density
-                for all clusters combined (excluding noise points, cluster ID -1).
-
-        Returns:
-            1D timeseries containing the fraction (0-1) of grid cells that belonged to the
-            specified cluster (or all clusters if cluster_id is None) at each timestep.
-        """
-        if cluster_id is None:
-            # Get the mask for all clusters except -1 (noise)
-            mask = self.get_cluster_mask(var, -1) == 0
-            density = mask.mean(dim=self.space_dims)
-            density = density.rename(f"{var}_total_cluster_spatial_density")
-        else:
-            density = self.get_cluster_mask(var, cluster_id).mean(dim=self.space_dims)
-            density = density.rename(f"{density.name}_spatial_density")
-        return density
-
-    def get_cluster_mask_temporal(self, var: str, cluster_id: int) -> xr.DataArray:
-        """Calculate a temporal footprint indicating cluster presence at each timestep.
-
-        For each timestep, returns a boolean mask indicating whether any grid cell belonged
-        to the specified cluster. This is useful for determining when a cluster was active,
-        regardless of its spatial extent.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: The cluster ID to calculate the temporal footprint for.
-
-        Returns:
-            Boolean array with True indicating timesteps where the cluster existed
-            somewhere in the spatial domain.
-        """
-        footprint = self.get_cluster_mask(var, cluster_id).any(dim=self.space_dims)
-        footprint = footprint.rename(f"{footprint.name}_temporal_footprint")
-        return footprint
-
-    def get_cluster_data(self, var: str, cluster_id: int | list[int]) -> xr.Dataset:
-        """Get raw data for specified cluster(s) with mask applied.
-
-        Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
-            cluster_id: Single cluster ID or list of cluster IDs.
-
-        Returns:
-            Full dataset masked by the cluster id.
-
-        Note:
-            - If cluster_id is a list, returns the union of the masks for each cluster id.
-        """
-        return self.data.where(self.get_cluster_mask(var, cluster_id))
 
     def get_cluster_times(
         self,
@@ -1514,6 +1350,7 @@ class TOAD:
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
 
+    # TODO rename to get_timeseries() and legacy alias for get_cluster_timeseries()
     def get_cluster_timeseries(
         self,
         var: str,

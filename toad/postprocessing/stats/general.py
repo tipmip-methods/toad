@@ -101,18 +101,27 @@ class GeneralStats:
             normalize=normalize,
         ).values
 
-        # Perform linear regression
-        (a, b), res, _, _, _ = np.polyfit(xvals, yvals, 1, full=True)
-        rss = res[0]  # Residual sum of squares
+        # Drop NaN/Inf to avoid silent NaN propagation (common in satellite/observational data)
+        valid = np.isfinite(xvals) & np.isfinite(yvals)
+        x_valid = xvals[valid]
+        y_valid = yvals[valid]
 
-        # Compute theoretical maximum RSS for a perfect Heaviside function
-        heaviside_rss = np.sum((yvals - np.median(yvals)) ** 2)
+        if len(x_valid) < 2:
+            # Not enough points for linear fit (polyfit returns empty residuals for ≤2 points)
+            standardized_score = 0.0
+            _score_fit = np.full_like(xvals, np.nan)
+        else:
+            # Perform linear regression on valid data only
+            a, b = np.polyfit(x_valid, y_valid, 1)
+            # Compute RSS manually (polyfit with full=True returns empty residuals for ≤2 points)
+            fitted = np.polyval([a, b], x_valid)
+            rss = float(np.sum((y_valid - fitted) ** 2))
 
-        # Standardized score
-        standardized_score = float(rss / heaviside_rss if heaviside_rss > 0 else 0)
-
-        # Linear fit (optional return)
-        _score_fit = b + a * xvals
+            # Compute theoretical maximum RSS for a perfect Heaviside function
+            heaviside_rss = float(np.sum((y_valid - np.median(y_valid)) ** 2))
+            standardized_score = float(rss / heaviside_rss if heaviside_rss > 0 else 0)
+            # Linear fit over full time range (for optional return)
+            _score_fit = b + a * xvals
 
         if return_score_fit:
             return standardized_score, _score_fit

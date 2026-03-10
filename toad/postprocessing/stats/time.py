@@ -410,7 +410,7 @@ class TimeStats:
         """
         from toad.clustering import _compute_dts_peak_sign_mask
 
-        # If user has specified a clsuter variable, we need to get the shifts variable from attrs
+        # If user has specified a cluster variable, we need to get the shifts variable from attrs
         shifts = self.td.get_shifts(self.var)
 
         # Filter by clusters if specified

@@ -225,12 +225,12 @@ def get_unique_variable_name(desired_name: str, existing_vars, logger=None) -> s
     """Generate a unique variable name by appending sequential numbers if needed.
 
     Args:
-        base_name: The desired variable name
+        desired_name: The desired variable name
         existing_vars: Container with existing variable names (Dataset, dict, list, set, etc.)
         logger: Optional logger for info messages
 
     Returns:
-        Unique variable name (either base_name or base_name_N)
+        Unique variable name (either desired_name or desired_name_N)
 
     Examples:
         >>> get_unique_variable_name("tas_cluster", ["tas_cluster"])
@@ -274,7 +274,6 @@ def convert_time_to_seconds(time_array: xr.DataArray) -> np.ndarray:
 
     Args:
         time_array: xarray DataArray containing the time dimension to convert
-        time_dim: Name of the time dimension in the DataArray
 
     Returns:
         numpy.ndarray: Array of numeric time values in seconds relative to first time point
@@ -284,7 +283,7 @@ def convert_time_to_seconds(time_array: xr.DataArray) -> np.ndarray:
 
     Examples:
         >>> times = xr.DataArray(pd.date_range('2000-01-01', periods=5))
-        >>> convert_time_to_seconds(times, 'time')
+        >>> convert_time_to_seconds(times)
         array([0., 86400., 172800., 259200., 345600.])
     """
     # Check if time dimension values are numeric (integers or floats)
@@ -362,41 +361,3 @@ def convert_numeric_to_original_time(
 
             new_time = first_time + timedelta(seconds=seconds)
             return new_time
-
-
-# Include this once we have a published release to fetch test data
-# def download_test_data():
-#     """Download test data sets
-
-#     """
-#     url = "https://github.com/tipmip-methods/toad/releases/download/[TAG_NAME]/test_data.zip"
-#     extract_path = os.path.join(os.getcwd(), "test_data")  # Save to the current working directory
-#     download_path = os.path.join(extract_path, "test_data.zip")
-
-#     if not os.path.exists(extract_path):
-#         print("Downloading test data...")
-#         os.makedirs(extract_path, exist_ok=True)
-#         response = requests.get(url, stream=True)
-#         response.raise_for_status()
-
-#         total_size = int(response.headers.get('content-length', 0))
-#         downloaded_size = 0
-
-#         with open(download_path, "wb") as f:
-#             for chunk in response.iter_content(chunk_size=8192):
-#                 if chunk:
-#                     f.write(chunk)
-#                     downloaded_size += len(chunk)
-#                     # Print progress
-#                     done = int(50 * downloaded_size / total_size)
-#                     print(f"\r[{'=' * done}{' ' * (50 - done)}] {downloaded_size / total_size:.2%}", end='')
-
-#         print("\nExtracting test data...")
-#         with zipfile.ZipFile(download_path, "r") as zip_ref:
-#             zip_ref.extractall(extract_path)
-
-#         os.remove(download_path)
-
-#         print(f"Test data extracted to: {extract_path}")
-#     else:
-#         print(f"test_data directory already exists at {extract_path}")

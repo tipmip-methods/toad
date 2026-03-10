@@ -205,7 +205,7 @@ def _compute_dts_peak_sign_mask(
     Args:
         shifts: Input DataArray containing the shifts data.
         time_dim: Name of the time dimension.
-        shift_threshold: Threshold value for detecting peaks. Defaults to 0.8.
+        shift_threshold: Threshold value for detecting peaks. Defaults to 0.5.
         shift_selection: Selection method, either "local" or "global". Defaults to "local".
 
     Returns:

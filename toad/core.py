@@ -26,6 +26,11 @@ from toad.utils import (
     detect_latlon_names,
     get_space_dims,
 )
+from toad.utils.repr_html import (
+    build_variable_hierarchy,
+    load_toad_logo_html,
+    render_hierarchy_html,
+)
 
 
 class _StatsAccessor:
@@ -193,229 +198,13 @@ class TOAD:
 
     def _repr_html_(self):
         """Representation of the TOAD object in html with collapsible hierarchy."""
-
-        # Generate a unique instance ID
-        import uuid
-
-        instance_id = str(uuid.uuid4()).replace("-", "")
-
-        # Get the xarray dataset HTML representation
+        hierarchy = build_variable_hierarchy(
+            self.base_vars, self.shift_vars, self.cluster_vars, self.data
+        )
+        variable_table = render_hierarchy_html(hierarchy, self.data)
+        logo_html = load_toad_logo_html()
         ds_repr = self.data._repr_html_()
-
-        # Build hierarchy tree
-        hierarchy = {}
-
-        # Start with base variables
-        for base_var in self.base_vars:
-            hierarchy[base_var] = {"shifts": [], "clusters": []}
-
-        # Add shift variables and their relationships
-        for shift_var in self.shift_vars:
-            shift_data = self.data[shift_var]
-            base_var = shift_data.attrs.get(
-                _attrs.BASE_VARIABLE, shift_var.split("_dts")[0]
-            )
-
-            if base_var not in hierarchy:
-                hierarchy[base_var] = {"shifts": [], "clusters": []}
-
-            hierarchy[base_var]["shifts"].append({"name": shift_var, "clusters": []})
-
-        # Add cluster variables and their relationships
-        for cluster_var in self.cluster_vars:
-            cluster_data = self.data[cluster_var]
-            base_var = cluster_data.attrs.get(_attrs.BASE_VARIABLE)
-            shifts_var = cluster_data.attrs.get(_attrs.SHIFTS_VARIABLE)
-
-            if base_var and base_var in hierarchy:
-                if shifts_var:
-                    # Find the specific shift variable and add cluster to it
-                    for shift_info in hierarchy[base_var]["shifts"]:
-                        if shift_info["name"] == shifts_var:
-                            shift_info["clusters"].append(cluster_var)
-                            break
-                else:
-                    # Fallback: add to base variable clusters
-                    hierarchy[base_var]["clusters"].append(cluster_var)
-
-        # Generate HTML for the hierarchy
-        variable_table = ""
-        if len(hierarchy) > 0:
-            hierarchy_html = []
-            for base_var in sorted(hierarchy.keys()):
-                info = hierarchy[base_var]
-
-                # Count total derived variables
-                shift_count = len(info["shifts"])
-                cluster_count = sum(len(s["clusters"]) for s in info["shifts"]) + len(
-                    info["clusters"]
-                )
-
-                # Base variable row
-                base_id = f"{instance_id}_base_{base_var.replace('.', '_')}"
-
-                # Only make it expandable if there are shifts or clusters
-                if shift_count > 0 or cluster_count > 0:
-                    hierarchy_html.append(f"""
-                <div style="margin: 2px 0;">
-                    <span onclick="toggleSection_{instance_id}('{base_id}')" style="cursor: pointer; user-select: none;">
-                        <span id="{base_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
-                        <span style="color: black; background-color: #A8D5FF; padding: 2px 4px; border-radius: 4px;">base var</span> {base_var}
-                        <span style="opacity: 0.5; font-size: 0.85em;">
-                            ({shift_count} shifts, {cluster_count} clusterings)
-                        </span>
-                    </span>
-                    <div id="{base_id}_content" style="display: none; margin-left: 20px; margin-top: 5px;">
-                """)
-                else:
-                    # Base variable with no derived variables - non-expandable
-                    hierarchy_html.append(f"""
-                <div style="margin: 2px 0;">
-                    <span style="font-family: monospace; font-weight: bold; opacity: 0;">▶</span>
-                    <span style="color: black; background-color: #A8D5FF; padding: 2px 4px; border-radius: 4px;">base var</span> {base_var}
-                    <span style="opacity: 0.5; font-size: 0.85em;">
-                        (no shifts or clusterings)
-                    </span>
-                </div>
-                """)
-                    # Skip the rest of the loop for this base_var since there's nothing to show
-                    continue
-
-                # Shift variables
-                for shift_info in info["shifts"]:
-                    shift_var = shift_info["name"]
-                    shift_clusters = shift_info["clusters"]
-                    shift_id = f"{instance_id}_shift_{shift_var.replace('.', '_')}"
-
-                    if shift_clusters:
-                        # Shift variable with clusters (expandable)
-                        hierarchy_html.append(f"""
-                        <div style="margin: 4px 0;">
-                            <span onclick="toggleSection_{instance_id}('{shift_id}')" style="cursor: pointer; user-select: none;">
-                                <span id="{shift_id}_arrow" style="font-family: monospace; font-weight: bold;">▶</span>
-                                <span style="color: black; background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var} <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
-                            </span>
-                            <div id="{shift_id}_content" style="display: none; margin-left: 20px; margin-top: 3px;">
-                        """)
-
-                        # Cluster variables under this shift
-                        for cluster_var in shift_clusters:
-                            n_clusters = self.data[cluster_var].attrs.get(
-                                _attrs.CLUSTER_IDS
-                            )
-                            n_clusters = (
-                                len(n_clusters) - 1 if n_clusters is not None else 0
-                            )  # -1 to remove noise cluster
-                            hierarchy_html.append(f"""
-                            <div style="margin-left: 12px; padding: 2px 0px;">
-                                <span style="color: black; background-color: #B8E6C1; padding: 2px 4px; border-radius: 4px;">cluster var</span> {cluster_var} <span style="opacity: 0.5; font-size: 0.85em;">({n_clusters} clusters)</span>
-                            </div>
-                            """)
-
-                        hierarchy_html.append("</div></div>")
-                    else:
-                        # Shift variable without clusters
-                        hierarchy_html.append(f"""
-                        <div style="margin: 2px 0;">
-                            <span style="font-family: monospace; font-weight: bold; opacity: 0;">▶</span>
-                            <span style="color: black; background-color: #FFE0A3; padding: 2px 4px; border-radius: 4px;">shifts var</span> {shift_var}  <span style="opacity: 0.5; font-size: 0.85em;">({len(shift_clusters)} clusterings)</span>
-                        </div>
-                        """)
-                hierarchy_html.append("</div></div>")
-
-            variable_table = f"""
-            <div style='margin: 10px 0px;'>
-                <h4 style="margin: 5px 0; font-size: 1.1em;">Variable Hierarchy:</h4>
-                <div style="font-family: monospace; font-size: 1.0em; border: 1px solid #ddd; padding: 10px; line-height: 1.4;">
-                    {"".join(hierarchy_html)}
-                </div>
-            </div>
-            
-            <script>
-            function toggleSection_{instance_id}(sectionId) {{
-                const content = document.getElementById(sectionId + '_content');
-                const arrow = document.getElementById(sectionId + '_arrow');
-                
-                if (content.style.display === 'none') {{
-                    content.style.display = 'block';
-                    arrow.textContent = '▼';
-                }} else {{
-                    content.style.display = 'none';
-                    arrow.textContent = '▶';
-                }}
-            }}
-
-            // Auto-expand logic
-            function autoExpand_{instance_id}() {{
-                let visibleClusterings = 0;
-                const maxVisible = 10;
-                
-                // First count total clusterings in each base section
-                const baseSections = document.querySelectorAll('[id^="{instance_id}_base_"][id$="_arrow"]');
-                const sectionCounts = [];
-                
-                // Get counts for each base section
-                baseSections.forEach(baseArrow => {{
-                    const baseId = baseArrow.id.replace('_arrow', '');
-                    const baseContent = document.getElementById(baseId + '_content');
-                    const clusterCount = baseContent.querySelectorAll('[style*="background-color: lightgreen"]').length;
-                    sectionCounts.push({{baseId, clusterCount}});
-                }});
-                
-                // Sort sections by cluster count (ascending) to expand smaller sections first
-                sectionCounts.sort((a, b) => a.clusterCount - b.clusterCount);
-                
-                // Expand sections until we hit the limit
-                for (const {{baseId, clusterCount}} of sectionCounts) {{
-                    if (visibleClusterings + clusterCount <= maxVisible) {{
-                        const baseContent = document.getElementById(baseId + '_content');
-                        const baseArrow = document.getElementById(baseId + '_arrow');
-                        
-                        // Expand base section
-                        baseContent.style.display = 'block';
-                        baseArrow.textContent = '▼';
-                        
-                        // Expand all shift sections within
-                        const shiftSections = baseContent.querySelectorAll('[id^="{instance_id}_shift_"][id$="_arrow"]');
-                        shiftSections.forEach(shiftArrow => {{
-                            const shiftId = shiftArrow.id.replace('_arrow', '');
-                            const shiftContent = document.getElementById(shiftId + '_content');
-                            shiftArrow.textContent = '▼';
-                            shiftContent.style.display = 'block';
-                        }});
-                        
-                        visibleClusterings += clusterCount;
-                    }}
-                }}
-            }}
-
-            // Run auto-expand when the notebook cell is rendered
-            autoExpand_{instance_id}();
-            </script>
-            """
-
-        # Try to load and encode the TOAD logo
-        logo_html = ""
-        try:
-            import base64
-            import os
-
-            current_dir = os.path.dirname(__file__)
-            logo_path = os.path.abspath(
-                os.path.join(
-                    current_dir, "..", "docs", "source", "resources", "toad.png"
-                )
-            )
-
-            if os.path.exists(logo_path):
-                with open(logo_path, "rb") as img_file:
-                    img_data = base64.b64encode(img_file.read()).decode()
-                    logo_html = f'<img src="data:image/png;base64,{img_data}" style="height: 40px; margin-right: 10px; vertical-align: middle;">'
-        except Exception:
-            pass
-
-        # Wrap everything in a TOAD container
-        html = f"""
+        return f"""
         <div style='padding: 12px'>
             <h2 style='margin-bottom: 0px; display: flex; align-items: center;'>{logo_html}TOAD Object</h2>
             {variable_table}
@@ -423,8 +212,6 @@ class TOAD:
             {ds_repr}
         </div>
         """
-
-        return html
 
     # # ======================================================================
     # #               Module functions

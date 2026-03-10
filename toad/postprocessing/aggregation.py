@@ -59,7 +59,7 @@ class Aggregation:
         Returns:
             DataArray containing the normalized cluster occurrence rate for each point.
             Values range from 0 (never in a cluster) to 1 (always in a cluster).
-            The output variable name will be "cluster_occurence_rate" with a numeric
+            The output variable name will be "cluster_occurrence_rate" with a numeric
             suffix if that name already exists in the dataset.
 
         Example:
@@ -86,7 +86,7 @@ class Aggregation:
 
         # Set name
         output_label = get_unique_variable_name(
-            "cluster_occurence_rate", self.td.data, self.td.logger
+            "cluster_occurrence_rate", self.td.data, self.td.logger
         )
         cluster_normalized = cluster_normalized.rename(output_label)
 

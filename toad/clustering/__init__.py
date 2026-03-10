@@ -438,7 +438,7 @@ def compute_clusters(
             _attrs.SHIFT_THRESHOLD: shift_threshold,
             _attrs.SHIFT_SELECTION: shift_selection,
             _attrs.SHIFT_DIRECTION: shift_direction,
-            _attrs.time_weight: time_weight,
+            _attrs.TIME_WEIGHT: time_weight,
             _attrs.N_DATA_POINTS: n_pts,
             _attrs.METHOD_NAME: method.__class__.__name__,
             _attrs.RUNTIME_PREPROCESSING: float(preprocessing_time),

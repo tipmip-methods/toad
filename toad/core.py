@@ -1036,21 +1036,27 @@ class TOAD:
                 if self.data[x].attrs.get(_attrs.BASE_VARIABLE) == var
             ]
 
-    # TODO: add variable inference like in get_clusters()
-    def get_base_var(self, var: str) -> Optional[str]:
-        """Get the base variable for a given variable."""
+    def get_base_var(self, var: str | None = None) -> Optional[str]:
+        """Get the base variable for a given variable.
+
+        Args:
+            var: Base variable name, cluster variable name, or shift variable name.
+                If None, returns the single base variable when only one exists.
+        """
+        var = self._get_base_var_if_none(var)
         if var in self.base_vars:
             return var
         else:
             return self.data[var].attrs.get(_attrs.BASE_VARIABLE)
 
-    # TODO: add variable inference like in get_clusters()
-    def get_shifts(self, var, label_suffix: str = "") -> xr.DataArray:
+    def get_shifts(
+        self, var: str | None = None, label_suffix: str = ""
+    ) -> xr.DataArray:
         """Get shifts xr.DataArray for the specified variable.
 
         Args:
-            var: Base variable name (e.g. 'temperature', will look for 'temperature_cluster')
-                or custom cluster variable name.
+            var: Base variable name (e.g. 'temperature'), cluster variable name, or None to infer
+                when only one base variable exists.
             label_suffix: If you added a suffix to the shifts variable, help the function find it.
                 Defaults to "".
 
@@ -1060,6 +1066,7 @@ class TOAD:
         Raises:
             ValueError: Failed to find valid shifts xr.DataArray for the given var.
         """
+        var = self._get_base_var_if_none(var)
 
         # Check if the variable is a shifts variable
         if self._is_shift_variable(var):

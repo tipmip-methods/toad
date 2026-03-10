@@ -318,15 +318,18 @@ class GeneralStats:
             norm_ts = (ts - np.nanmin(ts)) / (
                 np.nanmax(ts) - np.nanmin(ts)
             )  # Normalise each trajectory individually
-            coeffs = np.polyfit(xvals, norm_ts, 1)
+            valid = np.isfinite(norm_ts)
+            if valid.sum() < 2:
+                continue
+            coeffs = np.polyfit(xvals[valid], norm_ts[valid], 1)
             pred = np.polyval(coeffs, xvals)
-            rmse = np.sqrt(np.mean((norm_ts - pred) ** 2))
+            rmse = np.sqrt(np.mean((norm_ts[valid] - pred[valid]) ** 2))
             unclustered_rmses.append(rmse)
 
         if len(unclustered_rmses) == 0:
             return rmse_cluster  # No valid unclustered points
 
-        avg_rmse_unclustered = np.mean(unclustered_rmses)
+        avg_rmse_unclustered = np.nanmean(unclustered_rmses)
         if avg_rmse_unclustered < 1e-10:
             avg_rmse_unclustered = 1e-10  # avoid divide-by-zero
 

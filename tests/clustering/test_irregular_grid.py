@@ -61,7 +61,7 @@ def test_irregular_grid(
     N_clusters = len(td.get_cluster_ids(var, exclude_noise=True))
     print(shift_selection, N_clusters)
 
-    # only compare the noise cluster - was getting ±1 difference on the seceond cluster when running tests on Github Actions.
-    assert abs(N_clusters - expected_N_clusters) <= 2, (
-        f"Expected {expected_N_clusters}±2, got {N_clusters}"
+    # ±1 tolerance: some variability across platforms (was getting ±1 on GHA).
+    assert abs(N_clusters - expected_N_clusters) <= 1, (
+        f"Expected {expected_N_clusters}±1, got {N_clusters}"
     )

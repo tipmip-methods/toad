@@ -194,11 +194,9 @@ class TestGeneralStats:
         heaviside = general.score_heaviside(cid)
         assert heaviside >= 0
 
-        # Consistency: 0-1 range (inverted inconsistency)
+        # Consistency: non-negative (0-1 typical, can exceed 1 for very consistent)
         consistency = general.score_consistency(cid)
-        assert (
-            0 <= consistency <= 1 or consistency > 1
-        )  # Can exceed 1 for very consistent
+        assert consistency >= 0
 
         # Spatial autocorrelation: R², should be 0-1
         spatial_autocorr = general.score_spatial_autocorrelation(cid)

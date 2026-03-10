@@ -22,6 +22,12 @@ class TimeStats:
         self.td = toad
         self.var = var
 
+    def _get_cluster_density(self, cluster_id) -> xr.DataArray:
+        """Fraction of grid cells in cluster at each timestep (0-1)."""
+        return self.td.get_cluster_mask(self.var, cluster_id).mean(
+            dim=self.td.space_dims
+        )
+
     def start(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
         """Return the start time of the cluster."""
         masked_numeric_time_values = self._get_cluster_numeric_times(cluster_id)
@@ -36,7 +42,7 @@ class TimeStats:
 
     def start_timestep(self, cluster_id) -> float:
         """Return the start index of the cluster"""
-        dens = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        dens = self._get_cluster_density(cluster_id)
         idx_start = np.where(dens > 0)[0][0]
         return int(idx_start)
 
@@ -54,7 +60,7 @@ class TimeStats:
 
     def end_timestep(self, cluster_id) -> int:
         """Return the end index of the cluster"""
-        dens = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        dens = self._get_cluster_density(cluster_id)
         idx_end = np.where(dens > 0)[0][-1]
         return int(idx_end)
 
@@ -132,7 +138,7 @@ class TimeStats:
 
         If there's a plateau at the maximum value, returns the center of the plateau.
         """
-        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        ctd = self._get_cluster_density(cluster_id)
 
         # Find the maximum value
         max_value = float(ctd.max())
@@ -155,7 +161,7 @@ class TimeStats:
 
     def membership_peak_density(self, cluster_id) -> float:
         """Return the largest cluster temporal density"""
-        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        ctd = self._get_cluster_density(cluster_id)
         return float(ctd.max().values)
 
     def steepest_gradient(
@@ -271,7 +277,7 @@ class TimeStats:
         self, cluster_id, lower_quantile: float, upper_quantile: float
     ) -> tuple[int, int]:
         """Return lower and upper timestep indices for a cluster interquantile range."""
-        ctd = self.td.get_cluster_density_spatial(self.var, cluster_id)
+        ctd = self._get_cluster_density(cluster_id)
         cum_dist = ctd.cumsum()
 
         lower_idx = np.where(cum_dist >= lower_quantile * cum_dist[-1])[0]

@@ -27,19 +27,15 @@ class SpaceStats:
         lat_name, lon_name = detect_latlon_names(self.td.data)
         has_latlon = lat_name is not None and lon_name is not None
 
+        mask = self.td.get_cluster_mask(self.var, cluster_id)
+
         if has_latlon:
-            # Use lat/lon coordinates instead of dimension coordinates
-            y_coords = self.td.apply_cluster_mask(self.var, lat_name, cluster_id)
-            x_coords = self.td.apply_cluster_mask(self.var, lon_name, cluster_id)
+            y_coords = self.td.data[lat_name].where(mask)
+            x_coords = self.td.data[lon_name].where(mask)
             return y_coords, x_coords
         else:
-            # Fallback to dimension coordinates
-            y_coords = self.td.apply_cluster_mask(
-                self.var, self.td.space_dims[0], cluster_id
-            )
-            x_coords = self.td.apply_cluster_mask(
-                self.var, self.td.space_dims[1], cluster_id
-            )
+            y_coords = self.td.data[self.td.space_dims[0]].where(mask)
+            x_coords = self.td.data[self.td.space_dims[1]].where(mask)
             return y_coords, x_coords
 
     def _get_cluster_coordinate_values(self, cluster_id):
@@ -49,32 +45,17 @@ class SpaceStats:
         lat_name, lon_name = detect_latlon_names(self.td.data)
         has_latlon = lat_name is not None and lon_name is not None
 
+        spatial_mask = self.td.get_cluster_mask_spatial(self.var, cluster_id)
+
         if has_latlon:
             # Use lat/lon coordinates (works for both 1D regular and 2D irregular grids)
-            spatial_mask = self.td.get_cluster_mask_spatial(self.var, cluster_id)
-
-            if self.td.data[lat_name].ndim == 2:
-                # 2D coordinates (irregular grid)
-                lat_values = self.td.data[lat_name].where(spatial_mask)
-                lon_values = self.td.data[lon_name].where(spatial_mask)
-            else:
-                # 1D coordinates (regular grid) - apply mask to get subset
-                lat_values = self.td.apply_cluster_mask_spatial(
-                    self.var, lat_name, cluster_id
-                )
-                lon_values = self.td.apply_cluster_mask_spatial(
-                    self.var, lon_name, cluster_id
-                )
-
+            lat_values = self.td.data[lat_name].where(spatial_mask)
+            lon_values = self.td.data[lon_name].where(spatial_mask)
             return lat_values, lon_values
         else:
             # Fallback to dimension coordinates when lat/lon not available
-            y_coords = self.td.apply_cluster_mask_spatial(
-                self.var, self.td.space_dims[0], cluster_id
-            )
-            x_coords = self.td.apply_cluster_mask_spatial(
-                self.var, self.td.space_dims[1], cluster_id
-            )
+            y_coords = self.td.data[self.td.space_dims[0]].where(spatial_mask)
+            x_coords = self.td.data[self.td.space_dims[1]].where(spatial_mask)
             return y_coords, x_coords
 
     def mean(self, cluster_id):

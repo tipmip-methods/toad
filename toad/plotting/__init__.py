@@ -785,13 +785,17 @@ class Plotter:
         # Individual trajectories
         plot_trajectories: bool = True,
         max_trajectories: int = 1_000,
-        trajectories_sample_seed=0,
+        trajectories_sample_seed: int = 0,
+        trajectory_ids: Optional[List[int]] = None,
         trajectories_alpha: float = 0.5,
         trajectories_linewidth: float = 0.5,
         full_timeseries: bool = True,
         highlight_color: Optional[str] = None,
         highlight_alpha: float = 0.5,
         highlight_linewidth: float = 0.5,
+        # Shift detection markers
+        plot_shift_indicator: bool = False,
+        shift_indicator_size: float = 5.0,
         plot_dts: bool = False,  # If True, plot shifts variable in timeseries
         # Aggregated statistics
         plot_median: bool = False,
@@ -804,9 +808,9 @@ class Plotter:
         trajectory_range_alpha: float = 0.2,
         trajectory_std_alpha: float = 0.4,
         # Shift duration
-        plot_shift_indicator: bool = True,
-        shift_indicator_color: Optional[str] = None,  # Uses cluster color if None
-        shift_indicator_alpha: float = 0.25,
+        plot_cluster_duration: bool = True,
+        cluster_duration_color: Optional[str] = None,  # Uses cluster color if None
+        cluster_duration_alpha: float = 0.25,
         # Map options
         plot_map: bool = False,
         map_var: Optional[str] = None,
@@ -856,8 +860,10 @@ class Plotter:
             add_legend: If True, add a legend indicating cluster IDs.
             plot_trajectories: If True, plot individual cell trajectories.
             max_trajectories: Maximum number of individual trajectories to plot (per cluster if
-                clusters provided, or total if plotting all data).
+                clusters provided, or total if plotting all data). Ignored when trajectory_ids is set.
             trajectories_sample_seed: Seed for the random number generator used to sample trajectories. Defaults to 0.
+            trajectory_ids: Exact integer indices of cells to plot. Overrides max_trajectories and
+                trajectories_sample_seed. Out-of-range indices are silently skipped.
             trajectories_alpha: Alpha transparency for individual time series lines. Defaults to 0.5.
             trajectories_linewidth: Linewidth for individual time series lines. Defaults to 0.5.
             full_timeseries: If True, plot the full timeseries for each cell. If False,
@@ -866,6 +872,10 @@ class Plotter:
                 when full_timeseries is True.
             highlight_alpha: Alpha for the cluster highlight segment.
             highlight_linewidth: Line width for the cluster highlight segment.
+            plot_shift_indicator: If True, overlay a dot on each trajectory at every timestep where
+                that cell is assigned to the cluster (i.e. where the shift is detected).
+                Only applies when clusters are provided.
+            shift_indicator_size: Marker size (in points) for the shift detection dots. Defaults to 5.0.
             plot_dts: If True, plot shifts variable in timeseries instead of base variable.
             plot_median: If True, plot the median timeseries curve.
             plot_mean: If True, plot the mean timeseries curve.
@@ -875,10 +885,10 @@ class Plotter:
             plot_trajectory_std: If True, plot the 68% interquartile range (16th to 84th percentile) as a shaded area.
             trajectory_range_alpha: Alpha transparency for the full range shaded area.
             trajectory_std_alpha: Alpha transparency for the IQR shaded area.
-            plot_shift_indicator: If True, adds horizontal shading indicating the cluster's
+            plot_cluster_duration: If True, adds horizontal shading indicating the cluster's
                 temporal extent (start to end). Only applies when clusters are provided.
-            shift_indicator_color: Color for shift duration shading. Uses cluster color if None.
-            shift_indicator_alpha: Alpha for the shift duration shading.
+            cluster_duration_color: Color for shift duration shading. Uses cluster color if None.
+            cluster_duration_alpha: Alpha for the shift duration shading.
             plot_map: If True, include a map showing cluster spatial locations alongside timeseries.
                 Defaults to False.
             map_var: Variable name whose data to plot in the map. Defaults to var if None. Only used if plot_map=True.
@@ -1016,7 +1026,9 @@ class Plotter:
 
             # Use cluster color for shift duration if not specified
             shift_color = (
-                shift_indicator_color if shift_indicator_color is not None else id_color
+                cluster_duration_color
+                if cluster_duration_color is not None
+                else id_color
             )
 
             # Plot aggregated statistics first (so they appear behind individual trajectories)
@@ -1030,6 +1042,7 @@ class Plotter:
                     range_alpha=trajectory_range_alpha,
                     normalize=normalize,
                     time_dim=self.td.time_dim,
+                    full_timeseries=full_timeseries,
                 )
 
             if plot_trajectory_std:
@@ -1042,6 +1055,7 @@ class Plotter:
                     iqr_alpha=trajectory_std_alpha,
                     normalize=normalize,
                     time_dim=self.td.time_dim,
+                    full_timeseries=full_timeseries,
                 )
 
             if plot_mean:
@@ -1054,6 +1068,7 @@ class Plotter:
                     mean_linewidth=mean_linewidth,
                     add_legend=add_legend,
                     normalize=normalize,
+                    full_timeseries=full_timeseries,
                 )
 
             if plot_median:
@@ -1066,16 +1081,19 @@ class Plotter:
                     median_linewidth=median_linewidth,
                     add_legend=add_legend,
                     normalize=normalize,
+                    full_timeseries=full_timeseries,
                 )
 
-            # Plot shift duration (horizontal shading) - only for real clusters
-            if plot_shift_indicator and id is not None:
-                self._plot_shift_indicator(
+            # Plot shift duration (horizontal shading) - only for real clusters.
+            # Skip when full_timeseries=False: the entire visible plot is already the
+            # cluster segment, so the indicator would cover the whole background.
+            if plot_cluster_duration and id is not None and full_timeseries:
+                self._plot_cluster_duration(
                     current_ax=current_ax,
                     var=var,
                     cluster_id=id,
                     shift_color=shift_color,
-                    shift_indicator_alpha=shift_indicator_alpha,
+                    cluster_duration_alpha=cluster_duration_alpha,
                 )
 
             # Plot individual trajectories
@@ -1091,10 +1109,13 @@ class Plotter:
                     trajectory_linewidth=trajectories_linewidth,
                     max_trajectories=max_trajectories,
                     trajectories_sample_seed=trajectories_sample_seed,
+                    trajectory_ids=trajectory_ids,
                     full_timeseries=full_timeseries,
                     normalize=normalize,
                     add_legend=add_legend,
                     use_subplots=use_subplots,
+                    plot_shift_indicator=plot_shift_indicator,
+                    shift_indicator_size=shift_indicator_size,
                     **plot_kwargs,
                 )
 
@@ -1583,6 +1604,7 @@ class Plotter:
         range_alpha: float,
         normalize: Optional[Literal["max", "max_each"]] | str,
         time_dim: str,
+        full_timeseries: bool = True,
     ) -> None:
         """Plot full range (min to max) as shaded area.
 
@@ -1595,11 +1617,13 @@ class Plotter:
             range_alpha: Alpha transparency
             normalize: Normalization method
             time_dim: Time dimension name
+            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
         """
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
+            "keep_full_timeseries": full_timeseries,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -1634,6 +1658,7 @@ class Plotter:
         percentile_lower: float = 0.16,
         percentile_upper: float = 0.84,
         fill_zorder: int = 1,
+        full_timeseries: bool = True,
     ) -> None:
         """Plot interquartile range as shaded area between two percentiles.
 
@@ -1649,11 +1674,13 @@ class Plotter:
             percentile_lower: Lower percentile for band (default 0.16)
             percentile_upper: Upper percentile for band (default 0.84)
             fill_zorder: Z-order for fill_between (default 1)
+            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
         """
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
+            "keep_full_timeseries": full_timeseries,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -1687,6 +1714,7 @@ class Plotter:
         mean_linewidth: float,
         add_legend: bool,
         normalize: Optional[Literal["max", "max_each"]] | str,
+        full_timeseries: bool = True,
     ) -> None:
         """Plot mean timeseries curve.
 
@@ -1699,11 +1727,13 @@ class Plotter:
             mean_linewidth: Line width
             add_legend: Whether to add legend
             normalize: Normalization method
+            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
         """
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
+            "keep_full_timeseries": full_timeseries,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -1734,6 +1764,7 @@ class Plotter:
         median_linewidth: float,
         add_legend: bool,
         normalize: Optional[Literal["max", "max_each"]] | str,
+        full_timeseries: bool = True,
     ) -> None:
         """Plot median timeseries curve.
 
@@ -1746,11 +1777,13 @@ class Plotter:
             median_linewidth: Line width
             add_legend: Whether to add legend
             normalize: Normalization method
+            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
         """
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
+            "keep_full_timeseries": full_timeseries,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -1771,13 +1804,13 @@ class Plotter:
             zorder=3,
         )  # type: ignore
 
-    def _plot_shift_indicator(
+    def _plot_cluster_duration(
         self,
         current_ax: Axes,
         var: str,
         cluster_id: int,
         shift_color: str,
-        shift_indicator_alpha: float,
+        cluster_duration_alpha: float,
     ) -> None:
         """Plot shift duration as horizontal shading.
 
@@ -1786,7 +1819,7 @@ class Plotter:
             var: Base variable name
             cluster_id: Cluster ID
             shift_color: Color for shading
-            shift_indicator_alpha: Alpha transparency
+            cluster_duration_alpha: Alpha transparency
         """
 
         start = self.td.stats(var).time.start(cluster_id)
@@ -1796,7 +1829,7 @@ class Plotter:
             current_ax.axvline(
                 start,  # type: ignore[arg-type]
                 color=shift_color,
-                alpha=shift_indicator_alpha,
+                alpha=cluster_duration_alpha,
                 zorder=0,
             )
         else:
@@ -1806,7 +1839,7 @@ class Plotter:
                 self.td.stats(var).time.end(cluster_id),  # type: ignore[arg-type]
                 facecolor=shift_color,
                 edgecolor="none",
-                alpha=shift_indicator_alpha,
+                alpha=cluster_duration_alpha,
                 zorder=-100,
             )
 
@@ -1825,6 +1858,9 @@ class Plotter:
         normalize: Optional[Literal["max", "max_each"]] | str,
         add_legend: bool,
         use_subplots: bool,
+        trajectory_ids: Optional[List[int]] = None,
+        plot_shift_indicator: bool = False,
+        shift_indicator_size: float = 5.0,
         **plot_kwargs: Any,
     ) -> Optional[Any]:
         """Plot individual cell trajectories.
@@ -1843,6 +1879,9 @@ class Plotter:
             normalize: Normalization method
             add_legend: Whether to add legend
             use_subplots: Whether using subplots
+            trajectory_ids: Exact cell indices to plot. Overrides max_trajectories/seed.
+            plot_shift_indicator: If True, overlay dots at in-cluster timesteps on each trajectory.
+            shift_indicator_size: Marker size (in points) for dots.
             **plot_kwargs: Additional plot arguments
         """
         is_real_cluster = cluster_id is not None
@@ -1865,14 +1904,33 @@ class Plotter:
             else:
                 raise ValueError(f"No timeseries found for {plot_var}")
 
-        # Limit the number of trajectories to plot
-        max_trajectories_actual = int(np.min([max_trajectories, len(cells)]))
+        # Determine which cells to plot
+        if trajectory_ids is not None:
+            order = [i for i in trajectory_ids if i < len(cells)]
+            if len(order) < len(trajectory_ids):
+                skipped = [i for i in trajectory_ids if i >= len(cells)]
+                logger.warning(
+                    f"trajectory_ids {skipped} are out of range (cluster has {len(cells)} cells) and will be skipped."
+                )
+        else:
+            max_trajectories_actual = int(np.min([max_trajectories, len(cells)]))
+            order = np.arange(len(cells))
+            np.random.seed(trajectories_sample_seed)
+            np.random.shuffle(order)
+            order = order[:max_trajectories_actual]
 
-        # Shuffle the cell to get a random sample
-        order = np.arange(len(cells))
-        np.random.seed(trajectories_sample_seed)
-        np.random.shuffle(order)
-        order = order[:max_trajectories_actual]
+        # Pre-fetch per-cell detection timestep mask for shift dots.
+        # Uses the spatio-temporal cluster mask (True only at the detection event per cell,
+        # not at every timestep in the cluster window) — same logic as the cluster label
+        # variable masked by get_cluster_mask().
+        detection_mask_ts = None
+        if plot_shift_indicator and is_real_cluster:
+            cl = self.td.get_clusters(var).where(
+                self.td.get_cluster_mask(var, cluster_id)
+            )
+            detection_mask_ts = cl.toad.to_timeseries(time_dim=self.td.time_dim)
+
+        dot_color = id_color
 
         for plot_idx, cell_idx in enumerate(order):
             if is_real_cluster:
@@ -1894,6 +1952,22 @@ class Plotter:
                 label=add_label,
                 **plot_kwargs,
             )
+
+            if detection_mask_ts is not None and cell_idx < len(detection_mask_ts):
+                ts = cells[cell_idx]
+                det_ts = detection_mask_ts[cell_idx]
+                valid = ~np.isnan(det_ts.values)
+                if valid.any():
+                    current_ax.plot(
+                        ts[self.td.time_dim].values[valid],
+                        ts.values[valid],
+                        marker="o",
+                        linestyle="none",
+                        color=dot_color,
+                        alpha=trajectory_alpha,
+                        markersize=shift_indicator_size,
+                        zorder=5,
+                    )
 
         return cells
 

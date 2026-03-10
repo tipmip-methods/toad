@@ -246,7 +246,7 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
     # Add optimization details to attributes
     new_data[output_label].attrs.update(
         {
-            _attrs.optimization: True,
+            _attrs.OPTIMIZATION: True,
             _attrs.OPT_OBJECTIVE: objective.__name__
             if callable(objective)
             else objective,

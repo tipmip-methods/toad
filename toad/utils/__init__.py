@@ -46,7 +46,7 @@ class _Attrs:
     SHIFT_SELECTION: str = "shift_selection"
     SHIFT_DIRECTION: str = "shift_direction"
     SCALER: str = "scaler"
-    time_weight: str = "time_weight"
+    TIME_WEIGHT: str = "time_weight"
     N_DATA_POINTS: str = "n_data_points"
     METHOD_NAME: str = "method_name"
     RUNTIME_PREPROCESSING: str = "runtime_preprocessing"
@@ -57,7 +57,7 @@ class _Attrs:
     TIME_DIM: str = "time_dim"
 
     # optimization related attributes
-    optimization: str = "optimization"
+    OPTIMIZATION: str = "optimization"
     OPT_OBJECTIVE: str = "opt_objective"
     OPT_BEST_SCORE: str = "opt_best_score"
     OPT_DIRECTION: str = "opt_direction"

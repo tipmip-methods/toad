@@ -270,12 +270,12 @@ class GeneralStats:
                 - "std": Standard deviation across space
                 - "percentile": Percentile across space (requires percentile arg)
             percentile: Percentile value between 0–1 (only used if aggregation="percentile")
-            normalize_against_unclustered: If True, normalize score by average RMSE of unclustered points.
+            normalise_against_unclustered: If True, normalise score by average RMSE of unclustered points.
                 This helps identify clusters that stand out from background behavior.
 
         Returns:
             float: Nonlinearity score. Higher means more nonlinear behavior.
-                Interpretation depends on normalize_against_unclustered parameter.
+                Interpretation depends on normalise_against_unclustered parameter.
 
         References:
             Kobe De Maeyer Master Thesis (2025)

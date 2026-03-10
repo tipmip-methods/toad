@@ -138,7 +138,7 @@ class Aggregation:
         print(
             "This function is deprecated and will be removed in a future release. Use cluster_consensus() instead."
         )
-        # get all clsuter vars if nothing is provided
+        # get all cluster vars if nothing is provided
         if cluster_vars is None:
             cluster_vars = list(self.td.cluster_vars)
 

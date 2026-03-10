@@ -16,10 +16,9 @@ def combined_spatial_nonlinearity(td, cluster_variable, weights=[1, 1]) -> float
     """Compute a weighted combination of spatial autocorrelation and nonlinearity scores for the largest 10 clusters.
 
     Args:
-        td: ToadDataset object containing the data
-        cluster_ids: List of cluster IDs to evaluate
-        var: Name of variable to analyze
-        weights: List of two weights for spatial and nonlinearity scores. Defaults to [1,1]
+        td: TOAD object containing the data
+        cluster_variable: Name of the cluster variable to analyze
+        weights: List of two weights for spatial and nonlinearity scores. Defaults to [1, 1].
 
     Returns:
         float: Weighted sum of spatial autocorrelation and nonlinearity scores

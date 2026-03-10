@@ -93,7 +93,6 @@ class ASDETECT(ShiftsMethod):
         self.timescale = timescale
         self.segmentation: Literal["two_sided", "original"] | str = segmentation
         self.ignore_nan_warnings = ignore_nan_warnings
-        self._converted_timescale = False
 
         assert timescale is None or (
             isinstance(timescale, tuple)
@@ -156,7 +155,6 @@ class ASDETECT(ShiftsMethod):
                 )
             lmax = lmax_max
 
-        self._converted_timescale = True
         return lmin, lmax
 
     def fit_predict(
@@ -177,8 +175,8 @@ class ASDETECT(ShiftsMethod):
                 - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
         """
 
-        # Convert timescale to lmin/lmax if needed
-        if self.timescale is not None and not self._converted_timescale:
+        # Convert timescale to lmin/lmax if needed (recomputed each call for correct behaviour when dt varies)
+        if self.timescale is not None:
             self.lmin, self.lmax = self._get_segment_lengths(times_1d)
 
         return construct_detection_ts(

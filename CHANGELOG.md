@@ -12,13 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Function for removing specific clusters by id (useful for filtering clusters of no interest)
 - Function for sorting clusters (e.g. by magnitude, median shift time, or to reset indexing after removal)
 - New time stats: `value_at_start`, `value_at_end`, `value_change`, `value_at_iqr_90_start`/`value_at_iqr_90_end`, `value_change_iqr_90`
+- `get_cluster_times()` — returns flattened array of time values for every cell in a cluster
+- Variable inference for `get_base_var()` and `get_shifts()`
+- `trajectory_ids` parameter in td.plot.timeseries() shows exact cell indices (instead of random sample)
+- `plot_shift_indicator` in timeseries plots to mark detection timestep per cell on each trajectory
+- `DEFAULT_SHIFT_THRESHOLD` constant in `toad.utils` for the default clustering threshold
+
+### Changed
+- `get_cluster_timeseries()` deprecated in favour of `get_timeseries()`; deprecated alias logs a warning
+- Timeseries plot: `plot_shift_indicator` now marks detection timesteps; duration shading renamed to `plot_cluster_duration`
+- Replaced internal `assert` checks with proper error messages (validation now works when Python is run with optimisations)
+
+### Deprecated
+- `get_cluster_timeseries()` — use `get_timeseries()` instead
+
+### Removed
+- Synthetic shifts generator (development tool)
+- Redundant core methods: `get_active_clusters_count_per_timestep`, `apply_cluster_mask`, `apply_cluster_mask_spatial`, `apply_cluster_mask_temporal`, `get_cluster_density_temporal`, `get_cluster_density_spatial`, `get_cluster_mask_temporal`, `get_cluster_data` — use stats API instead
 
 ### Fixed
 - More robust variable selection in consensus clustering (cluster variable is now specified directly instead of inferred from shifts)
 - `compute_transition_time` now restricted to cluster period (previously used largest shift in each grid cell regardless of period)
 - Z-order of contours in cluster maps (clusters now correctly layered)
 - Enhanced error handling in asdetect for short time series (validates `lmin` < `lmax` with guiding error message for common defaults)
-- Assert that all variables have the same dimensions (fixes inference from first base variable in `space_dims`)
+- Steepest gradient: fix handling of NaN values and time indexing
+- Timeseries plot: `keep_full_timeseries` now correctly applied throughout; cluster duration shading hidden when showing only the cluster period
 
 ## [1.0.5] - 2026-02-12
 

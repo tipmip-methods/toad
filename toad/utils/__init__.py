@@ -19,6 +19,7 @@ import numpy as np
 import xarray as xr
 
 __all__ = [
+    "DEFAULT_SHIFT_THRESHOLD",
     "get_space_dims",
     "get_latlon_info",
     "detect_latlon_names",
@@ -69,6 +70,9 @@ class _Attrs:
 
 
 _attrs = _Attrs()
+
+# Default parameter values used across clustering, stats, and plotting
+DEFAULT_SHIFT_THRESHOLD: float = 0.5
 
 
 def get_space_dims(xr_da: Union[xr.DataArray, xr.Dataset], tdim: str) -> list[str]:

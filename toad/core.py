@@ -23,6 +23,7 @@ from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
+    DEFAULT_SHIFT_THRESHOLD,
     detect_latlon_names,
     get_space_dims,
 )
@@ -343,7 +344,7 @@ class TOAD:
         self,
         var: str | None = None,
         method: ClusterMixin | type = sklearn.cluster.HDBSCAN(),
-        shift_threshold: float = 0.5,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
         shift_direction: Literal["both", "positive", "negative"] | str = "both",
         shift_selection: Literal["local", "global", "all"] | str = "local",
         time_weight: float = 1,

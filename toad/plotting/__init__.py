@@ -12,7 +12,12 @@ from matplotlib.axes import Axes
 from matplotlib.colors import Colormap, ListedColormap, to_hex, to_rgb, to_rgba
 from matplotlib.patches import Rectangle
 
-from toad.utils import _attrs, detect_latlon_names, is_regular_grid
+from toad.utils import (
+    _attrs,
+    DEFAULT_SHIFT_THRESHOLD,
+    detect_latlon_names,
+    is_regular_grid,
+)
 
 __all__ = ["Plotter", "MapStyle"]
 
@@ -713,7 +718,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "turbo",
-        shift_threshold: float = 0.5,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
         **kwargs: Any,
     ):
         """Plot a map showing the time at which the maximal shift occurs for a given variable.

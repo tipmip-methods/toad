@@ -360,9 +360,8 @@ class Plotter:
         add_labels = config.add_labels
         contour_linewidth = config.contour_linewidth
 
-        assert plot_fill or plot_contour, (
-            "plot_fill and plot_contour cannot both be False"
-        )
+        if not (plot_fill or plot_contour):
+            raise ValueError("plot_fill and plot_contour cannot both be False")
 
         # plot_contour is not supported on irregular grids
         if (plot_contour and not plot_fill) and not is_regular_grid(self.td.data):
@@ -475,7 +474,8 @@ class Plotter:
                 current_ax: Axes = axs_array[row, col]  # type: ignore
             else:
                 # ax is guaranteed to be set at this point (created if None)
-                assert ax is not None, "ax should be set when subplots=False"
+                if ax is None:
+                    raise ValueError("ax should be set when subplots=False")
                 current_ax = ax
 
             # Get the colormap for this cluster
@@ -574,7 +574,8 @@ class Plotter:
             and len(valid_cluster_ids) > 0
         ):
             # ax is guaranteed to be set at this point when subplots=False
-            assert ax is not None, "ax should be set when subplots=False"
+            if ax is None:
+                raise ValueError("ax should be set when subplots=False")
             remaining_cluster_ids = [  # get unplotted clusters ids (except -1)
                 int(id)
                 for id in all_cluster_ids
@@ -607,13 +608,15 @@ class Plotter:
 
         # Return appropriate axes based on subplots setting
         if subplots:
-            assert axs_array is not None, "axs_array should be set when subplots=True"
+            if axs_array is None:
+                raise ValueError("axs_array should be set when subplots=True")
             if axs_array.size > 1:
                 return fig, np.squeeze(axs_array)  # type: ignore
             else:
                 return fig, axs_array[0, 0]  # type: ignore
         else:
-            assert ax is not None, "ax should be set when subplots=False"
+            if ax is None:
+                raise ValueError("ax should be set when subplots=False")
         return fig, ax
 
     def max_shift_map(
@@ -1002,7 +1005,8 @@ class Plotter:
 
         # Plot map if requested
         if plot_map:
-            assert map_ax is not None, "map_ax should be set when plot_map=True"
+            if map_ax is None:
+                raise ValueError("map_ax should be set when plot_map=True")
             self._plot_timeseries_map(
                 map_var=map_var,
                 cluster_ids_list=cluster_ids_list,

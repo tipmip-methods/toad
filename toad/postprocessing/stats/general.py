@@ -89,7 +89,8 @@ class GeneralStats:
         """
 
         # Does not work with raw
-        assert aggregation != "raw", "raw is not supported for this method."
+        if aggregation == "raw":
+            raise ValueError("raw is not supported for this method.")
 
         # Get the variable values
         xvals = self.td.numeric_time_values  # use numeric time values for fitting

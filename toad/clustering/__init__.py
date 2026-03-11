@@ -166,9 +166,10 @@ def compute_clusters(
     if td._is_shift_variable(var):
         shifts_variable = var
     else:
-        assert not td._is_cluster_variable(var), (
-            f"{var} is a cluster variable. Please pass a base or shift variable."
-        )
+        if td._is_cluster_variable(var):
+            raise ValueError(
+                f"{var} is a cluster variable. Please pass a base or shift variable."
+            )
 
         # if supplied variable is a base variable, check if multiple shifts variables exist
         shift_vars = td.shift_vars_for_var(var)

@@ -143,9 +143,8 @@ class TOAD:
 
         # Save time dim for later
         self.time_dim = time_dim
-        assert self.time_dim in self.data.dims, (
-            f"Time dimension {self.time_dim} not found in data."
-        )
+        if self.time_dim not in self.data.dims:
+            raise ValueError(f"Time dimension {self.time_dim} not found in data.")
 
     def _is_time_numeric(self) -> bool:
         """Check if the time dimension contains numeric values (int/float) or datetime objects (cftime).
@@ -470,15 +469,12 @@ class TOAD:
         # Use user-provided path if specified, otherwise use self.path
         save_path = path if path is not None else self.path
 
-        # Type guard: save_path cannot be None at this point due to earlier checks
-        assert save_path is not None, "save_path should not be None"
+        if save_path is None:
+            raise ValueError("Path to save TOAD dataset not set. Please provide path.")
 
         if save_path == self.path:
-            # Get original extension if using self.path
-            assert (
-                self.path is not None
-            )  # Type guard: self.path is not None when save_path == self.path
-            original_ext = self.path.rsplit(".", 1)[1] if "." in self.path else "nc"
+            # Get original extension if using self.path (save_path equals self.path here)
+            original_ext = save_path.rsplit(".", 1)[1] if "." in save_path else "nc"
         else:
             # For user-provided path without extension, default to .nc
             original_ext = save_path.rsplit(".", 1)[1] if "." in save_path else "nc"

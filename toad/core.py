@@ -1140,6 +1140,31 @@ class TOAD:
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
 
+    def _normalize_timeseries(
+        self,
+        data: xr.DataArray,
+        scalar_or_scalars: Union[float, xr.DataArray],
+        normalize: str,
+    ) -> xr.DataArray:
+        """Normalise timeseries by scalar or per-trajectory scalars."""
+        if isinstance(scalar_or_scalars, xr.DataArray):
+            scalars = scalar_or_scalars
+            valid_mask = (scalars != 0) & np.isfinite(scalars)
+            if not valid_mask.any():
+                self.logger.error(
+                    f"Failed to normalise by {normalize}: all scalars are zero or NaN"
+                )
+                return data
+            divisor = scalars.where(valid_mask)
+        else:
+            scalar = float(scalar_or_scalars)
+            if scalar == 0 or np.isnan(scalar) or scalar is None:
+                self.logger.error(f"Failed to normalise by {normalize} = {scalar}")
+                return data
+            divisor = scalar
+        normalized = data / divisor
+        return normalized.where(np.isfinite(normalized))
+
     # TODO rename to get_timeseries() and legacy alias for get_cluster_timeseries()
     def get_cluster_timeseries(
         self,
@@ -1244,37 +1269,14 @@ class TOAD:
         # Normalise
         if normalize:
             if normalize == "max":
-                scalar = float(data.max())
-                if scalar == 0 or np.isnan(scalar) or scalar is None:
-                    self.logger.error(f"Failed to normalise by {normalize} = {scalar}")
-                else:
-                    normalized = data / scalar
-                    data = normalized.where(np.isfinite(normalized))
+                data = self._normalize_timeseries(data, float(data.max()), normalize)
             elif normalize == "max_each":
-                # Normalize each trajectory by its own max
-                if "cell_xy" in data.dims:
-                    # Multiple trajectories: normalize each by its own max along time
-                    scalars = data.max(dim=self.time_dim)
-                    # Check if any valid scalars exist
-                    valid_mask = (scalars != 0) & np.isfinite(scalars)
-                    if not valid_mask.any():
-                        self.logger.error(
-                            f"Failed to normalise by {normalize}: all scalars are zero or NaN"
-                        )
-                    else:
-                        # Only normalize where scalars are valid, set others to NaN
-                        normalized = data / scalars.where(valid_mask)
-                        data = normalized.where(np.isfinite(normalized))
-                else:
-                    # Single trajectory: normalize by its max (same as "max")
-                    scalar = float(data.max())
-                    if scalar == 0 or np.isnan(scalar) or scalar is None:
-                        self.logger.error(
-                            f"Failed to normalise by {normalize} = {scalar}"
-                        )
-                    else:
-                        normalized = data / scalar
-                        data = normalized.where(np.isfinite(normalized))
+                norm_val = (
+                    data.max(dim=self.time_dim)
+                    if "cell_xy" in data.dims
+                    else float(data.max())
+                )
+                data = self._normalize_timeseries(data, norm_val, normalize)
             else:
                 raise ValueError(f"Unknown normalization method: {normalize}")
 

@@ -18,10 +18,7 @@ import cftime
 import numpy as np
 import xarray as xr
 
-from .synthetic_data import create_global_dataset
-
 __all__ = [
-    "create_global_dataset",
     "get_space_dims",
     "detect_latlon_names",
     "is_regular_grid",

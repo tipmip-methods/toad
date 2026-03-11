@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Function for sorting clusters (e.g. by magnitude, median shift time, or to reset indexing after removal)
 - New time stats: `value_at_start`, `value_at_end`, `value_change`, `value_at_iqr_90_start`/`value_at_iqr_90_end`, `value_change_iqr_90`
 - `get_cluster_times()` — returns flattened array of time values for every cell in a cluster
-- Variable inference for `get_base_var()` and `get_shifts()`
+- Variable inference for `get_base_var()`, `get_shifts()`, and `get_timeseries()`. 
 - `trajectory_ids` parameter in td.plot.timeseries() shows exact cell indices (instead of random sample)
 - `plot_shift_indicator` in timeseries plots to mark detection timestep per cell on each trajectory
 - `DEFAULT_SHIFT_THRESHOLD` constant in `toad.utils` for the default clustering threshold

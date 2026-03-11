@@ -1168,7 +1168,7 @@ class TOAD:
 
     def get_timeseries(
         self,
-        var: str,
+        var: str | None = None,
         cluster_id: Optional[Union[int, List[int]]] = None,
         cluster_var: Optional[str] = None,
         aggregation: Literal[
@@ -1184,7 +1184,8 @@ class TOAD:
         If cluster_id is None, returns all data from the dataset in timeseries format.
 
         Args:
-            var: Variable name to extract time series from. Can be a base variable
+            var: Variable name to extract time series from, or None to infer when
+                only one base variable exists. Can be a base variable
                 (e.g., 'thk') or a cluster variable (e.g., 'thk_dts_cluster'). If a
                 cluster variable is passed, the base variable is auto-inferred.
             cluster_var: Variable name to extract cluster ids from. Defaults to None,
@@ -1218,6 +1219,8 @@ class TOAD:
             data values rather than cluster labels.
 
         """
+        var = self._get_base_var_if_none(var)
+
         # Smart inference: if var is a cluster variable, extract base variable for data
         # and use the cluster variable for masking
         if self._is_cluster_variable(var):

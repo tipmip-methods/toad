@@ -15,7 +15,7 @@ from toad.clustering import sorted_cluster_labels
 from toad.regridding.healpix import HealPixRegridder
 
 # from toad.regridding.healpix import HealPixRegridder  # unused here; used in utils
-from toad.utils import detect_latlon_names, get_unique_variable_name
+from toad.utils import get_latlon_info, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
     _add_adjacent_true_pairs,
     _build_consensus_summary_df,
@@ -341,14 +341,10 @@ class Aggregation:
         for d in spatial_dims:
             coords_spatial.setdefault(d, sample[d])
 
-        # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
-        lat_name, lon_name = detect_latlon_names(self.td.data)
-
-        # check if dataset has lat/lon (as dims, or coords, or variables)
-        has_latlon = lat_name is not None and lon_name is not None
-
-        # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
-        is_latlon_dims = has_latlon and (self.td.space_dims == [lat_name, lon_name])
+        # Determine latitude/longitude names and grid type from dataset
+        lat_name, lon_name, has_latlon, is_latlon_dims = get_latlon_info(
+            self.td.data, self.td.space_dims
+        )
 
         # Recast naming for readability
         regrid_enabled = is_latlon_dims

@@ -41,7 +41,7 @@ from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
     _reorder_space_dims,
-    detect_latlon_names,
+    get_latlon_info,
     get_unique_variable_name,
 )
 from toad.utils.shift_selection_utils import _compute_dts_peak_sign_mask
@@ -280,14 +280,10 @@ def compute_clusters(
         space_dims = td.space_dims
         space_dims = _reorder_space_dims(space_dims)
 
-        # Determine latitude/longitude names from dataset (e.g. lat, latitude, or None)
-        lat_name, lon_name = detect_latlon_names(td.data)
-
-        # check if dataset has lat/lon (as dims, or coords, or variables)
-        has_latlon = lat_name is not None and lon_name is not None
-
-        # Determine if this is a regular 1D lat/lon grid (i.e. dims are exactly lat, lon)
-        is_latlon_dims = has_latlon and (space_dims == [lat_name, lon_name])
+        # Determine latitude/longitude names and grid type from dataset
+        lat_name, lon_name, has_latlon, is_latlon_dims = get_latlon_info(
+            td.data, space_dims
+        )
 
         # Build coordinates array (NumPy only, no DataFrame merges)
         # time coordinate

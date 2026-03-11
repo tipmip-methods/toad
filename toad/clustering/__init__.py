@@ -40,6 +40,7 @@ from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     _attrs,
+    DEFAULT_SHIFT_THRESHOLD,
     _reorder_space_dims,
     get_latlon_info,
     get_unique_variable_name,
@@ -64,7 +65,7 @@ def compute_clusters(
     td: "TOAD",
     var: str,
     method: ClusterMixin | type,
-    shift_threshold: float = 0.5,
+    shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
     shift_direction: Literal["both", "positive", "negative"] | str = "both",
     shift_selection: Literal["local", "global", "all"] | str = "local",
     time_weight: float = 1,

@@ -6,7 +6,11 @@ import cftime
 import numpy as np
 import xarray as xr
 
-from toad.utils import _all_functions, convert_numeric_to_original_time
+from toad.utils import (
+    _all_functions,
+    convert_numeric_to_original_time,
+    DEFAULT_SHIFT_THRESHOLD,
+)
 
 logger = logging.getLogger("TOAD")
 
@@ -381,7 +385,9 @@ class TimeStats:
         return dict
 
     def compute_transition_time(
-        self, cluster_ids: int | list[int] | range | None = None, shift_threshold=0.5
+        self,
+        cluster_ids: int | list[int] | range | None = None,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
     ) -> xr.DataArray:
         """Computes the transition time for each grid cell.
 

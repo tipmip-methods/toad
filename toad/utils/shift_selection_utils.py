@@ -4,6 +4,8 @@ Utility functions for shift selection. Used primarily in clustering.
 
 from typing import Literal
 
+from toad.utils import DEFAULT_SHIFT_THRESHOLD
+
 import numpy as np
 import xarray as xr
 from numba import njit
@@ -192,7 +194,7 @@ def _compute_global_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
 def _compute_dts_peak_sign_mask(
     shifts: xr.DataArray,
     time_dim: str,
-    shift_threshold: float = 0.5,
+    shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
     shift_selection: Literal["local", "global"] | str = "local",
 ) -> xr.DataArray:
     """Computes a dense mask indicating peak signs in the shifts data.

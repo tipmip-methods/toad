@@ -139,14 +139,17 @@ def _optimize_clusters(**kwargs) -> xr.Dataset:
     else:
         method_class = method
 
-    assert issubclass(method_class, ClusterMixin), (
-        "Method must be a clustering algorithm, extending ClusterMixin."
-    )
+    if not issubclass(method_class, ClusterMixin):
+        raise ValueError(
+            "Method must be a clustering algorithm, extending ClusterMixin."
+        )
 
-    assert isinstance(opt_params, dict), "optimize_params must be a dict"
-    assert len(opt_params) > 0, (
-        "optimize_params cannot be empty. Example: optimize_params={'min_cluster_size': (5, 15)}"
-    )
+    if not isinstance(opt_params, dict):
+        raise TypeError("optimize_params must be a dict")
+    if len(opt_params) == 0:
+        raise ValueError(
+            "optimize_params cannot be empty. Example: optimize_params={'min_cluster_size': (5, 15)}"
+        )
 
     # Print optimization params
     logger.info(f"optimizing {n_trials} trials with params: {opt_params}")

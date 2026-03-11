@@ -94,7 +94,7 @@ class ASDETECT(ShiftsMethod):
         self.segmentation: Literal["two_sided", "original"] | str = segmentation
         self.ignore_nan_warnings = ignore_nan_warnings
 
-        assert timescale is None or (
+        if timescale is not None and not (
             isinstance(timescale, tuple)
             and len(timescale) == 2
             and (timescale[0] is not None or timescale[1] is not None)
@@ -105,9 +105,10 @@ class ASDETECT(ShiftsMethod):
                 or timescale[1] is None
                 or timescale[1] > timescale[0]
             )
-        ), (
-            f"Timescale must be a tuple of two numbers with the second number larger than the first, e.g. (20, 30). One of the numbers can be None. If the first is None, e.g. (None, 30), {self.LMIN_MIN} is used as default. If the second is None, e.g., (20, None), 1/3 the length of the time series is used as default."
-        )
+        ):
+            raise ValueError(
+                f"Timescale must be a tuple of two numbers with the second number larger than the first, e.g. (20, 30). One of the numbers can be None. If the first is None, e.g. (None, 30), {self.LMIN_MIN} is used as default. If the second is None, e.g., (20, None), 1/3 the length of the time series is used as default."
+            )
 
     def _get_segment_lengths(
         self,
@@ -241,13 +242,13 @@ def construct_detection_ts(
         lmax = int(n_tot / 3)
 
     if lmax < lmin:
-        # Tell user *why* this happened for common default, but allow assert to catch all cases
+        # Tell user *why* this happened for common default case
         if lmin == 5 and lmax == int(n_tot / 3):
             raise ValueError(
                 f"Time series is too short for ASDETECT: with n={n_tot}, default lmin={lmin}, and default lmax=int(n/3)={lmax}. lmin must be smaller than lmax; your time series must be at least {lmin * 3} steps long. "
                 f"Either increase the length of your input time series, or decrease lmin."
             )
-    assert lmin < lmax, "lmin must be smaller than lmax"
+        raise ValueError("lmin must be smaller than lmax")
 
     # return zeros if timeseries contains nan values
     if np.isnan(values_1d).any():

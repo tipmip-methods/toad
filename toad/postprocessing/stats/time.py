@@ -7,9 +7,9 @@ import numpy as np
 import xarray as xr
 
 from toad.utils import (
+    DEFAULT_SHIFT_THRESHOLD,
     _all_functions,
     convert_numeric_to_original_time,
-    DEFAULT_SHIFT_THRESHOLD,
 )
 
 logger = logging.getLogger("TOAD")
@@ -90,7 +90,7 @@ class TimeStats:
 
     def value_at_start(self, cluster_id, aggregation: str = "median") -> float:
         """Return aggregated cluster value at the start timestep."""
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             self.var, cluster_id=cluster_id, aggregation=aggregation
         )
         start = self.start_timestep(cluster_id)
@@ -98,7 +98,7 @@ class TimeStats:
 
     def value_at_end(self, cluster_id, aggregation: str = "median") -> float:
         """Return aggregated cluster value at the end timestep."""
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             self.var, cluster_id=cluster_id, aggregation=aggregation
         )
         end = self.end_timestep(cluster_id)
@@ -113,7 +113,7 @@ class TimeStats:
 
     def value_at_iqr_90_start(self, cluster_id, aggregation: str = "median") -> float:
         """Return aggregated cluster value at the lower iqr_90 bound."""
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             self.var, cluster_id=cluster_id, aggregation=aggregation
         )
         start_idx, _ = self._iqr_timestep_bounds(cluster_id, 0.05, 0.95)
@@ -121,7 +121,7 @@ class TimeStats:
 
     def value_at_iqr_90_end(self, cluster_id, aggregation: str = "median") -> float:
         """Return aggregated cluster value at the upper iqr_90 bound."""
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             self.var, cluster_id=cluster_id, aggregation=aggregation
         )
         _, end_idx = self._iqr_timestep_bounds(cluster_id, 0.05, 0.95)
@@ -179,7 +179,7 @@ class TimeStats:
         cluster_var = str(self.td.get_clusters(self.var).name)
         base_var = str(self.td.get_base_var(self.var))
 
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             base_var,
             cluster_id,
             cluster_var=cluster_var,
@@ -221,7 +221,7 @@ class TimeStats:
         cluster_var = str(self.td.get_clusters(self.var).name)
         base_var = str(self.td.get_base_var(self.var))
 
-        ts = self.td.get_cluster_timeseries(
+        ts = self.td.get_timeseries(
             base_var,
             cluster_id,
             cluster_var=cluster_var,

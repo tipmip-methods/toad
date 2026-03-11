@@ -22,8 +22,8 @@ from toad.clustering.optimizing import (
 from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
-    _attrs,
     DEFAULT_SHIFT_THRESHOLD,
+    _attrs,
     detect_latlon_names,
     get_space_dims,
 )
@@ -1166,8 +1166,7 @@ class TOAD:
         normalized = data / divisor
         return normalized.where(np.isfinite(normalized))
 
-    # TODO rename to get_timeseries() and legacy alias for get_cluster_timeseries()
-    def get_cluster_timeseries(
+    def get_timeseries(
         self,
         var: str,
         cluster_id: Optional[Union[int, List[int]]] = None,
@@ -1282,6 +1281,20 @@ class TOAD:
                 raise ValueError(f"Unknown normalization method: {normalize}")
 
         return data
+
+    # TODO remove in v1.1
+    def get_cluster_timeseries(
+        self,
+        var: str,
+        cluster_id: Optional[Union[int, List[int]]] = None,
+        **kwargs,
+    ) -> xr.DataArray:
+        """Deprecated alias for ``get_timeseries()``."""
+        self.logger.warning(
+            "The method `get_cluster_timeseries` is deprecated and will be removed in a future version. "
+            "Please use `get_timeseries` instead."
+        )
+        return self.get_timeseries(var=var, cluster_id=cluster_id, **kwargs)
 
     # end of TOAD object
 

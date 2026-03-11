@@ -10,6 +10,11 @@ from toad.regridding.base import BaseRegridder
 logger = logging.getLogger("TOAD")
 
 
+def _pixels_to_order(n_pixels: float) -> float:
+    """Compute HEALPix order from pixel count (npix = 12 * nside²)."""
+    return 0.5 * np.log2(n_pixels / 12.0)
+
+
 class HealPixRegridder(BaseRegridder):
     """Regrid data onto a equal-area HEALPix grid to avoid polar bias in clustering"""
 
@@ -59,8 +64,7 @@ class HealPixRegridder(BaseRegridder):
         # If nside is not provided, compute it automatically based on the resolution of the data
         if self.nside is None:
             n_pixels = space_dims_size[0] * space_dims_size[1]
-            order = 0.5 * np.log2(n_pixels / 12.0)
-            self.nside = 1 << int(np.ceil(order))
+            self.nside = 1 << int(np.ceil(_pixels_to_order(n_pixels)))
             logger.debug(
                 f"HealPixRegridder: Automatically computed nside: {self.nside} based on grid resolution {space_dims_size[0]}x{space_dims_size[1]}"
             )
@@ -156,8 +160,7 @@ class HealPixRegridder(BaseRegridder):
         # Ensure nside set — if None, infer from data resolution
         if self.nside is None:
             n_pixels = len(coords_2d)
-            order = 0.5 * np.log2(n_pixels / 12.0)
-            self.nside = 1 << int(np.ceil(order))
+            self.nside = 1 << int(np.ceil(_pixels_to_order(n_pixels)))
 
         hp_pix = hp.ang2pix(self.nside, lon, lat, lonlat=True)
         return hp_pix.astype(np.int64)

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-03-11
+
 ### Added
 - Stats can now be accessed as a property (e.g. `td.stats.time.start(cluster_id=0)`) when using a single cluster variable
 - Function for removing specific clusters by id (useful for filtering clusters of no interest)
@@ -88,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - First public release of the TOAD package
 
-[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/tipmip-methods/toad/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/tipmip-methods/toad/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/tipmip-methods/toad/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/tipmip-methods/toad/compare/v1.0.2...v1.0.3

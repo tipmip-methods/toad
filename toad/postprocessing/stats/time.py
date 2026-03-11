@@ -1,4 +1,5 @@
 import inspect
+import logging
 from typing import Union
 
 import cftime
@@ -6,6 +7,8 @@ import numpy as np
 import xarray as xr
 
 from toad.utils import _all_functions, convert_numeric_to_original_time
+
+logger = logging.getLogger("TOAD")
 
 
 class TimeStats:
@@ -180,29 +183,26 @@ class TimeStats:
             keep_full_timeseries=False,
         )
 
-        # Check if all values are NaN before computing gradient
+        # Handle undefined timeseries explicitly to avoid returning arbitrary timestamps.
         if ts.isnull().all():
-            import warnings
-
-            warnings.warn(
-                f"All-NaN timeseries found for cluster {cluster_id}. Returning first timestamp."
+            msg = (
+                f"All-NaN timeseries found for cluster {cluster_id}. "
+                "Steepest gradient is undefined."
             )
-            # Return first timestamp in original format
-            first_time_numeric = self.td.numeric_time_values[0]
-            return self._return_time(first_time_numeric)
+            logger.warning(msg)
+            return np.nan
 
         grad = ts.diff(self.td.time_dim)
 
         # Use nanargmax on abs(grad) for steepest (up or down); grad's own coords
-        # (diff[i] corresponds to t[i+1], not t[i])
+        # (diff[i] corresponds to t[i+1], not t[i]).
         if np.all(np.isnan(grad.values)):
-            import warnings
-
-            warnings.warn(
-                f"All-NaN gradient for cluster {cluster_id}. Returning first timestamp."
+            msg = (
+                f"All-NaN gradient found for cluster {cluster_id}. "
+                "Steepest gradient is undefined."
             )
-            first_time_numeric = self.td.numeric_time_values[0]
-            return self._return_time(first_time_numeric)
+            logger.warning(msg)
+            return np.nan
 
         steepest_idx = int(np.nanargmax(np.abs(grad.values)))
         steepest_time_numeric = float(grad[self.td.time_dim].values[steepest_idx])
@@ -225,23 +225,25 @@ class TimeStats:
             keep_full_timeseries=False,
         )
 
-        # Check if all values are NaN before computing gradient
+        # Handle undefined timeseries explicitly to avoid returning arbitrary indices.
         if ts.isnull().all():
-            import warnings
-
-            warnings.warn(
-                f"All-NaN timeseries found for cluster {cluster_id}. Returning 0."
+            msg = (
+                f"All-NaN timeseries found for cluster {cluster_id}. "
+                "Steepest gradient timestep is undefined."
             )
-            return 0.0
+            logger.warning(msg)
+            return np.nan
 
         grad = ts.diff(self.td.time_dim)
         if np.all(np.isnan(grad.values)):
-            import warnings
+            msg = (
+                f"All-NaN gradient found for cluster {cluster_id}. "
+                "Steepest gradient timestep is undefined."
+            )
+            logger.warning(msg)
+            return np.nan
 
-            warnings.warn(f"All-NaN gradient for cluster {cluster_id}. Returning 0.")
-            return 0
-
-        return int(np.nanargmax(np.abs(grad.values)))
+        return float(np.nanargmax(np.abs(grad.values)))
 
     def iqr(
         self, cluster_id, lower_quantile: float, upper_quantile: float

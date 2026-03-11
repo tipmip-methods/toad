@@ -97,7 +97,7 @@ class GeneralStats:
 
         # Get the variable values
         xvals = self.td.numeric_time_values  # use numeric time values for fitting
-        yvals = self.td.get_cluster_timeseries(
+        yvals = self.td.get_timeseries(
             self.var,
             cluster_id=cluster_id,
             aggregation=aggregation,
@@ -161,7 +161,7 @@ class GeneralStats:
             Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
-        y_vals = self.td.get_cluster_timeseries(
+        y_vals = self.td.get_timeseries(
             self.var,
             cluster_id=cluster_id,
         )
@@ -224,7 +224,7 @@ class GeneralStats:
             Kobe De Maeyer Master Thesis (2025)
         """
         # Get all time series in the cluster
-        y_vals = self.td.get_cluster_timeseries(
+        y_vals = self.td.get_timeseries(
             self.var,
             cluster_id=cluster_id,
         )
@@ -285,7 +285,7 @@ class GeneralStats:
             Kobe De Maeyer Master Thesis (2025)
         """
         # Get aggregated cluster time series
-        yvals = self.td.get_cluster_timeseries(
+        yvals = self.td.get_timeseries(
             self.var,
             cluster_id=cluster_id,
             aggregation=aggregation,
@@ -308,7 +308,7 @@ class GeneralStats:
             return rmse_cluster
 
         # Get unclustered time series (raw, no aggregation)
-        y_unclustered = self.td.get_cluster_timeseries(
+        y_unclustered = self.td.get_timeseries(
             self.var,
             cluster_id=-1,
             aggregation="raw",

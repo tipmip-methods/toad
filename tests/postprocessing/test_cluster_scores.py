@@ -125,7 +125,7 @@ class TestScoreUnits:
         class MockTOAD:
             numeric_time_values = np.arange(100, dtype=float)
 
-            def get_cluster_timeseries(
+            def get_timeseries(
                 self, var, cluster_id, aggregation, percentile, normalize
             ):
                 # Return a perfect linear trend (should have ~0 nonlinearity)
@@ -144,7 +144,7 @@ class TestScoreUnits:
         class MockTOAD:
             numeric_time_values = np.arange(100, dtype=float)
 
-            def get_cluster_timeseries(
+            def get_timeseries(
                 self, var, cluster_id, aggregation, percentile, normalize
             ):
                 # Step function at midpoint
@@ -163,7 +163,7 @@ class TestScoreUnits:
         from toad.postprocessing.stats.general import GeneralStats
 
         class MockTOAD:
-            def get_cluster_timeseries(self, var, cluster_id):
+            def get_timeseries(self, var, cluster_id):
                 # Return 5 identical time series
                 data = np.tile(np.sin(np.linspace(0, 2 * np.pi, 50)), (5, 1))
                 return data

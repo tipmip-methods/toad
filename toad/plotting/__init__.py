@@ -13,8 +13,8 @@ from matplotlib.colors import Colormap, ListedColormap, to_hex, to_rgb, to_rgba
 from matplotlib.patches import Rectangle
 
 from toad.utils import (
-    _attrs,
     DEFAULT_SHIFT_THRESHOLD,
+    _attrs,
     detect_latlon_names,
     is_regular_grid,
 )
@@ -1637,11 +1637,11 @@ class Plotter:
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
 
-        min_ts = self.td.get_cluster_timeseries(
+        min_ts = self.td.get_timeseries(
             aggregation="min",
             **ts_kwargs,
         )
-        max_ts = self.td.get_cluster_timeseries(
+        max_ts = self.td.get_timeseries(
             aggregation="max",
             **ts_kwargs,
         )
@@ -1694,12 +1694,12 @@ class Plotter:
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
 
-        p_low_ts = self.td.get_cluster_timeseries(
+        p_low_ts = self.td.get_timeseries(
             aggregation="percentile",
             percentile=percentile_lower,
             **ts_kwargs,
         )
-        p_up_ts = self.td.get_cluster_timeseries(
+        p_up_ts = self.td.get_timeseries(
             aggregation="percentile",
             percentile=percentile_upper,
             **ts_kwargs,
@@ -1752,7 +1752,7 @@ class Plotter:
         else:
             label = f"#{cluster_id}"
 
-        self.td.get_cluster_timeseries(
+        self.td.get_timeseries(
             aggregation="mean",
             **ts_kwargs,
         ).plot(
@@ -1802,7 +1802,7 @@ class Plotter:
         else:
             label = f"#{cluster_id}"
 
-        self.td.get_cluster_timeseries(
+        self.td.get_timeseries(
             aggregation="median",
             **ts_kwargs,
         ).plot(
@@ -1905,7 +1905,7 @@ class Plotter:
             individual_ts_kwargs["cluster_var"] = var
             individual_ts_kwargs["keep_full_timeseries"] = full_timeseries
 
-        cells = self.td.get_cluster_timeseries(**individual_ts_kwargs)
+        cells = self.td.get_timeseries(**individual_ts_kwargs)
 
         if cells is None:
             if is_real_cluster:
@@ -2022,7 +2022,7 @@ class Plotter:
                 "aggregation": "raw",
                 "keep_full_timeseries": False,
             }
-            cells_highlight = self.td.get_cluster_timeseries(**highlight_ts_kwargs)
+            cells_highlight = self.td.get_timeseries(**highlight_ts_kwargs)
 
         for ts in cells_highlight:
             ts.plot(
@@ -2216,7 +2216,7 @@ class Plotter:
                     # Get cell count for title
                     if plot_var is None:
                         raise ValueError("Failed to infer plot_var")
-                    cells = self.td.get_cluster_timeseries(
+                    cells = self.td.get_timeseries(
                         plot_var,
                         cluster_id=None,
                         aggregation="raw",
@@ -2247,7 +2247,7 @@ class Plotter:
                     # Individual trajectories for single cluster - get cell count for title
                     if plot_var is None:
                         raise ValueError("Failed to infer plot_var")
-                    cells = self.td.get_cluster_timeseries(
+                    cells = self.td.get_timeseries(
                         plot_var,
                         cluster_ids_list[0],
                         cluster_var=var,

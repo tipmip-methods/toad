@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, Literal, Optional, Tuple, Union, overload
 
 import numpy as np
@@ -12,6 +13,8 @@ score_dictionary = {
     "spatial_autocorrelation": "score_spatial_autocorrelation",
     "nonlinearity": "score_nonlinearity",
 }
+
+logger = logging.getLogger("TOAD")
 
 
 class GeneralStats:
@@ -410,7 +413,14 @@ class GeneralStats:
                     if isinstance(score, tuple):
                         score = score[0]  # Take the first element (the score)
                     scores.append(float(score))
-                except Exception:
+                except Exception as e:
+                    logger.warning(
+                        "score_overview failed for score '%s' (method '%s') on cluster_id=%s: %s",
+                        score_name,
+                        method_name,
+                        cluster_id,
+                        e,
+                    )
                     # If computation fails, store NaN
                     scores.append(np.nan)
 

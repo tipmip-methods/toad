@@ -20,6 +20,7 @@ import xarray as xr
 
 __all__ = [
     "get_space_dims",
+    "get_latlon_info",
     "detect_latlon_names",
     "is_regular_grid",
     "deprecated",
@@ -118,6 +119,22 @@ def _reorder_space_dims(space_dims: list[str]) -> list[str]:
             dim for dim in space_dims if dim not in ["lat", "lon"]
         ]
     return space_dims
+
+
+def get_latlon_info(
+    data: xr.Dataset, space_dims: list[str]
+) -> Tuple[Optional[str], Optional[str], bool, bool]:
+    """Detect lat/lon names and grid type from dataset and space dimensions.
+
+    Returns:
+        (lat_name, lon_name, has_latlon, is_latlon_dims)
+        - has_latlon: True if both lat and lon coordinates were found
+        - is_latlon_dims: True if space_dims are exactly [lat_name, lon_name]
+    """
+    lat_name, lon_name = detect_latlon_names(data)
+    has_latlon = lat_name is not None and lon_name is not None
+    is_latlon_dims = has_latlon and (space_dims == [lat_name, lon_name])
+    return lat_name, lon_name, has_latlon, is_latlon_dims
 
 
 def detect_latlon_names(data: xr.Dataset) -> Tuple[Optional[str], Optional[str]]:

@@ -239,11 +239,6 @@ class TOAD:
         return _StatsAccessor(self)
 
     @property
-    def aggregate(self) -> postprocessing.Aggregation:
-        """Access aggregation methods."""
-        return postprocessing.Aggregation(self)
-
-    @property
     def plot(self) -> plotting.Plotter:
         """Access plotting methods.
 
@@ -1145,9 +1140,9 @@ class TOAD:
             is in region_mask and has a non-noise cluster label.
 
         Example:
-            >>> ds, _ = td.aggregate.cluster_consensus()
+            >>> mask = td.data[td.cluster_vars[0]] == 1
             >>> times = td.get_cluster_times_in_region(
-            ...     ds.clusters == 1,
+            ...     mask,
             ...     cluster_var=td.cluster_vars[0],
             ... )
             >>> plt.hist(times, bins=50)

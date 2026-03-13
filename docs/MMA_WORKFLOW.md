@@ -4,11 +4,11 @@ This document describes the full workflow for running consensus clustering acros
 
 ## Overview
 
-1. **Per model**: Compute shifts → cluster → export cluster labels (HealPix or native) + cluster variable in original dims
-2. **MMA**: Load exported files → run consensus clustering (uses full 3D `cluster`, ever-in semantics) → inspect results
-3. **Shift time stats**: Extract shift time distributions per consensus cluster (from exports only; no original dataset needed)
+1. **Per model**: Compute shifts → cluster → export cluster labels (HealPix or native) via `export_for_mma`
+2. **MMA**: Load exported files → run consensus clustering (ever-in semantics) → inspect results
+3. **Shift time stats**: Extract shift time distributions per consensus cluster from exports (no original dataset needed)
 
-**Time collapse:** MMA uses *ever-in* semantics: a pixel participates in a consensus cluster if it was ever assigned to that cluster at any time. This matches the old `cluster_consensus` aggregation and preserves multi-regime behaviour (a pixel can contribute to multiple clusters across time).
+**Time collapse:** MMA uses *ever-in* semantics: a pixel participates in a consensus cluster if it was ever assigned to that cluster at any time. This preserves multi-regime behaviour (a pixel can contribute to multiple clusters across time).
 
 ---
 
@@ -96,7 +96,7 @@ ds = mma.run_consensus(
 
 # Results in mma.data
 print(mma.data)
-# consensus_clusters, consensus_consistency (both on HealPix)
+# consensus_clusters, consensus_consistency (HealPix or native, depending on format)
 ```
 
 ---
@@ -106,45 +106,66 @@ print(mma.data)
 ```python
 import numpy as np
 
-# Consensus clusters (1D on HealPix)
+# Consensus clusters (1D on HealPix, 2D on native)
 clusters = mma.data["consensus_clusters"].values
 consistency = mma.data["consensus_consistency"].values
 
 # Number of consensus clusters
-n_clusters = len(set(c for c in clusters if c >= 0 and not np.isnan(c)))
+n_clusters = len(set(c for c in clusters.ravel() if c >= 0 and not np.isnan(c)))
 print(f"Consensus: {n_clusters} clusters")
+
+# Cluster occurrence rate (no run_consensus needed)
+rate = mma.cluster_occurrence_rate()  # [0,1] per point across models
+
+# Summary table per consensus cluster
+summary = mma.get_consensus_summary()  # cluster_id, size, mean_consistency, mean_mean_shift_time, etc.
 
 # Save for later use
 mma.data.to_netcdf("consensus_result.nc")
 ```
 
-### Plotting consensus clusters (HealPix)
+### Plotting consensus clusters
 
-**Built-in method** (recommended)
+**HealPix or native** — `plot_consensus_clusters` works for both formats:
 
 ```python
 import cartopy.crs as ccrs
 
+# HealPix: scatter on lat/lon. Native: pcolormesh on grid
 fig, ax = mma.plot_consensus_clusters(
     map_style={"projection": "mollweide", "continent_shading": True},
+    s=10,
+    show_noise=True,
 )
 
-# Or with custom projection and options
+# Native x/y (e.g. Antarctic stereographic)
 fig, ax = mma.plot_consensus_clusters(
-    map_style={"projection": ccrs.Orthographic(-40, 15), "continent_shading": True},
-    s=10,
-    show_noise=True,  # plot noise pixels as grey
+    map_style={"projection": "south_pole"},
 )
 ```
 
-**Manual plotting** (e.g. to reuse an existing axes from `td.plot.map()`)
+**Reuse existing axes** (e.g. from TOAD):
 
 ```python
-import cartopy.crs as ccrs
-
 fig, ax = td.plot.map(map_style={"projection": ccrs.Orthographic(-40, 15)})
 ax.set_global()
-fig, ax = mma.plot_consensus_clusters(ax=ax, s=1)
+mma.plot_consensus_clusters(ax=ax, s=1)
+```
+
+### Plotting cluster occurrence rate
+
+```python
+# Native format: use xarray's plot
+rate = mma.cluster_occurrence_rate()
+rate.plot(cmap="viridis", vmin=0, vmax=1)
+
+# HealPix: scatter with get_healpix_latlon
+import matplotlib.pyplot as plt
+rate = mma.cluster_occurrence_rate()
+lats, lons = mma.get_healpix_latlon()
+fig, ax = plt.subplots(subplot_kw=dict(projection=ccrs.Mollweide()))
+ax.scatter(lons, lats, c=rate.values, cmap="viridis", s=1, transform=ccrs.PlateCarree(), vmin=0, vmax=1)
+ax.coastlines()
 ```
 
 ---
@@ -230,7 +251,18 @@ mask = (consensus_ids == 0) & consensus_ids.notnull()
 times = td.get_cluster_times_in_region(mask, cluster_var=td.cluster_vars[0])
 ```
 
-**Methods:**
-- `get_shift_times_from_export(path, consensus_cluster_id)` — extract times from export file; no TOAD needed
-- `map_consensus_to_coords(lat, lon)` — raw numpy lookup; returns cluster IDs with same shape as lat/lon
-- `map_consensus_to_dataset(ds)` — map consensus onto xarray dataset; uses auto-detected lat/lon, returns DataArray with matching spatial dims
+---
+
+## MMA method reference
+
+| Method | Requires `run_consensus` | Description |
+|--------|--------------------------|-------------|
+| `cluster_occurrence_rate()` | No | Per-point fraction of models where point was in a cluster [0,1] |
+| `run_consensus(...)` | — | Run consensus clustering; populates `mma.data` |
+| `get_consensus_summary()` | Yes | DataFrame: cluster_id, size, mean_consistency, mean_mean_shift_time, std_mean_shift_time |
+| `plot_consensus_clusters(...)` | Yes | Map plot (HealPix scatter or native pcolormesh) |
+| `get_healpix_latlon()` | No (HealPix only) | (lat, lon) for each HealPix pixel |
+| `get_shift_times_from_export(path, consensus_cluster_id)` | Yes | Shift times from one export file for one cluster |
+| `get_shift_times_per_consensus_cluster()` | Yes | Dict of shift times per cluster (all exports) |
+| `map_consensus_to_coords(lat, lon)` | Yes (HealPix) | Lookup cluster ID for (lat, lon) arrays |
+| `map_consensus_to_dataset(ds)` | Yes | Map consensus onto xarray Dataset |

@@ -92,6 +92,8 @@ def test_mma_native_files():
     with tempfile.TemporaryDirectory() as tmp:
         paths = setup_and_export_native(Path(tmp), n_runs=3)
         mma = MMA(paths, nside=None)
+        rate = mma.cluster_occurrence_rate()
+        assert 0 <= float(rate.min()) <= float(rate.max()) <= 1
         ds = mma.run_consensus(min_consensus=0.5, min_cluster_size=2)
         assert "consensus_clusters" in ds
         assert "consensus_consistency" in ds
@@ -101,6 +103,12 @@ def test_mma_native_files():
         )
         labels = ds["consensus_clusters"].values
         assert np.any(np.isfinite(labels) & (labels >= 0)) or np.any(labels == -1)
+        # Plot native format (synth_data has lat/lon)
+        fig, ax = mma.plot_consensus_clusters(
+            map_style={"projection": "plate_carree"},
+        )
+        assert fig is not None
+        assert ax is not None
 
 
 def test_mma_native_files_rejected_with_nside():
@@ -125,3 +133,12 @@ def test_mma_healpix_files():
         # Shift times from HealPix cluster (no native grid in export)
         times_by_cluster = mma.get_shift_times_per_consensus_cluster()
         assert isinstance(times_by_cluster, dict)
+        rate = mma.cluster_occurrence_rate()
+        assert rate.shape == ds["consensus_clusters"].shape
+        assert 0 <= rate.min() <= rate.max() <= 1
+        summary = mma.get_consensus_summary()
+        assert "cluster_id" in summary.columns
+        assert "size" in summary.columns
+        assert "mean_consistency" in summary.columns
+        assert "mean_mean_shift_time" in summary.columns
+        assert "std_mean_shift_time" in summary.columns

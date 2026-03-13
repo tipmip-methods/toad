@@ -16,6 +16,7 @@ from typing import (
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import xarray as xr
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.axes import Axes
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from toad.plotting import MapStyle
 from toad.regridding.healpix import HealPixRegridder
 from toad.utils import _attrs, detect_latlon_names
-from toad.utils.cluster_consensus_utils import (
+from toad.utils.consensus_utils import (
     _build_knn_edges_from_coords_2d,
     run_healpix_consensus,
     run_native_consensus,
@@ -113,6 +114,44 @@ def _load_ever_in_healpix_masks(path: str, nside: int) -> list[tuple[int, np.nda
         if mask.any():
             result.append((int(cid), mask))
     return result
+
+
+def _make_consensus_dataarrays(
+    labels: np.ndarray,
+    consistency: np.ndarray,
+    dims: List[str],
+    coords: dict,
+    shared_attrs: dict,
+    cluster_desc: str,
+    consistency_desc: str,
+    extra_attrs: Optional[dict] = None,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Build consensus_clusters and consensus_consistency DataArrays with shared structure."""
+    base_attrs = {**shared_attrs, **(extra_attrs or {})}
+    da_clusters = xr.DataArray(
+        labels,
+        dims=dims,
+        coords=coords,
+        name="consensus_clusters",
+        attrs={
+            **base_attrs,
+            "description": cluster_desc,
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CLUSTER,
+            _attrs.CONSENSUS_CONSISTENCY_VARIABLE: "consensus_consistency",
+        },
+    )
+    da_consistency = xr.DataArray(
+        consistency,
+        dims=dims,
+        coords=coords,
+        name="consensus_consistency",
+        attrs={
+            **base_attrs,
+            "description": consistency_desc,
+            _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CONSISTENCY,
+        },
+    )
+    return da_clusters, da_consistency
 
 
 def _load_ever_in_native_masks(
@@ -250,6 +289,70 @@ class MMA:
                 f"MMA: loaded {len(self._cluster_masks)} native cluster file(s) (ever-in)"
             )
 
+    def cluster_occurrence_rate(self) -> xr.DataArray:
+        """Calculate the normalized occurrence rate of points being part of any cluster.
+
+        For each spatial point, computes the fraction of models (export files) where that
+        point was ever part of a cluster (not noise), i.e. how often it was assigned to
+        a cluster label >= 0 across time. Values range from 0 (never in a cluster) to 1
+        (always in a cluster in every model).
+
+        Returns:
+            DataArray with the same spatial structure as the MMA grid (HealPix or native),
+            with values in [0, 1].
+
+        Example:
+            >>> mma = MMA(paths, nside=None)
+            >>> rate = mma.cluster_occurrence_rate()
+            >>> rate.plot()
+        """
+        n_models = len(self._cluster_masks)
+        if n_models == 0:
+            raise ValueError("No cluster data loaded.")
+
+        # Per-model: ever_in_cluster[p] = True if point p was in any cluster
+        if self._format == "healpix":
+            npix = 12 * cast(int, self.nside) ** 2
+            n_spatial = npix
+            ever_in = np.zeros(n_spatial, dtype=np.float64)
+            for masks in self._cluster_masks:
+                combined = np.zeros(n_spatial, dtype=bool)
+                for _cid, mask in masks:
+                    combined |= mask
+                ever_in += combined.astype(np.float64)
+            rate = ever_in / n_models
+            dims = ["hp_pixel"]
+            coords: dict = {"hp_pixel": np.arange(npix)}
+        else:
+            spatial_shape = cast(tuple[int, ...], self._native_spatial_shape)
+            n_spatial = int(np.prod(spatial_shape))
+            ever_in = np.zeros(n_spatial, dtype=np.float64)
+            for masks in self._cluster_masks:
+                combined = np.zeros(n_spatial, dtype=bool)
+                for _cid, mask in masks:
+                    combined |= mask
+                ever_in += combined.astype(np.float64)
+            rate = (ever_in / n_models).reshape(spatial_shape)
+            spatial_dims = cast(List[str], self._native_spatial_dims)
+            dims = spatial_dims
+            ds0 = xr.open_dataset(self.paths[0])
+            coords = {d: ds0[d] for d in spatial_dims if d in ds0}
+            ds0.close()
+
+        da = xr.DataArray(
+            rate,
+            dims=dims,
+            coords=coords,
+            name="cluster_occurrence_rate",
+            attrs={
+                "description": "Normalized occurrence rate of points being part of any cluster across models",
+                "n_models": n_models,
+                _attrs.METHOD_NAME: "mma_cluster_occurrence_rate",
+                _attrs.TOAD_VERSION: __version__,
+            },
+        )
+        return da
+
     def run_consensus(
         self,
         min_consensus: float = 0.5,
@@ -292,30 +395,15 @@ class MMA:
                 show_progress=show_progress,
             )
             npix = 12 * cast(int, self.nside) ** 2
-            da_clusters = xr.DataArray(
+            da_clusters, da_consistency = _make_consensus_dataarrays(
                 labels,
-                dims=["hp_pixel"],
-                coords={"hp_pixel": np.arange(npix)},
-                name="consensus_clusters",
-                attrs={
-                    **shared_attrs,
-                    "nside": self.nside,
-                    "description": "Spatial consensus clusters on HealPix (time-collapsed).",
-                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CLUSTER,
-                    _attrs.CONSENSUS_CONSISTENCY_VARIABLE: "consensus_consistency",
-                },
-            )
-            da_consistency = xr.DataArray(
                 consistency,
                 dims=["hp_pixel"],
                 coords={"hp_pixel": np.arange(npix)},
-                name="consensus_consistency",
-                attrs={
-                    **shared_attrs,
-                    "nside": self.nside,
-                    "description": "Consistency scores for each HealPix pixel.",
-                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CONSISTENCY,
-                },
+                shared_attrs=shared_attrs,
+                cluster_desc="Spatial consensus clusters on HealPix (time-collapsed).",
+                consistency_desc="Consistency scores for each HealPix pixel.",
+                extra_attrs={"nside": self.nside},
             )
             self.data = xr.merge(
                 [da_clusters, da_consistency],
@@ -344,32 +432,17 @@ class MMA:
             spatial_shape = cast(tuple[int, ...], self._native_spatial_shape)
             labels_2d = labels.reshape(spatial_shape)
             consistency_2d = consistency.reshape(spatial_shape)
-            # Get coords from first export
             ds0 = xr.open_dataset(self.paths[0])
             coords = {d: ds0[d] for d in spatial_dims if d in ds0}
             ds0.close()
-            da_clusters = xr.DataArray(
+            da_clusters, da_consistency = _make_consensus_dataarrays(
                 labels_2d,
-                dims=spatial_dims,
-                coords=coords,
-                name="consensus_clusters",
-                attrs={
-                    **shared_attrs,
-                    "description": "Spatial consensus clusters on native grid (time-collapsed).",
-                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CLUSTER,
-                    _attrs.CONSENSUS_CONSISTENCY_VARIABLE: "consensus_consistency",
-                },
-            )
-            da_consistency = xr.DataArray(
                 consistency_2d,
                 dims=spatial_dims,
                 coords=coords,
-                name="consensus_consistency",
-                attrs={
-                    **shared_attrs,
-                    "description": "Consistency scores for each native grid cell.",
-                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CONSENSUS_CONSISTENCY,
-                },
+                shared_attrs=shared_attrs,
+                cluster_desc="Spatial consensus clusters on native grid (time-collapsed).",
+                consistency_desc="Consistency scores for each native grid cell.",
             )
             self.data = xr.merge(
                 [da_clusters, da_consistency],
@@ -593,6 +666,50 @@ class MMA:
             out[cid] = np.concatenate(times_list) if times_list else np.array([])
         return out
 
+    def get_consensus_summary(self, numeric: bool = True) -> pd.DataFrame:
+        """Build a summary DataFrame for each consensus cluster.
+
+        Uses `get_shift_times_per_consensus_cluster` and pixel-wise consistency
+        to compute per-cluster statistics.
+
+        Args:
+            numeric: If True, shift times are numeric (for mean/std). If False, times
+                are kept as native (e.g. cftime); mean_mean_shift_time and
+                std_mean_shift_time will be NaN.
+
+        Returns:
+            DataFrame with columns: cluster_id, size, mean_consistency,
+            mean_mean_shift_time, std_mean_shift_time.
+        """
+        clusters = self.data["consensus_clusters"].values.ravel()
+        consistency = self.data["consensus_consistency"].values.ravel()
+        ids = np.unique(clusters[(clusters >= 0) & np.isfinite(clusters)])
+        ids = [int(x) for x in ids]
+
+        times_by_cluster = self.get_shift_times_per_consensus_cluster(numeric=numeric)
+
+        rows: List[dict] = []
+        for cid in ids:
+            mask = (clusters == cid) & np.isfinite(clusters)
+            size = int(np.sum(mask))
+            cons_vals = consistency[mask]
+            mean_consistency = (
+                float(np.nanmean(cons_vals)) if cons_vals.size else np.nan
+            )
+            times = times_by_cluster.get(cid, np.array([]))
+            mean_shift = float(np.mean(times)) if len(times) > 0 else np.nan
+            std_shift = float(np.std(times)) if len(times) > 1 else np.nan
+            rows.append(
+                {
+                    "cluster_id": cid,
+                    "size": size,
+                    "mean_consistency": mean_consistency,
+                    "mean_mean_shift_time": mean_shift,
+                    "std_mean_shift_time": std_shift,
+                }
+            )
+        return pd.DataFrame(rows)
+
     def plot_consensus_clusters(
         self,
         ax: Optional[Axes] = None,
@@ -627,66 +744,109 @@ class MMA:
 
         Raises:
             AttributeError: If run_consensus() has not been called yet.
-            ValueError: If MMA uses native format (use data['consensus_clusters'].plot()).
         """
-        if self._format != "healpix":
-            raise ValueError(
-                "plot_consensus_clusters is for HealPix format (lat/lon maps). "
-                "For native format, use data['consensus_clusters'].plot() or similar."
-            )
         from toad.plotting import (
             _add_map_features,
             _normalize_map_style,
             get_projection,
         )
 
-        clusters = self.data["consensus_clusters"].values
-        lats, lons = self.get_healpix_latlon()
-
-        # Mask for clusters to plot: >=0, finite, and in cluster_ids if specified.
-        cluster_mask = (clusters >= 0) & np.isfinite(clusters)
-        if cluster_ids is not None:
-            cluster_ids_set = set(cluster_ids)
-            cluster_mask &= np.isin(clusters, list(cluster_ids_set))
-        noise_mask = clusters == -1
-
-        if ax is None:
-            config = _normalize_map_style(map_style)
-            proj = (
-                get_projection(config.projection)
-                if config.projection is not None
-                else ccrs.Mollweide()
-            )
-            fig, ax = plt.subplots(subplot_kw=dict(projection=proj))
-            _add_map_features(cast(GeoAxes, ax), config)
-            cast(GeoAxes, ax).set_global()
-        else:
-            fig = cast(Figure, ax.get_figure())
-
-        if show_noise:
-            ax.scatter(
-                lons[noise_mask],
-                lats[noise_mask],
-                c="lightgray",
-                s=s,
-                transform=ccrs.PlateCarree(),
-                zorder=0,
-                **kwargs,
-            )
-
-        sc = ax.scatter(
-            lons[cluster_mask],
-            lats[cluster_mask],
-            c=clusters[cluster_mask],
-            s=s,
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-            transform=ccrs.PlateCarree(),
-            **kwargs,
+        clusters = self.data["consensus_clusters"]
+        config = _normalize_map_style(map_style)
+        proj = (
+            get_projection(config.projection)
+            if config.projection is not None
+            else ccrs.Mollweide()
         )
 
-        if add_colorbar:
-            plt.colorbar(sc, ax=ax, label="Cluster ID")
+        if self._format == "healpix":
+            clusters_vals = clusters.values
+            lats, lons = self.get_healpix_latlon()
+
+            cluster_mask = (clusters_vals >= 0) & np.isfinite(clusters_vals)
+            if cluster_ids is not None:
+                cluster_mask &= np.isin(clusters_vals, list(cluster_ids))
+            noise_mask = clusters_vals == -1
+
+            if ax is None:
+                fig, ax = plt.subplots(subplot_kw=dict(projection=proj))
+                _add_map_features(cast(GeoAxes, ax), config)
+                cast(GeoAxes, ax).set_global()
+            else:
+                fig = cast(Figure, ax.get_figure())
+
+            if show_noise:
+                ax.scatter(
+                    lons[noise_mask],
+                    lats[noise_mask],
+                    c="lightgray",
+                    s=s,
+                    transform=ccrs.PlateCarree(),
+                    zorder=0,
+                    **kwargs,
+                )
+            sc = ax.scatter(
+                lons[cluster_mask],
+                lats[cluster_mask],
+                c=clusters_vals[cluster_mask],
+                s=s,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                transform=ccrs.PlateCarree(),
+                **kwargs,
+            )
+            if add_colorbar:
+                plt.colorbar(sc, ax=ax, label="Cluster ID")
+        else:
+            # Native format: use pcolormesh with projection-native coords
+            spatial_dims = [d for d in clusters.dims]
+            if len(spatial_dims) < 2:
+                raise ValueError(
+                    "Native consensus_clusters must have at least 2 spatial dims."
+                )
+            lat_name, lon_name = detect_latlon_names(self.data)
+            da = clusters.copy()
+
+            if ax is None:
+                fig, ax = plt.subplots(subplot_kw=dict(projection=proj))
+                gax = cast(GeoAxes, ax)
+                _add_map_features(gax, config)
+                if config.extent is None:
+                    if isinstance(proj, ccrs.SouthPolarStereo):
+                        gax.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
+                    elif isinstance(proj, ccrs.NorthPolarStereo):
+                        gax.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
+                else:
+                    gax.set_extent(config.extent, crs=ccrs.PlateCarree())
+            else:
+                fig = cast(Figure, ax.get_figure())
+
+            if cluster_ids is not None:
+                cluster_ids_set = set(cluster_ids)
+                da = da.where(
+                    da.isin(list(cluster_ids_set)) | (da == -1),
+                    other=np.nan,
+                )
+            if not show_noise:
+                da = da.where(da >= 0, other=np.nan)
+
+            if lat_name is not None and lon_name is not None:
+                transform = ccrs.PlateCarree()
+            else:
+                transform = proj
+
+            sc = da.plot.pcolormesh(
+                ax=ax,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                add_colorbar=add_colorbar,
+                cbar_kwargs={"label": "Cluster ID"} if add_colorbar else {},
+                transform=transform,
+                **kwargs,
+            )
+            if add_colorbar and getattr(sc, "colorbar", None) is None:
+                plt.colorbar(sc, ax=ax, label="Cluster ID")
 
         return cast(Tuple[Figure, Axes], (fig, ax))

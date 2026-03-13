@@ -22,7 +22,7 @@ The TOAD class provides:
 - **Computation methods**: :meth:`toad.TOAD.compute_shifts` and :meth:`toad.TOAD.compute_clusters` for the main analysis pipeline
 - **Plotting interface**: Access via :attr:`toad.TOAD.plot` property (returns a :class:`toad.plotting.Plotter` instance)
 - **Statistics interface**: Access via :meth:`toad.TOAD.stats` method (returns a :class:`toad.postprocessing.Stats` instance)
-- **Aggregation interface**: Access via :attr:`toad.TOAD.aggregate` property (returns a :class:`toad.postprocessing.Aggregation` instance)
+- **Multi-model aggregation**: Use :class:`toad.MMA` for consensus clustering across exported cluster files
 - **Preprocessing interface**: Access via :attr:`toad.TOAD.preprocess` property
 - **Data access**: The underlying xarray Dataset is available via :attr:`toad.TOAD.data`
 
@@ -58,6 +58,17 @@ The plotting functionality is accessed through the :attr:`toad.TOAD.plot` proper
 
 	toad.plotting.Plotter
 	toad.plotting.MapStyle
+
+Multi-Model Aggregation (MMA)
+=============================
+
+Use :class:`toad.MMA` for consensus clustering across cluster label files exported via :meth:`toad.TOAD.compute_clusters` with `export_for_mma` and `mma_grid`. Supports HealPix and native (x,y or lat/lon) grids. See `MMA_WORKFLOW.md <https://github.com/tipmip-methods/toad/blob/main/docs/MMA_WORKFLOW.md>`_ in the repository for the full workflow.
+
+.. autosummary::
+	:toctree: generated/
+	:recursive:
+
+	toad.MMA
 
 Regridding
 ==========

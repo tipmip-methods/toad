@@ -40,6 +40,18 @@ class HealPixRegridder(BaseRegridder):
         theta, phi = hp.pix2ang(self.nside, pix)
         return 90 - np.degrees(theta), np.degrees(phi)  # lat, lon
 
+    def pixels_to_latlon(self, pixels: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Convert HealPix pixel indices to (lat, lon) in degrees. Vectorized.
+
+        Args:
+            pixels: 1D array of HealPix pixel indices (RING ordering).
+
+        Returns:
+            lats, lons: 1D arrays of latitude and longitude in degrees.
+        """
+        theta, phi = hp.pix2ang(self.nside, pixels)
+        return 90 - np.degrees(theta), np.degrees(phi)
+
     def regrid(
         self,
         coords: np.ndarray,

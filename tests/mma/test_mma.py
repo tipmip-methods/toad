@@ -67,8 +67,7 @@ def test_export_for_mma_native():
         assert len(paths) == 2
         for p in paths:
             ds = __import__("xarray").open_dataset(p)
-            assert "cluster_labels" in ds
-            assert ds["cluster_labels"].attrs.get("format") == "native"
+            assert "cluster" in ds
             assert "lat" in ds.coords or "latitude" in ds.coords
             ds.close()
 
@@ -80,11 +79,11 @@ def test_export_for_mma_healpix():
         assert len(paths) == 2
         for p in paths:
             ds = __import__("xarray").open_dataset(p)
-            assert "cluster_labels" in ds
-            assert ds["cluster_labels"].attrs.get("format") == "healpix"
+            assert "cluster" in ds
+            assert "hp_pixel" in ds["cluster"].dims
             assert ds.attrs.get("nside") == 8
             npix = 12 * 8**2
-            assert ds["cluster_labels"].shape == (npix,)
+            assert ds["cluster"].shape == (ds.sizes["time"], npix)
             ds.close()
 
 
@@ -92,13 +91,26 @@ def test_mma_native_files():
     """Test MMA with native-format cluster label files."""
     with tempfile.TemporaryDirectory() as tmp:
         paths = setup_and_export_native(Path(tmp), n_runs=3)
-        mma = MMA(paths, nside=16)
+        mma = MMA(paths, nside=None)
         ds = mma.run_consensus(min_consensus=0.5, min_cluster_size=2)
         assert "consensus_clusters" in ds
         assert "consensus_consistency" in ds
-        assert ds["consensus_clusters"].shape == (12 * 16**2,)
+        assert (
+            "lat" in ds["consensus_clusters"].dims
+            or "lon" in ds["consensus_clusters"].dims
+        )
         labels = ds["consensus_clusters"].values
         assert np.any(np.isfinite(labels) & (labels >= 0)) or np.any(labels == -1)
+
+
+def test_mma_native_files_rejected_with_nside():
+    """Test MMA raises when nside is passed with native-format exports."""
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = setup_and_export_native(Path(tmp), n_runs=2)
+        with __import__("pytest").raises(ValueError) as exc_info:
+            MMA(paths, nside=16)
+        assert "native" in str(exc_info.value).lower()
+        assert "nside=None" in str(exc_info.value)
 
 
 def test_mma_healpix_files():
@@ -110,3 +122,6 @@ def test_mma_healpix_files():
         assert "consensus_clusters" in ds
         assert "consensus_consistency" in ds
         assert ds["consensus_clusters"].shape == (12 * 8**2,)
+        # Shift times from HealPix cluster (no native grid in export)
+        times_by_cluster = mma.get_shift_times_per_consensus_cluster()
+        assert isinstance(times_by_cluster, dict)

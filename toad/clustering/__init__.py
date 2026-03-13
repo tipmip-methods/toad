@@ -39,8 +39,8 @@ from toad.clustering.optimizing import (
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
-    _attrs,
     DEFAULT_SHIFT_THRESHOLD,
+    _attrs,
     _reorder_space_dims,
     get_latlon_info,
     get_unique_variable_name,
@@ -214,6 +214,10 @@ def compute_clusters(
     # ==================== optimization ====================
     # if optimize is True, optimize the parameters for clustering.
     if optimize:
+        if export_for_mma:
+            raise ValueError(
+                "Optimization is not yet supported when exporting for MMA."
+            )
         return _optimize_clusters(
             td=td,
             var=var,
@@ -489,74 +493,68 @@ def _export_mma_cluster_labels(
     For native: time-collapses clusters and saves with lat/lon.
     """
     spatial_dims = td.space_dims
-    vals = clusters.values
     time_dim = td.time_dim
 
-    # Time-collapse: mode (most frequent non-noise cluster) per pixel
-    def _time_collapse(v: np.ndarray) -> np.ndarray:
-        if time_dim not in clusters.dims:
-            return np.where(
-                (v >= 0) & np.isfinite(v),
-                v.astype(np.float32),
-                np.where(v == -1, -1.0, np.nan),
-            )
-        y_len, x_len = v.shape[1], v.shape[2]
-        out = np.full((y_len, x_len), np.nan, dtype=np.float32)
-        for i in range(y_len):
-            for j in range(x_len):
-                cell_vals = v[:, i, j]
-                valid = cell_vals[(cell_vals >= 0) & np.isfinite(cell_vals)]
-                if len(valid) > 0:
-                    out[i, j] = float(np.bincount(valid.astype(np.int32)).argmax())
-                elif np.any(cell_vals == -1):
-                    out[i, j] = -1.0
-        return out
-
     if mma_grid == "healpix":
-        hp_labels: np.ndarray | None = None
-        nside: int | None = None
-        if isinstance(regridder, HealPixRegridder) and (
-            regridder.df_healpix is not None and len(regridder.df_healpix) > 0
+        if not (
+            isinstance(regridder, HealPixRegridder)
+            and regridder.df_healpix is not None
+            and len(regridder.df_healpix) > 0
+            and "cluster" in regridder.df_healpix.columns
         ):
-            if "cluster" in regridder.df_healpix.columns:
-                df = regridder.df_healpix
-                nside = regridder.nside if regridder.nside is not None else 32
-                npix = 12 * nside**2
-                hp_label_counts: dict[int, dict[float, int]] = {}
-                for _, row in df.iterrows():
-                    lbl = row["cluster"]
-                    if not (np.isfinite(lbl) or lbl == -1):
-                        continue
-                    hp_idx = int(row["hp_pix"])
-                    if hp_idx not in hp_label_counts:
-                        hp_label_counts[hp_idx] = {}
-                    k = float(lbl)
-                    hp_label_counts[hp_idx][k] = hp_label_counts[hp_idx].get(k, 0) + 1
-                hp_labels = np.full(npix, np.nan, dtype=np.float32)
-                for hp_idx, counts in hp_label_counts.items():
-                    hp_labels[hp_idx] = max(counts.items(), key=lambda x: x[1])[0]
-
-        if hp_labels is None or nside is None:
             raise ValueError(
                 "mma_grid='healpix' requires HealPix regridding. Pass regridder=HealPixRegridder(nside=...) "
                 "to compute_clusters and ensure the grid has lat/lon coordinates."
             )
+        df = regridder.df_healpix
+        nside = regridder.nside if regridder.nside is not None else 32
+        npix = 12 * nside**2
+        time_vals = td.data[time_dim].values
+        n_time = len(time_vals)
+        time_to_idx = {t: i for i, t in enumerate(time_vals)}
+        cluster_healpix = np.full((n_time, npix), np.nan, dtype=np.float32)
+        for _, row in df.iterrows():
+            t_idx = time_to_idx.get(row["time"])
+            if t_idx is None:
+                continue
+            hp_idx = int(row["hp_pix"])
+            if 0 <= hp_idx < npix:
+                cluster_healpix[t_idx, hp_idx] = np.float32(row["cluster"])
 
-        assert hp_labels is not None and nside is not None
+        # Keep all coords from source data relevant to cluster dims (handles irregular i/j + lat/lon)
+        our_dims = {time_dim, *spatial_dims}
+        all_coords = {
+            k: v for k, v in td.data.coords.items() if set(v.dims).issubset(our_dims)
+        }
+        latlon_candidates = {
+            "lat",
+            "latitude",
+            "lon",
+            "longitude",
+            "nav_lat",
+            "nav_lon",
+        }
+        for k in latlon_candidates:
+            if (
+                k in td.data
+                and k not in all_coords
+                and set(td.data[k].dims).issubset(our_dims)
+            ):
+                all_coords[k] = td.data[k]
         out = xr.Dataset(
             {
-                "cluster_labels": (
-                    "hp_pixel",
-                    hp_labels,
+                "cluster": (
+                    (time_dim, "hp_pixel"),
+                    cluster_healpix,
                     {
+                        "description": "Cluster variable (time, hp_pixel). For consensus and shift time extraction.",
+                        "source_variable": source_variable,
                         "format": "healpix",
                         "nside": nside,
-                        "source_variable": source_variable,
-                        "Conventions": "TOAD_cluster_labels_v1",
                     },
-                )
+                ),
             },
-            coords={"hp_pixel": np.arange(12 * nside**2)},
+            coords={**all_coords, "hp_pixel": np.arange(npix)},
             attrs={
                 "format": "healpix",
                 "nside": nside,
@@ -564,30 +562,38 @@ def _export_mma_cluster_labels(
             },
         )
     else:
-        labels_2d = _time_collapse(vals)
-        coords = {d: clusters[d] for d in spatial_dims if d in clusters.coords}
-        lat_name, lon_name = detect_latlon_names(td.data)
-        if lat_name is not None and lon_name is not None:
-            lat = td.data[lat_name]
-            lon = td.data[lon_name]
-            if lat_name not in coords:
-                coords[lat_name] = lat
-            if lon_name not in coords:
-                coords[lon_name] = lon
+        # Keep all coords from source data (handles irregular i/j grids with lat/lon in coords)
+        our_dims = {time_dim, *spatial_dims}
+        all_coords = {
+            k: v for k, v in td.data.coords.items() if set(v.dims).issubset(our_dims)
+        }
+        latlon_candidates = {
+            "lat",
+            "latitude",
+            "lon",
+            "longitude",
+            "nav_lat",
+            "nav_lon",
+        }
+        for k in latlon_candidates:
+            if (
+                k in td.data
+                and k not in all_coords
+                and set(td.data[k].dims).issubset(our_dims)
+            ):
+                all_coords[k] = td.data[k]
         out = xr.Dataset(
             {
-                "cluster_labels": (
-                    spatial_dims,
-                    labels_2d,
+                "cluster": (
+                    clusters.dims,
+                    clusters.values.astype(np.float32),
                     {
-                        "format": "native",
-                        "spatial_dims": list(spatial_dims),
+                        "description": "Cluster variable in original dims for shift time extraction",
                         "source_variable": source_variable,
-                        "Conventions": "TOAD_cluster_labels_v1",
                     },
-                )
+                ),
             },
-            coords=coords,
+            coords=all_coords,
             attrs={"format": "native", "Conventions": "TOAD_cluster_labels_v1"},
         )
     out.to_netcdf(path)

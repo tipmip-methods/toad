@@ -1,12 +1,14 @@
 # Multi-Model Aggregation (MMA) Workflow
 
-This document describes the full workflow for running consensus clustering across multiple models or runs using TOAD's MMA pipeline.
+This document describes the full workflow for running consensus clustering across multiple models or runs using TOAD's MMA pipeline. It also serves as the main development reference for the MMA process.
 
 ## Overview
 
-1. **Per model**: Compute shifts → cluster → export cluster labels (HealPix or native)
-2. **MMA**: Load exported files → run consensus clustering → inspect results
-3. *(Optional)*: Summary table with original dataset paths (deferred)
+1. **Per model**: Compute shifts → cluster → export cluster labels (HealPix or native) + cluster variable in original dims
+2. **MMA**: Load exported files → run consensus clustering (uses full 3D `cluster`, ever-in semantics) → inspect results
+3. **Shift time stats**: Extract shift time distributions per consensus cluster (from exports only; no original dataset needed)
+
+**Time collapse:** MMA uses *ever-in* semantics: a pixel participates in a consensus cluster if it was ever assigned to that cluster at any time. This matches the old `cluster_consensus` aggregation and preserves multi-regime behaviour (a pixel can contribute to multiple clusters across time).
 
 ---
 
@@ -43,15 +45,16 @@ for i, path in enumerate(model_paths):
     export_paths.append(f"clusters_model_{i}.nc")
 ```
 
-### Option B: Native export (same grid across models)
+**Note:** HealPix requires `regridder=HealPixRegridder(nside=...)` and expects lat/lon. For projected grids (e.g. x,y in km), use Option B instead.
+
+### Option B: Native export (x,y or lat/lon, same grid across models)
 
 ```python
-from pathlib import Path
 from toad import TOAD
 from toad.shifts import ASDETECT
 from sklearn.cluster import HDBSCAN
 
-# Per model — requires lat/lon coordinates
+# Per model — works with x,y (km), lat/lon, or any 2D spatial coords
 model_paths = ["model_a.nc", "model_b.nc", "model_c.nc"]
 export_paths = []
 
@@ -68,7 +71,7 @@ for i, path in enumerate(model_paths):
     export_paths.append(f"clusters_model_{i}.nc")
 ```
 
-**Note:** `mma_grid="healpix"` requires `regridder=HealPixRegridder(nside=...)`. Without it, an error is raised.
+**Note:** All native exports must have the same spatial grid. Works with x,y in km (e.g. South Polar Stereographic), lat/lon, or any 2D coordinates.
 
 ---
 
@@ -80,8 +83,7 @@ from toad import MMA
 # Paths to exported cluster label files
 paths = ["clusters_model_0.nc", "clusters_model_1.nc", "clusters_model_2.nc"]
 
-# nside must match the HealPix files (or be used when MMA regrids native files)
-mma = MMA(paths, nside=NSIDE)  # use same NSIDE as export
+mma = MMA(paths, nside=NSIDE)  # HealPix: same NSIDE as export. Native: use nside=None
 
 # Run consensus
 ds = mma.run_consensus(
@@ -99,12 +101,12 @@ print(mma.data)
 
 ---
 
-## Step 3: Inspect Results
+## Step 3: Inspect and Plot Results
 
 ```python
 import numpy as np
 
-# Consensus clusters (1D on HealPix — can plot with healpy)
+# Consensus clusters (1D on HealPix)
 clusters = mma.data["consensus_clusters"].values
 consistency = mma.data["consensus_consistency"].values
 
@@ -114,6 +116,35 @@ print(f"Consensus: {n_clusters} clusters")
 
 # Save for later use
 mma.data.to_netcdf("consensus_result.nc")
+```
+
+### Plotting consensus clusters (HealPix)
+
+**Built-in method** (recommended)
+
+```python
+import cartopy.crs as ccrs
+
+fig, ax = mma.plot_consensus_clusters(
+    map_style={"projection": "mollweide", "continent_shading": True},
+)
+
+# Or with custom projection and options
+fig, ax = mma.plot_consensus_clusters(
+    map_style={"projection": ccrs.Orthographic(-40, 15), "continent_shading": True},
+    s=10,
+    show_noise=True,  # plot noise pixels as grey
+)
+```
+
+**Manual plotting** (e.g. to reuse an existing axes from `td.plot.map()`)
+
+```python
+import cartopy.crs as ccrs
+
+fig, ax = td.plot.map(map_style={"projection": ccrs.Orthographic(-40, 15)})
+ax.set_global()
+fig, ax = mma.plot_consensus_clusters(ax=ax, s=1)
 ```
 
 ---
@@ -154,16 +185,52 @@ mma.data.to_netcdf("consensus.nc")
 
 ## File Formats
 
-| Format   | When to use            | Regridder required              |
-|----------|------------------------|----------------------------------|
-| `healpix`| Mixed/native grids     | `HealPixRegridder(nside=...)`   |
-| `native` | All models same grid   | No                              |
+MMA accepts **HealPix** or **native** format. Format is auto-detected from the first file.
 
-- **HealPix**: All exported files must use the same `nside`. MMA loads them directly.
-- **Native**: MMA regrids each file to a common HealPix grid using lat/lon before consensus. Specify `nside` when constructing `MMA(...)`.
+| Format   | When to use            | MMA init              |
+|----------|------------------------|-----------------------|
+| HealPix  | Mixed grids, global    | `MMA(paths, nside=32)`|
+| Native   | Same grid, x,y or lat/lon | `MMA(paths, nside=None)` |
+
+**HealPix:** Use `mma_grid='healpix'` and `regridder=HealPixRegridder(nside=...)`. Requires lat/lon.
+
+**Native:** Use `mma_grid='native'`. Works with x,y (km), lat/lon, or any 2D coords. All files must have the same grid.
 
 ---
 
-## Summary Table (TODO)
+## Shift time distributions per consensus cluster
 
-A `summary_table(original_dataset_paths)` method that maps consensus clusters back to each model's native grid for per-cluster statistics (e.g. violin plots of shift distributions) is planned for a future release.
+Uses HealPix index lookup: (lat, lon) → pixel index → consensus ID. See `map_consensus_to_coords` / `map_consensus_to_dataset`.
+
+**Option A: From export files only** (no original dataset)
+
+```python
+from toad import MMA
+import matplotlib.pyplot as plt
+
+# After run_consensus(): aggregate shift times per consensus cluster across all exports
+times_by_cluster = mma.get_shift_times_per_consensus_cluster()
+for cid, times in times_by_cluster.items():
+    plt.hist(times, bins=30, alpha=0.5, label=f"Cluster {cid}")
+plt.xlabel("Shift time")
+plt.legend()
+plt.show()
+```
+
+For a single cluster from a single file: `mma.get_shift_times_from_export(path, consensus_cluster_id=0)`.
+
+**Option B: With TOAD (original dataset)**
+
+```python
+from toad import MMA, TOAD
+
+td = TOAD("model_a.nc", time_dim="time")
+consensus_ids = mma.map_consensus_to_dataset(td.data)
+mask = (consensus_ids == 0) & consensus_ids.notnull()
+times = td.get_cluster_times_in_region(mask, cluster_var=td.cluster_vars[0])
+```
+
+**Methods:**
+- `get_shift_times_from_export(path, consensus_cluster_id)` — extract times from export file; no TOAD needed
+- `map_consensus_to_coords(lat, lon)` — raw numpy lookup; returns cluster IDs with same shape as lat/lon
+- `map_consensus_to_dataset(ds)` — map consensus onto xarray dataset; uses auto-detected lat/lon, returns DataArray with matching spatial dims

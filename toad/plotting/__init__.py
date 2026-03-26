@@ -2053,7 +2053,6 @@ class Plotter:
             y_label string (empty if not first subplot or timeseries_ylabel is True)
         """
         y_label = ""
-        current_ax.axhline(0, ls="--", lw=0.25, color="k")
         current_ax.set_title("")
 
         if not timeseries_ylabel:

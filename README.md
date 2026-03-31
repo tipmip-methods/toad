@@ -26,7 +26,7 @@ The TOAD pipeline consists of three main components:
 
 ![TOAD Pipeline](https://raw.githubusercontent.com/tipmip-methods/toad/main/docs/source/resources/TOAD_pipeline.png)
 
-TOAD's core functionality is exposed through the `TOAD` class, which analyzes netCDF files or xarray datasets. The primary methods - `compute_shifts`, `compute_clusters`, and `aggregate.cluster_consensus()` - handle the three main pipeline steps. The pipeline supports aggregation of results across multiple runs, enabling consensus-based analysis. Additional helper functions and visualization tools make it easy to explore and understand the results.
+TOAD's core functionality is exposed through the `TOAD` class, which analyzes netCDF files or xarray datasets. The primary methods - `compute_shifts`, `compute_clusters`, and `compute_consensus()` - handle the three main pipeline steps. The pipeline supports aggregation of results across multiple runs, enabling consensus-based analysis. Additional helper functions and visualization tools make it easy to explore and understand the results.
 
 
 ## Installation

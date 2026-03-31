@@ -20,6 +20,7 @@ from toad.clustering.optimizing import (
     default_opt_params,
 )
 from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
+from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     DEFAULT_SHIFT_THRESHOLD,
@@ -30,6 +31,7 @@ from toad.utils import (
 from toad.utils.repr_html import (
     build_variable_hierarchy,
     load_toad_logo_html,
+    render_consensus_variables_html,
     render_hierarchy_html,
 )
 
@@ -202,12 +204,16 @@ class TOAD:
             self.base_vars, self.shift_vars, self.cluster_vars, self.data
         )
         variable_table = render_hierarchy_html(hierarchy, self.data)
+        consensus_table = render_consensus_variables_html(
+            self.data, self.consensus_cluster_vars
+        )
         logo_html = load_toad_logo_html()
         ds_repr = self.data._repr_html_()
         return f"""
         <div style='padding: 12px'>
             <h2 style='margin-bottom: 0px; display: flex; align-items: center;'>{logo_html}TOAD Object</h2>
             {variable_table}
+            {consensus_table}
             <p style='font-size: 0.9em; margin: 16px 0;'>Hint: to access the xr.dataset call <code>td.data</code></p>
             {ds_repr}
         </div>
@@ -443,6 +449,61 @@ class TOAD:
             optimize_progress_bar=optimize_progress_bar,
         )
 
+    def compute_consensus(
+        self,
+        cluster_vars: list[str] | None = None,
+        *,
+        min_consensus: float,
+        temporal_tolerance: int,
+        spatial_tolerance: int,
+        top_n_clusters: int | None = None,
+        stitch_meridian: bool = False,
+        regridder: HealPixRegridder | None = None,
+        show_progress: bool = True,
+        output_label_suffix: str = "",
+        output_label: str | None = None,
+        overwrite: bool = False,
+        min_cluster_area: int | None = 2,
+    ) -> None:
+        """Combine multiple clustering results into one spacetime consensus and store it on ``self.data``.
+
+        This delegates to :meth:`toad.postprocessing.Aggregation.compute_consensus`; see that
+        docstring for parameters and algorithm details.
+
+        Args:
+            cluster_vars: Input clustering variables to merge. Defaults to all ``td.cluster_vars``.
+            min_consensus: Minimum vote fraction for consensus edges (required)
+            temporal_tolerance: Peak-label dilation radius along time before voting (required).
+            spatial_tolerance: Peak-label dilation radius in spatial graph hops before voting (required).
+            top_n_clusters: Optional restriction to the largest N clusters per input map.
+            stitch_meridian: Whether to connect the first and last longitude column on native grids.
+            regridder: Optional HealPix regridder for consensus on a regridded graph.
+            show_progress: Whether to show a progress bar.
+            output_label_suffix: Suffix for the default ``cluster_consensus`` label name.
+            output_label: Explicit name for the consensus labels variable.
+            overwrite: If True, replace an existing variable with the same name; if False,
+                append ``_1``, ``_2``, … when the name is taken.
+            min_cluster_area: Minimum spatial footprint (distinct cells ever labelled) for a
+                consensus cluster to be kept; smaller clusters become noise. Default ``2`` (see
+                :meth:`toad.postprocessing.Aggregation.compute_consensus`). Use ``None`` to
+                disable this post-filter.
+        """
+
+        self.aggregate.compute_consensus(
+            cluster_vars=cluster_vars,
+            min_consensus=min_consensus,
+            top_n_clusters=top_n_clusters,
+            stitch_meridian=stitch_meridian,
+            regridder=regridder,
+            show_progress=show_progress,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            output_label_suffix=output_label_suffix,
+            output_label=output_label,
+            overwrite=overwrite,
+            min_cluster_area=min_cluster_area,
+        )
+
     # # ======================================================================
     # #               netCDF functions
     # # ======================================================================
@@ -532,16 +593,21 @@ class TOAD:
         Base variables are those that have not been derived from shift detection or
             clustering. A variable is considered a base variable if either:
                 1. It has no 'variable_type' attribute, or
-                2. Its 'variable_type' is neither 'shift' nor 'cluster'
+                2. Its 'variable_type' is neither 'shift', 'cluster', nor consensus-derived
 
         Returns:
             A list of strings containing the base variable names in the dataset.
         """
+        _derived = (
+            _attrs.TYPE_SHIFT,
+            _attrs.TYPE_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CONSISTENCY,
+        )
         return [
             str(x)
             for x in list(self.data.data_vars.keys())
-            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
-            not in [_attrs.TYPE_SHIFT, _attrs.TYPE_CLUSTER]
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE) not in _derived
         ]
 
     @property
@@ -576,6 +642,44 @@ class TOAD:
             for x in list(self.data.data_vars.keys())
             if self._is_cluster_variable(x)
         ]
+
+    @property
+    def consensus_cluster_vars(self) -> list[str]:
+        """Names of consensus label variables (``variable_type=consensus_cluster``)."""
+        return [
+            str(x)
+            for x in list(self.data.data_vars.keys())
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
+            == _attrs.TYPE_CONSENSUS_CLUSTER
+        ]
+
+    def _resolve_consensus_var(self, consensus_var: str | None) -> str:
+        """Return the consensus labels variable name, or raise if ambiguous.
+
+        If ``consensus_var`` is None, requires exactly one consensus label variable in
+        :attr:`consensus_cluster_vars` (similar to how :meth:`get_clusters` resolves a
+        single cluster variable for a base ``var``).
+        """
+        if consensus_var is not None:
+            if consensus_var not in self.data:
+                raise ValueError(f"Unknown data variable: {consensus_var!r}")
+            if not self._is_consensus_cluster_variable(consensus_var):
+                raise ValueError(
+                    f"{consensus_var!r} is not a consensus label variable "
+                    f"(expected attrs['{_attrs.VARIABLE_TYPE}'] == {_attrs.TYPE_CONSENSUS_CLUSTER!r})."
+                )
+            return consensus_var
+        names = self.consensus_cluster_vars
+        if len(names) == 0:
+            raise ValueError(
+                "No consensus variables in the dataset. Run compute_consensus() first or pass "
+                "consensus_var=..."
+            )
+        if len(names) > 1:
+            raise ValueError(
+                f"Multiple consensus variables {names}. Pass consensus_var explicitly."
+            )
+        return names[0]
 
     def remove_cluster(self, cluster_id: int, var: str | None = None):
         """Remove a cluster from the dataset.
@@ -742,6 +846,22 @@ class TOAD:
         underlying data object.
         """
         self.data = self.data.drop_vars(self.shift_vars)
+
+    def drop_consensus_clusters(self):
+        """
+        Remove all consensus outputs from the dataset.
+
+        Drops every variable with ``variable_type`` consensus label or consensus
+        consistency (labels and their ``*_consistency`` companions).
+        """
+        to_drop = [
+            str(x)
+            for x in self.data.data_vars
+            if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
+            in (_attrs.TYPE_CONSENSUS_CLUSTER, _attrs.TYPE_CONSENSUS_CONSISTENCY)
+        ]
+        if to_drop:
+            self.data = self.data.drop_vars(to_drop)
 
     def shift_vars_for_var(self, var: str) -> list[str]:
         """Get the shift variables for a given variable.
@@ -1075,11 +1195,20 @@ class TOAD:
         """Check if a variable is a cluster variable."""
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER
 
+    def _is_consensus_cluster_variable(self, var: str) -> bool:
+        """Check if a variable is a consensus cluster label variable."""
+        return (
+            self.data[var].attrs.get(_attrs.VARIABLE_TYPE)
+            == _attrs.TYPE_CONSENSUS_CLUSTER
+        )
+
     def _is_base_variable(self, var: str) -> bool:
         """Check if a variable is a base variable."""
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) not in [
             _attrs.TYPE_SHIFT,
             _attrs.TYPE_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CLUSTER,
+            _attrs.TYPE_CONSENSUS_CONSISTENCY,
         ]
 
     def _aggregate_spatial(

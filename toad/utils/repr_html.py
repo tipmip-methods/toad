@@ -119,6 +119,51 @@ def render_hierarchy_html(
     )
 
 
+def render_consensus_variables_html(
+    data: "xr.Dataset",
+    consensus_label_vars: list[str],
+) -> str:
+    """Render a compact section listing consensus label variables and their consistency fields.
+
+    Consensus outputs are not folded into the base/shift/cluster tree; they appear in a
+    separate block below.
+
+    Returns:
+        Empty string when ``consensus_label_vars`` is empty, so the section is omitted entirely.
+    """
+    if not consensus_label_vars:
+        return ""
+
+    rows: list[str] = []
+    for name in sorted(consensus_label_vars):
+        n_clusters = _cluster_count_for_var(data, name)
+        cons_name = f"{name}_consistency"
+        has_cons = cons_name in data.data_vars
+        cons_note = (
+            f'<span style="opacity: 0.55; font-size: 0.85em;"> + {cons_name}</span>'
+            if has_cons
+            else ""
+        )
+        rows.append(
+            f"""
+                <div style="margin: 6px 0;">
+                    <span style="color: black; background-color: #D4C4F5; padding: 2px 4px; border-radius: 4px;">consensus</span>
+                    <span style="font-family: monospace;">{name}</span>{cons_note}
+                    <span style="opacity: 0.5; font-size: 0.85em;"> ({n_clusters} clusters)</span>
+                </div>
+            """
+        )
+
+    return f"""
+            <div style='margin: 12px 0px 10px 0px;'>
+                <h4 style="margin: 5px 0; font-size: 1.1em;">Consensus variables</h4>
+                <div style="font-family: monospace; font-size: 1.0em; border: 1px solid #ddd; padding: 10px; line-height: 1.45;">
+                    {"".join(rows)}
+                </div>
+            </div>
+            """
+
+
 def _render_base_no_children(base_var: str) -> str:
     """Render a base variable row with no derived variables."""
     return f"""

@@ -495,22 +495,35 @@ def _format_cluster_summary(
 
 
 def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
-    """Sort clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 for noise)"""
-    # Get unique labels and counts, excluding -1
-    unique_labels, counts = np.unique(
-        cluster_labels[cluster_labels != -1], return_counts=True
-    )
+    """Sort clusters by size (largest cluster -> 0, second largest -> 1, etc., keeping -1 and NaN).
 
-    # Sort by counts in descending order
+    Non-finite values (e.g. NaN meaning “no shift” in a label field) are left unchanged
+    and excluded from the size-based renumbering.
+    """
+    original_shape = cluster_labels.shape
+    flat = np.ravel(np.asarray(cluster_labels))
+    valid = np.isfinite(flat) & (flat != -1)
+    if not np.any(valid):
+        return np.asarray(cluster_labels).copy()
+
+    unique_labels, counts = np.unique(flat[valid], return_counts=True)
     sorted_indices = np.argsort(counts)[::-1]
     sorted_unique_labels = unique_labels[sorted_indices]
+    label_mapping = {int(old): new for new, old in enumerate(sorted_unique_labels)}
+    label_mapping[-1] = -1
 
-    # Create mapping from old labels to new labels (0 to n-1)
-    label_mapping = {old: new for new, old in enumerate(sorted_unique_labels)}
-    label_mapping[-1] = -1  # Keep -1 for noise points
-
-    # Apply mapping to all labels
-    return np.array([label_mapping[label] for label in cluster_labels])
+    out = np.empty(flat.shape, dtype=np.float64)
+    for i, label in enumerate(flat):
+        if not np.isfinite(label):
+            out[i] = np.nan
+        elif int(label) == -1:
+            out[i] = -1.0
+        else:
+            out[i] = float(label_mapping[int(label)])
+    out = out.reshape(original_shape)
+    if np.issubdtype(cluster_labels.dtype, np.integer) and np.all(np.isfinite(flat)):
+        return np.round(out).astype(np.int64)
+    return out
 
 
 def geodetic_to_cartesian(time, lat, lon, height=0) -> np.ndarray:

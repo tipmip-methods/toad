@@ -1129,18 +1129,6 @@ class Plotter:
                     full_timeseries=full_timeseries,
                 )
 
-            # Plot shift duration (horizontal shading) - only for real clusters.
-            # Skip when full_timeseries=False: the entire visible plot is already the
-            # cluster segment, so the indicator would cover the whole background.
-            if plot_cluster_duration and id is not None and full_timeseries:
-                self._plot_cluster_duration(
-                    current_ax=current_ax,
-                    var=var,
-                    cluster_id=id,
-                    shift_color=shift_color,
-                    cluster_duration_alpha=cluster_duration_alpha,
-                )
-
             # Plot individual trajectories
             cells = None
             if plot_trajectories:
@@ -1177,6 +1165,22 @@ class Plotter:
                         normalize=normalize,
                         cells=cells,
                     )
+
+            # Plot shift duration (horizontal shading) - only for real clusters.
+            # Skip when full_timeseries=False: the entire visible plot is already the
+            # cluster segment, so the indicator would cover the whole background.
+            # NOTE: must come after trajectories/mean/median are drawn so that the
+            # cftime unit converter is already registered on the axes; axvspan cannot
+            # convert cftime dates on a completely empty axes.  zorder=-100 keeps the
+            # shading visually behind all data regardless of draw order.
+            if plot_cluster_duration and id is not None and full_timeseries:
+                self._plot_cluster_duration(
+                    current_ax=current_ax,
+                    var=var,
+                    cluster_id=id,
+                    shift_color=shift_color,
+                    cluster_duration_alpha=cluster_duration_alpha,
+                )
 
             # Handle axis cleanup for subplots
             if use_subplots:
@@ -2187,6 +2191,10 @@ class Plotter:
         end = self.td.stats(var).time.end(cluster_id)
 
         if start == end:
+            # All shifts at a single timestep: draw a vertical line.
+            # axvline works here because this method is always called after at least
+            # one data series has been drawn, ensuring the cftime unit converter is
+            # already registered on the axes.
             current_ax.axvline(
                 start,  # type: ignore[arg-type]
                 color=shift_color,
@@ -2196,8 +2204,8 @@ class Plotter:
         else:
             # Matplotlib supports np.datetime64 and cftime.datetime directly at runtime
             current_ax.axvspan(
-                self.td.stats(var).time.start(cluster_id),  # type: ignore[arg-type]
-                self.td.stats(var).time.end(cluster_id),  # type: ignore[arg-type]
+                start,  # type: ignore[arg-type]
+                end,  # type: ignore[arg-type]
                 facecolor=shift_color,
                 edgecolor="none",
                 alpha=cluster_duration_alpha,

@@ -440,25 +440,26 @@ class TimeStats:
 
         max_dts_mask = np.abs(max_dts_mask)
 
-        # Get the indices where mask is 1 for each grid cell
-        time_indices = max_dts_mask.argmax(
-            axis=0
-        )  # This will give us a (76,76) array of indices
+        # Reductions use the named time dimension (not axis index), so (y, x, time) and similar orders work.
+        time_dim = self.td.time_dim
+        time_indices = max_dts_mask.argmax(dim=time_dim)
+        has_peak = max_dts_mask.sum(dim=time_dim) > 0
 
-        # Create a mask for grid cells that actually have a 1
-        has_peak = max_dts_mask.sum(axis=0) > 0
-
-        # Create a DataArray with the same coordinates as the spatial dimensions of your data
         time_coords = self.td.numeric_time_values
 
-        # For cells with no peak, we'll use -1 as a marker
         time_indices = xr.where(has_peak, time_indices, -1)
 
-        # Now create the output array with dataset's time values
-        time_values = xr.where(time_indices >= 0, time_coords[time_indices], np.nan)
+        idx_np = time_indices.values.astype(np.int64, copy=False)
+        out_np = np.full(idx_np.shape, np.nan, dtype=float)
+        valid = idx_np >= 0
+        out_np[valid] = time_coords[idx_np[valid]]
 
-        # Add metadata to the DataArray
-        time_values = time_values.rename("transition_time")  # Give it a meaningful name
+        time_values = xr.DataArray(
+            out_np,
+            coords=time_indices.coords,
+            dims=time_indices.dims,
+            name="transition_time",
+        )
         time_values.attrs["long_name"] = self.td.data[self.td.time_dim].name
         time_values.attrs["units"] = self.td.numeric_time_values_unit()
         time_values.attrs["description"] = "Time point of maximum rate of change"

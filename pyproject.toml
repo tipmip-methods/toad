@@ -53,8 +53,7 @@ dependencies = [
     "cartopy",
     "pandas",
     "numba",
-    "healpix", # we use healpix because healpy does not support Windows
-    "astropy-healpix", # this is used for healpix neighbourhood lookup in consensus clustering
+    "astropy-healpix", # used for HEALPix regridding and consensus neighbourhood lookup
     "optuna",
     "cftime",
     "joblib",
@@ -102,7 +101,6 @@ cartopy = "cartopy"
 pandas = "pandas"
 scikit-learn = "sklearn"
 numba = "numba"
-healpix = "healpix"
 astropy-healpix = "astropy_healpix"
 optuna = "optuna"
 cftime = "cftime"

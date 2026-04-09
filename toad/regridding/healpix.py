@@ -1,9 +1,10 @@
 import logging
 from typing import Optional
 
-import healpix as hp
+import astropy.units as u
 import numpy as np
 import pandas as pd
+from astropy_healpix import healpix_to_lonlat, lonlat_to_healpix
 
 from toad.regridding.base import BaseRegridder
 
@@ -33,12 +34,20 @@ class HealPixRegridder(BaseRegridder):
 
     def latlon_to_healpix(self, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         """Convert arrays of latitude and longitude to HEALPix pixel indices."""
-        return hp.ang2pix(self.nside, lons, lats, lonlat=True)
+        hp_pix = lonlat_to_healpix(
+            np.asarray(lons, dtype=np.float64) * u.deg,
+            np.asarray(lats, dtype=np.float64) * u.deg,
+            self.nside,
+            order="ring",
+        )
+        return np.asarray(hp_pix, dtype=np.int64)
 
     def healpix_to_latlon(self, pix: int) -> tuple:
         """Convert a HEALPix pixel index back to its center latitude and longitude."""
-        theta, phi = hp.pix2ang(self.nside, pix)
-        return 90 - np.degrees(theta), np.degrees(phi)  # lat, lon
+        lon, lat = healpix_to_lonlat(pix, self.nside, order="ring")
+        lat_deg = float(lat.to_value(u.deg))
+        lon_deg = float(np.mod(lon.to_value(u.deg), 360.0))
+        return lat_deg, lon_deg
 
     def regrid(
         self,
@@ -162,5 +171,4 @@ class HealPixRegridder(BaseRegridder):
             n_pixels = len(coords_2d)
             self.nside = 1 << int(np.ceil(_pixels_to_order(n_pixels)))
 
-        hp_pix = hp.ang2pix(self.nside, lon, lat, lonlat=True)
-        return hp_pix.astype(np.int64)
+        return self.latlon_to_healpix(lat, lon)

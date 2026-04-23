@@ -85,6 +85,10 @@ class TOAD:
         log_level: The logging level. Choose from 'DEBUG', 'INFO', 'WARNING', 'ERROR',
             'CRITICAL'. Defaults to 'INFO'.
         engine: The engine to use to open the netCDF file. Defaults to 'netcdf4'.
+        auto_clean: If True, run :func:`toad.preprocessing.clean_for_toad` after loading
+            data (drops bounds, auxiliary dims, orphan coords). Defaults to False.
+            Dimension names ``longitude``/``latitude`` are renamed to ``lon``/``lat`` first
+            so cleaning and :attr:`space_dims` see the standard names.
 
     Raises:
         ValueError: If the input file path does not exist or if data dimensions are not 3D.
@@ -99,6 +103,7 @@ class TOAD:
         time_dim: str = "time",
         log_level: str = "INFO",
         engine: str = "netcdf4",
+        auto_clean: bool = False,
     ):
         # load data from path if string
         if isinstance(data, str):
@@ -119,6 +124,17 @@ class TOAD:
         self.logger.propagate = False  # Prevent propagation to the root logger :: i.e. prevents dupliate messages
         self.set_log_level(log_level)
 
+        # Rename longitude and latitude to lon and lat
+        if "longitude" in self.data.dims:
+            self.data = self.data.rename({"longitude": "lon"})
+            self.logger.info("Renamed dimension longitude to lon")
+        if "latitude" in self.data.dims:
+            self.data = self.data.rename({"latitude": "lat"})
+            self.logger.info("Renamed dimension latitude to lat")
+
+        if auto_clean:
+            self.data = preprocessing.clean_for_toad(self.data, time_dim=time_dim)
+
         # Check that all variables have the same dimensions
         dims = [self.data[var].dims for var in self.data.data_vars]
         if len(set(dims)) > 1:
@@ -129,14 +145,6 @@ class TOAD:
                 "All variables must have the same dimensions. Consider dropping variables not needed in TOAD.\n"
                 f"Dimensions for each variable:\n{dims_info}"
             )
-
-        # rename longitude and latitude to lon and lat
-        if "longitude" in self.data.dims:
-            self.data = self.data.rename({"longitude": "lon"})
-            self.logger.info("Renamed longitude to lon")
-        if "latitude" in self.data.dims:
-            self.data = self.data.rename({"latitude": "lat"})
-            self.logger.info("Renamed latitude to lat")
 
         lat, lon = detect_latlon_names(self.data)
         if (lat and lat not in self.data.dims) and (lon and lon not in self.data.dims):

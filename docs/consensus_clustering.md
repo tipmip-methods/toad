@@ -12,6 +12,7 @@ The implementation provides:
 - optional explicit HealPix regridding
 - temporal and spatial tolerance as pre-vote dilation rules
 - optional post-filter on minimum spatial cluster footprint
+- output label encoding consistent with ``toad.clustering.compute_clusters`` (``NaN`` / ``-1`` / ids; see [Output](#output))
 
 ## Overview
 
@@ -23,15 +24,18 @@ The main idea is:
 
 1. Treat every labelled spacetime voxel as a possible part of a consensus event.
 2. Build a sparse spacetime graph with local spatial and temporal edges.
-3. Let each input clustering vote for edges where neighbouring voxels belong to the same input cluster.
-4. Normalise vote counts by the number of contributing input maps.
-5. Keep only edges whose support exceeds `min_consensus`.
-6. Run connected components on the surviving graph.
-7. Trim the result back to the original undilated support.
-8. Optionally filter tiny clusters and renumber labels; attach metadata as TOAD ``attrs``.
+3. Let each input clustering vote for edges where neighbouring voxels belong to the same input cluster
+   (using dilated support when tolerances are non-zero).
+4. On each spacetime edge, form a weighted score ``W = V / A`` from votes ``V`` and per-edge
+   availability ``A``, and keep only edges with ``W >= min_consensus``.
+5. Run connected components on the surviving graph.
+6. Trim the result back to the original undilated support.
+7. Optionally filter tiny clusters and renumber labels; attach metadata as TOAD ``attrs``.
 
 The public result is one **3D** consensus label field (plus a consistency field) on the original
-model grid, stored on the `TOAD` object’s `xarray.Dataset`.
+model grid, stored on the `TOAD` object’s `xarray.Dataset`. **Output label values** (``NaN``, ``-1``,
+non-negative ids) match `toad.clustering.compute_clusters` and the
+``compute_consensus`` docstring on ``toad.postprocessing.Aggregation``; see [Output](#output) below.
 
 ## Public API
 
@@ -72,10 +76,13 @@ Each clustering variable should be a labelled spacetime field:
 
 - same time axis
 - same spatial grid
-- `-1` for clustered input noise and `NaN` for voxels with no detected event support
-- non-negative integers for cluster ids
+- ``-1`` for clustered input noise and ``NaN`` for voxels with no detected abrupt shift / event
+  in that input map
+- non-negative integers for cluster ids (per input)
 
 Consensus is always computed across the supplied input cluster maps, not from raw variables directly.
+The **stored consensus label field** uses a related but not identical encoding; see
+the **Consensus label field** bullet list under [Output](#output) below.
 
 ## Core Flow
 
@@ -196,22 +203,22 @@ An edge receives a vote from that clustering if both edge endpoints:
 
 Votes are accumulated across all input clusterings.
 
-### 6. Normalise by the number of contributing maps
+### 6. Normalise by availability, then vote fraction
 
-The weighted consensus matrix is computed as:
+The implementation builds sparse vote and availability information on the **same undirected
+spacetime edge set** and forms a weighted score per edge with:
 
 ```text
 W = V / A
 ```
 
-where:
+where, on each edge, ``V`` counts votes (maps that agree on that edge after dilation) and ``A`` is
+the **availability** for that edge (how many input maps can contribute to that local relation, so
+the denominator is per-edge, not a single global constant). In the typical case the interpretation
+is unchanged:
 
-- `V` is the number of maps that voted for an edge
-- `A` is the number of contributing input maps
-
-In other words, `min_consensus` is interpreted as:
-
-> keep edges that are supported by at least this fraction of the input cluster maps
+> keep edges whose **relative** support is at least ``min_consensus`` (i.e. at least this
+> fraction of the relevant input maps, edge by edge)
 
 ### 7. Threshold the consensus graph
 
@@ -248,15 +255,29 @@ This is very important:
 
 ### 1. Consensus label field
 
-- **Default variable name** `"cluster_consensus"` (unless renamed): integer consensus labels
-  on the original grid, with `variable_type=consensus_cluster` and
-  `cluster_vars` stored on `attrs`.
+- **Default variable name** ``"cluster_consensus"`` (unless renamed) on the original grid, with
+  ``variable_type=consensus_cluster`` and ``cluster_vars`` on ``attrs``.
+
+**Label encoding (output)** — same idea as ``toad.clustering.compute_clusters``:
+
+- **``NaN``** — at that spacetime cell, **every** input cluster field is ``NaN`` (no abrupt shift /
+  no event in any input). These cells are not part of the consensus *mask* in the “has an event”
+  sense; they are kept distinct from noise (``-1``).
+- **``-1``** — at least one input had a defined label (including input noise ``-1``) at that
+  cell, but the voxel is **not** in any consensus component after thresholding and components
+  (shift noise / not in consensus).
+- **Non-negative integers** — consensus cluster ids, globally stable across time after
+  trimming and re-sorting by final spacetime component size.
+
+The array may use a **floating dtype** so that ``NaN`` can be stored; where all values are
+finite, integer-like values are used for ``-1`` and ids.
 
 ### 2. Consistency field
 
 - **Default name** ``"cluster_consensus_consistency"``: mean consensus weight of the
   surviving threshold-passing edges touching each voxel, with ``variable_type`` for consistency
-  and a pointer to the label variable.
+  and a pointer to the label variable. Values are **``NaN``** wherever the consensus label is
+  ``NaN`` (no abrupt shift in all inputs at that cell).
 
 The data layout is always the original TOAD grid:
 

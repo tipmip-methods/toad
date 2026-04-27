@@ -133,6 +133,7 @@ class _SpacetimeConsensusContext:
     coords_spatial: dict[str, Any]
     time_coord: xr.DataArray
     regrid_enabled: bool
+    healpix_nside: int | None
     hp_index_flat: np.ndarray | None
     lat_shape: tuple[int, int] | None
     n_space: int
@@ -849,6 +850,7 @@ class Aggregation:
             self.td.data, self.td.space_dims
         )
         regrid_enabled = regridder is not None
+        healpix_nside: int | None = None
         lat_shape: tuple[int, int] | None = None
         hp_index_flat: np.ndarray | None = None
         present_mask2d = np.ones((y_len, x_len), dtype=bool)
@@ -867,10 +869,13 @@ class Aggregation:
             lat_shape = lat.shape
 
             if regrid_enabled:
+                assert regridder is not None
                 spatial_er, spatial_ec, hp_index_flat = (
                     _build_healpix_edges_from_regridder(lat, lon, regridder=regridder)
                 )
                 n_space = int(hp_index_flat.max()) + 1 if hp_index_flat.size else 0
+                assert regridder.nside is not None
+                healpix_nside = int(regridder.nside)
             else:
                 er, ec = _native_edges_from_mask(
                     present_mask2d, flat_idx_2d, stitch_longitude=stitch_meridian
@@ -896,6 +901,7 @@ class Aggregation:
             coords_spatial=cast(dict[str, Any], coords_spatial),
             time_coord=time_coord,
             regrid_enabled=regrid_enabled,
+            healpix_nside=healpix_nside,
             hp_index_flat=hp_index_flat,
             lat_shape=lat_shape,
             n_space=n_space,
@@ -1131,7 +1137,7 @@ class Aggregation:
             lat_shape=context.lat_shape,
         )
         if not np.any(clusters_out >= 0):
-            return self._empty_spacetime_consensus_result(context)
+            return self._empty_spacetime_consensus_result(context, cluster_vars)
 
         da_clusters = xr.DataArray(
             clusters_out,
@@ -1139,30 +1145,31 @@ class Aggregation:
             dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
             name="clusters",
         )
-        da_clusters.attrs.update(
-            {
-                "cluster_vars": cluster_vars,
-                "min_consensus": min_consensus,
-                "top_n_clusters": top_n_clusters,
-                "stitch_meridian": stitch_meridian,
-                "spatial_adjacency": (
-                    "healpix_native_neighbors"
-                    if context.regrid_enabled
-                    else "native_grid_8_connected"
-                ),
-                "spacetime_consensus": True,
-                "temporal_tolerance": temporal_tolerance,
-                "spatial_tolerance": spatial_tolerance,
-                "description": (
-                    "Spacetime lattice consensus (time × space graph). "
-                    "Cluster ids are global across time (same id = same connected component). "
-                    "temporal_tolerance and spatial_tolerance dilate peak-event labels for "
-                    "matching, but the returned mask is trimmed to original undilated event "
-                    "support; "
-                    "summary aggregates all timesteps; see compute_consensus docstring."
-                ),
-            }
-        )
+        _cluster_attrs: dict[str, object] = {
+            "cluster_vars": cluster_vars,
+            "min_consensus": min_consensus,
+            "top_n_clusters": top_n_clusters,
+            "stitch_meridian": stitch_meridian,
+            "spatial_adjacency": (
+                "healpix_native_neighbors"
+                if context.regrid_enabled
+                else "native_grid_8_connected"
+            ),
+            "spacetime_consensus": True,
+            "temporal_tolerance": temporal_tolerance,
+            "spatial_tolerance": spatial_tolerance,
+            "description": (
+                "Spacetime lattice consensus (time × space graph). "
+                "Cluster ids are global across time (same id = same connected component). "
+                "temporal_tolerance and spatial_tolerance dilate peak-event labels for "
+                "matching, but the returned mask is trimmed to original undilated event "
+                "support; "
+                "summary aggregates all timesteps; see compute_consensus docstring."
+            ),
+        }
+        if context.healpix_nside is not None:
+            _cluster_attrs["nside"] = context.healpix_nside
+        da_clusters.attrs.update(_cluster_attrs)
         da_consistency = xr.DataArray(
             consistency_out,
             coords={context.time_dim: context.time_coord, **context.coords_spatial},

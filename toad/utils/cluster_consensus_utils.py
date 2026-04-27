@@ -226,8 +226,13 @@ def _build_healpix_edges_from_regridder(
     source_valid = source_local[valid]
 
     target_local = np.searchsorted(unique_hp_pixels, neighbour_valid)
-    in_subset = (target_local < unique_hp_pixels.size) & (
-        unique_hp_pixels[target_local] == neighbour_valid
+    # `searchsorted` can return `len(unique_hp_pixels)` when the neighbour is not in
+    # `unique_hp_pixels`. Do not index with those values—NumPy would evaluate the rhs of `&`
+    # for all elements and raise IndexError before masking.
+    in_bounds = target_local < unique_hp_pixels.size
+    in_subset = np.zeros(in_bounds.shape, dtype=bool)
+    in_subset[in_bounds] = (
+        unique_hp_pixels[target_local[in_bounds]] == neighbour_valid[in_bounds]
     )
     if not np.any(in_subset):
         return (

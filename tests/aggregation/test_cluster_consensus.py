@@ -1142,6 +1142,7 @@ def test_cluster_consensus_regridded_healpix_runs_end_to_end_and_maps_back(monke
     assert dc.dims == ("time", "y", "x")
     assert dc.shape == (1, 2, 2)
     assert dc.attrs["spatial_adjacency"] == "healpix_native_neighbors"
+    assert dc.attrs["nside"] == 1
     np.testing.assert_array_equal(non_noise_cluster_ids(dc), np.array([0]))
     assert len(summary_df) == 1
 

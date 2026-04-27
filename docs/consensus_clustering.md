@@ -1,49 +1,59 @@
-# Consensus Clustering Flow
+# Spacetime consensus clustering
 
-This document describes the current **spacetime consensus** implementation, invoked via
-`td.compute_consensus()` on `toad.core.TOAD` (which delegates to
-`td.aggregate.compute_consensus()` on `toad.postprocessing.Aggregation`).
+`td.compute_consensus()` (on `toad.core.TOAD`, delegating to
+`toad.postprocessing.Aggregation.compute_consensus`) merges several input **cluster label maps**
+into one **3D** consensus field on the same time axis and grid. Voting happens on a **spacetime
+graph** (space and time as one grid). Results are written in place into ``td.data``; there is no
+separate return dataset.
 
-The implementation provides:
+## Contents
 
-- spacetime consensus only
-- native 8-neighbour grid connectivity as the default
-- optional meridian stitching on native grids
-- optional explicit HealPix regridding
-- temporal and spatial tolerance as pre-vote dilation rules
-- optional post-filter on minimum spatial cluster footprint
-- output label encoding consistent with ``toad.clustering.compute_clusters`` (``NaN`` / ``-1`` / ids; see [Output](#output))
+- [At a glance](#at-a-glance)
+- [Public API](#public-api)
+- [How to read the rest](#how-to-read-the-rest)
+- [Inputs in TOAD](#inputs-in-toad)
+- [How it works (pipeline)](#how-it-works-pipeline)
+- [Core flow (detailed)](#core-flow-detailed)
+- [Output](#output)
+- [Parameter reference](#parameter-reference)
+- [Configuration examples](#configuration-examples)
+- [Changes from older TOAD versions](#changes-from-older-toad-versions)
+- [Interpreting the result](#interpreting-the-result)
+- [Common pitfalls](#common-pitfalls)
+- [Related helpers](#related-helpers)
 
-## Overview
+## At a glance
 
-`compute_consensus` combines multiple input cluster label maps into a single consensus
-clustering in spacetime, then **merges the result into** ``td.data`` as normal variables (not
-a separate returned dataset).
+| Role | Content |
+| --- | --- |
+| **Input** | Two or more cluster variables on ``td`` (same time × space). |
+| **Parameters** | ``min_consensus``, ``temporal_tolerance``, ``spatial_tolerance`` (required), plus optional graph and post-filters. |
+| **Output** | Consensus label + consistency on the **original** grid; optional per-cluster table via ``consensus_summary()``. |
 
-The main idea is:
+**Idea in one sentence:** build local spacetime **edges** between neighbours, count how often each
+edge is supported across inputs, keep edges with enough support, then take **connected
+components**—not a global “majority label per cell” vote.
 
-1. Treat every labelled spacetime voxel as a possible part of a consensus event.
-2. Build a sparse spacetime graph with local spatial and temporal edges.
-3. Let each input clustering vote for edges where neighbouring voxels belong to the same input cluster
-   (using dilated support when tolerances are non-zero).
-4. On each spacetime edge, form a weighted score ``W = V / A`` from votes ``V`` and per-edge
-   availability ``A``, and keep only edges with ``W >= min_consensus``.
-5. Run connected components on the surviving graph.
-6. Trim the result back to the original undilated support.
-7. Optionally filter tiny clusters and renumber labels; attach metadata as TOAD ``attrs``.
+```mermaid
+flowchart TD
+  s1[1. Choose input maps, build spacetime graph: spatial edges each time, plus t→t+1 in time at each site] --> s2[2. Dilate each input: temporal and spatial tolerances (optional)]
+  s2 --> s3[3. Each edge: if dilated support agrees, add to V, A; then W = V/A]
+  s3 --> s4{4. W >= min_consensus ?}
+  s4 -->|yes| s5[5. Surviving graph: components, global ids, trim to undilated support]
+  s4 -->|no| s6[6. Edge discarded (below threshold)]
+```
 
-The public result is one **3D** consensus label field (plus a consistency field) on the original
-model grid, stored on the `TOAD` object’s `xarray.Dataset`. **Output label values** (``NaN``, ``-1``,
-non-negative ids) match `toad.clustering.compute_clusters` and the
-``compute_consensus`` docstring on ``toad.postprocessing.Aggregation``; see [Output](#output) below.
+Step **1** in the figure also applies optional **top\_n** (largest input clusters per map) before
+voting. **Step 2** only relabels **where** each cluster id is active for matching on the **fixed**
+graph from step 1; it does not add new edge types (see [How it works](#how-it-works-pipeline)).
 
 ## Public API
 
-Consensus is a **void** method: it **writes** into ``td.data``. Typical usage:
+The method is **void**; it **writes** into ``td.data``.
 
 ```python
 td.compute_consensus(
-    cluster_vars=None,  # or an explicit list of input cluster map names
+    cluster_vars=None,  # or explicit list of input cluster map names
     min_consensus=0.75,
     temporal_tolerance=0,
     spatial_tolerance=0,
@@ -51,7 +61,6 @@ td.compute_consensus(
     stitch_meridian=False,
     regridder=None,
     show_progress=True,
-    # optional naming / safety:
     output_label_suffix="",
     output_label=None,
     overwrite=False,
@@ -59,367 +68,170 @@ td.compute_consensus(
 )
 ```
 
-The default name for the consensus **labels** variable is ``"cluster_consensus"`` (plus your
-suffix), unless ``output_label`` is set. A companion **consistency** array is written as
-``f"{label_name}_consistency"``.
+- Default **labels** name: ``"cluster_consensus"`` (plus suffix), unless ``output_label`` is set.
+- Companion **consistency** variable: ``f"{label_name}_consistency"``.
+- The **per-cluster summary table** is not built here; call
+  ``td.aggregate.consensus_summary()`` when you need a ``DataFrame`` after the run.
 
-**Summary table (per–consensus cluster statistics)** is not the return value of
-`compute_consensus`; call `td.aggregate.consensus_summary()` (or
-`toad.postprocessing.Aggregation.consensus_summary`) when you need the
-`pandas.DataFrame` after the run.
+## How to read the rest
 
-## Input Expectations
+- Skim [Output](#output) if you need encoding rules for the **consensus result** (inputs follow normal TOAD cluster fields).
+- Read **How it works** and **Core flow (detailed)** to understand the algorithm.
+- Use **Parameter reference** as a dictionary while you tune runs.
+- Check **Pitfalls** before interpreting surprising clusters.
 
-The method expects multiple clustering variables in `td.data`.
+## Inputs in TOAD
 
-Each clustering variable should be a labelled spacetime field:
+`compute_consensus` takes existing **cluster** variables on your ``td`` (for example from
+`toad.clustering.compute_clusters`). They are the same 3D fields and the same in-package label
+conventions you already use elsewhere. This page documents the **consensus layer**; see
+[Output](#output) for how the **consensus** label and consistency fields are encoded (that output
+is not identical to a single input map).
 
-- same time axis
-- same spatial grid
-- ``-1`` for clustered input noise and ``NaN`` for voxels with no detected abrupt shift / event
-  in that input map
-- non-negative integers for cluster ids (per input)
+## How it works (pipeline)
 
-Consensus is always computed across the supplied input cluster maps, not from raw variables directly.
-The **stored consensus label field** uses a related but not identical encoding; see
-the **Consensus label field** bullet list under [Output](#output) below.
+1. (Optional) Restrict each input to its **largest** ``N`` clusters if ``top_n_clusters`` is set.
+2. Choose the **spatial** part of the graph: **native** 8-neighbour, optionally **meridian**
+   stitched, or **HealPix** if ``regridder`` is set (``HealPixRegridder`` only; needs lat/lon on the
+   dataset for regrid mode).
+3. One **spacetime** graph: nodes are ``(time, space)`` voxels, edges are **in-slice spatial**
+   neighbours + **in-time** links between the same space cell at consecutive times.
+4. For **each** input map, optionally **dilate** where each cluster id is “active” using
+   ``temporal_tolerance`` and ``spatial_tolerance`` (see below). Dilation can mark **conflicts**
+   where two ids would claim the same node—those do not vote as clean same-id support.
+5. For each spacetime **edge** and each input, record whether that map **votes** (both endpoints
+   active, same id, allowed cluster).
+6. Build **V** and **A** on that edge set: **W = V / A**; keep edges with
+   **W ≥ min_consensus**.
+7. **Connected components** on the surviving graph → provisional consensus cluster ids; **trim**
+   to voxels that had support in at least one **undilated** input; optionally **filter** small
+   spatial footprints (**min_cluster_area**) and renumber by size.
 
-## Core Flow
+Tolerances **do not** add new edge types. They only change **who counts as agreeing** on the
+fixed spacetime graph. They also **do not** define a fixed thickness of the final mask: matching
+is local, and long structures can still arise through **transitive** chains of edges.
+
+## Core flow (detailed)
+
+The subsections follow the same order as the pipeline above.
 
 ### 1. Select input cluster maps
 
-If `cluster_vars` is `None`, TOAD uses all cluster variables in `td.cluster_vars`.
-
-If `top_n_clusters` is set, only the largest `N` clusters by actual spacetime size from each input clustering are allowed to vote.
+- ``cluster_vars is None`` → all ``td.cluster_vars``.
+- With ``top_n_clusters``, only the **largest N** clusters by **spacetime voxel count** in each
+  input are allowed to vote (order of stored ids does not matter).
 
 ### 2. Choose spatial graph mode
 
-Consensus always works on a spacetime graph, but the spatial part of that graph can be built in different ways.
+#### A. Native grid (``regridder=None``)
 
-There are currently two modes.
+- **8-neighbour** (horizontal, vertical, diagonal) in index space.
+- Works for **lat/lon**, **i/j** with 2D lat/lon, or grids **without** geographic coordinates.
+- ``stitch_meridian=True``: also connect the **first and last columns** (and diagonal seam
+  connections). Use only for domains that really wrap; not for small regional windows.
 
-#### Mode A: Native grid mode
+#### B. HealPix regrid (``regridder=HealPixRegridder(...)``)
 
-This is the default when `regridder=None`.
+- Cells map to HealPix pixels; spatial adjacency = **native HealPix** neighbours; voting in HealPix
+  space; result **mapped back** to the original model grid.
+- **Requires** latitude/longitude on the dataset; otherwise a ``ValueError`` is raised.
+- This is an explicit **opt-in**; there is no automatic regrid.
 
-The spatial graph is built directly on the original grid using 8-neighbour connectivity:
+### 3. Spacetime graph
 
-- horizontal neighbours
-- vertical neighbours
-- diagonal neighbours
+One graph on ``(time × space)`` nodes. Edges: **same-time spatial** neighbours, plus **time**
+links ``(t, s)``–``(t+1, s)`` for every space node ``s``.
 
-This applies to:
+### 4. Dilation (temporal and spatial tolerance)
 
-- regular `lat/lon` grids
-- curvilinear `i/j` grids with 2D latitude/longitude coordinates
-- other native grids without geographic coordinates
+For each input, labels are viewed on ``(time, space)`` and optionally **dilated** before votes:
 
-If `stitch_meridian=True`, the first and last grid columns are also connected across the seam, including diagonal seam neighbours.
+| Parameter | Meaning |
+| --- | --- |
+| **temporal_tolerance = k** | If a cell has a cluster id at time ``t``, that id is active for the same id at all times within **k** steps of ``t`` (clipped to the time range). |
+| **spatial_tolerance = k** | The same id is treated as active up to **k** hops on the **current** spatial graph (8-neighbour or HealPix). |
 
-This is useful for domains that are split at the meridian.
+**Conflicts:** if two different cluster ids’ dilations would occupy the same node, that node is
+marked as conflict; it does **not** supply clean “same id on both sides” support for an edge in
+that input.
 
-#### Mode B: Explicit regridded HealPix mode
+### 5. Voting on edges
 
-This is used only when `regridder` is provided.
+For each spacetime edge, each input map casts at most one “agreement” if both endpoints are
+active and share the same allowed cluster id.
 
-Currently only `HealPixRegridder` is supported.
+### 6. Weight, threshold, components
 
-In this mode:
+- Aggregated **V** and **A** on the **same** undirected edge set, **W = V / A** per edge
+  (``A`` is **per edge**—local availability, not a single global integer).
+- Keep edges with **W ≥ min_consensus**; run **connected components** on the graph that
+  remains.
+- Provisional cluster labels, then **trim** to undilated support and **re-sort** ids by final
+  spacetime size so labels are global across time.
 
-1. original grid cells are mapped to HealPix pixels
-2. the spatial graph is built on native HealPix neighbour relations
-3. consensus voting happens in HealPix space
-4. the final result is mapped back to the original model grid
-
-Important:
-
-- passing `regridder=HealPixRegridder(...)` is an explicit opt-in
-- this works both for regular `lat/lon` grids and curvilinear `i/j` grids, as long as latitude/longitude coordinates exist
-- if no latitude/longitude coordinates exist, TOAD raises `ValueError`
-
-### 3. Build the spacetime graph
-
-After the spatial graph is chosen, TOAD builds one graph on `(time x space)` nodes.
-
-Each node is one spacetime voxel.
-
-The graph contains:
-
-- spatial edges within each time slice
-- temporal chain edges between the same spatial node at consecutive times
-
-So the consensus graph is fully spacetime-resolved.
-
-### 4. Dilate each input clustering before voting
-
-For each input clustering, TOAD reshapes the labels into `(time, space)` and optionally dilates them before voting.
-
-This dilation is controlled by:
-
-- `temporal_tolerance`
-- `spatial_tolerance`
-
-These do not add new edge types to the graph.
-Instead, they temporarily expand labelled support before evaluating the standard local spacetime graph.
-
-#### Temporal tolerance
-
-`temporal_tolerance=k` means:
-
-- if a voxel is labelled at time `t`
-- it is treated as active for the same cluster id at all times `t'` with `|t' - t| <= k`
-
-This pools timing jitter before voting.
-
-#### Spatial tolerance
-
-`spatial_tolerance=k` means:
-
-- if a voxel is labelled at one spatial node
-- it is treated as active for the same cluster id up to `k` spatial graph hops away
-
-This pools spatial jitter before voting.
-
-The hop distance is measured on the chosen spatial graph:
-
-- native 8-neighbour grid in native mode
-- HealPix neighbour graph in regridded mode
-
-#### Conflict handling during dilation
-
-If different cluster ids overlap after dilation within one input clustering, the overlap is marked as conflict and is not allowed to vote as a clean cluster member.
-
-This prevents ambiguous regions from contributing misleading support.
-
-### 5. Vote for local spacetime edges
-
-For each input clustering, TOAD checks every edge in the spacetime graph.
-
-An edge receives a vote from that clustering if both edge endpoints:
-
-- are active after dilation
-- have the same cluster id
-- belong to an allowed input cluster
-
-Votes are accumulated across all input clusterings.
-
-### 6. Normalise by availability, then vote fraction
-
-The implementation builds sparse vote and availability information on the **same undirected
-spacetime edge set** and forms a weighted score per edge with:
-
-```text
-W = V / A
-```
-
-where, on each edge, ``V`` counts votes (maps that agree on that edge after dilation) and ``A`` is
-the **availability** for that edge (how many input maps can contribute to that local relation, so
-the denominator is per-edge, not a single global constant). In the typical case the interpretation
-is unchanged:
-
-> keep edges whose **relative** support is at least ``min_consensus`` (i.e. at least this
-> fraction of the relevant input maps, edge by edge)
-
-### 7. Threshold the consensus graph
-
-Edges with:
-
-```text
-W >= min_consensus
-```
-
-are kept.
-
-All weaker edges are discarded.
-
-### 8. Solve connected components
-
-Connected components on the surviving thresholded graph become the provisional consensus clusters.
-
-### 9. Trim back to original support
-
-Temporal and spatial tolerance affect matching, but they do not directly thicken the public output.
-
-After connected components are found, TOAD trims the result back to voxels that had support in at least one original undilated input clustering.
-The remaining clusters are then re-sorted by final spacetime size so that output ids reflect the trimmed public result.
-
-This is very important:
-
-- tolerance changes which regions can agree
-- tolerance does not directly define the final public mask thickness
+**Important:** tolerance changes **where** agreement can occur; the **output mask** is still
+**trimmed** to where at least one input had an undilated label.
 
 ## Output
 
-`compute_consensus` **returns ``None``** and **merges** the following into ``td.data`` (names depend on
-``output_label`` / ``output_label_suffix``; defaults below use the built-in label name):
+`compute_consensus` returns **``None``** and updates ``td.data`` (names follow ``output_label`` /
+``output_label_suffix``; defaults use ``"cluster_consensus"``).
 
 ### 1. Consensus label field
 
-- **Default variable name** ``"cluster_consensus"`` (unless renamed) on the original grid, with
-  ``variable_type=consensus_cluster`` and ``cluster_vars`` on ``attrs``.
+- **Default name** ``"cluster_consensus"``; ``variable_type=consensus_cluster``; ``cluster_vars`` in
+  ``attrs``.
 
-**Label encoding (output)** — same idea as ``toad.clustering.compute_clusters``:
+**Encoding** (same idea as ``toad.clustering.compute_clusters``):
 
-- **``NaN``** — at that spacetime cell, **every** input cluster field is ``NaN`` (no abrupt shift /
-  no event in any input). These cells are not part of the consensus *mask* in the “has an event”
-  sense; they are kept distinct from noise (``-1``).
-- **``-1``** — at least one input had a defined label (including input noise ``-1``) at that
-  cell, but the voxel is **not** in any consensus component after thresholding and components
-  (shift noise / not in consensus).
-- **Non-negative integers** — consensus cluster ids, globally stable across time after
-  trimming and re-sorting by final spacetime component size.
+- **``NaN``** — every input field is **``NaN``** at that cell (no abrupt shift in any map).
+- **``-1``** — at least one input had a defined label, but the cell is **not** in a consensus
+  component (noise / not in consensus).
+- **Non-negative integers** — consensus cluster id, stable in time after trimming and
+  re-sorting.
 
-The array may use a **floating dtype** so that ``NaN`` can be stored; where all values are
-finite, integer-like values are used for ``-1`` and ids.
+Dtype may be **float** where ``NaN`` is present.
 
 ### 2. Consistency field
 
-- **Default name** ``"cluster_consensus_consistency"``: mean consensus weight of the
-  surviving threshold-passing edges touching each voxel, with ``variable_type`` for consistency
-  and a pointer to the label variable. Values are **``NaN``** wherever the consensus label is
-  ``NaN`` (no abrupt shift in all inputs at that cell).
+- Default: ``"cluster_consensus_consistency"``: mean of surviving edge weights at each **labelled**
+  voxel. **``NaN``** where the label is **``NaN``** (all-input no shift).
 
-The data layout is always the original TOAD grid:
-
-- native mode: original grid in, original grid out
-- HealPix regridded mode: original grid in, HealPix used internally, original grid out
-
-So even when regridding is used internally, the **stored** label field is mapped back onto the original model grid.
-
-If multiple original cells map to the same HealPix pixel, they receive the same returned consensus label for that timestep.
+**Grid:** stored arrays always use the **original** model grid. Internal HealPix (if any) is only
+for the solve; multiple original cells in the same HealPix bin get the same label for that
+timestep on map-back.
 
 ### 3. Summary table (on demand)
 
-A `pandas.DataFrame` with one row per consensus cluster (including
-`cluster_id`, `mean_consistency`, `area`, `volume`, means of spatial
-coordinates, shift-time statistics, etc.) is produced by
-`td.aggregate.consensus_summary()` from the **stored**
-label and consistency fields—call it after `compute_consensus` when you need the table.
+``td.aggregate.consensus_summary()`` builds a **``DataFrame``** from the stored label +
+consistency (e.g. ``cluster_id``, ``mean_consistency``, **area** = spatial footprint, **volume** =
+spacetime voxel count, shift-time stats, …) **after** trim and, if enabled, **min_cluster
+area** filtering.
 
-For the spacetime consensus:
+## Parameter reference
 
-- `area` is the spatial footprint size
-- `volume` is the number of labelled spacetime voxels
+**Always required (no defaults in the API):** ``min_consensus``, ``temporal_tolerance``,
+``spatial_tolerance``.
 
-These statistics are computed after trimming to original support, and (if enabled) after the
-optional minimum-area post-filter.
+| Parameter | Role |
+| --- | --- |
+| ``cluster_vars`` | Which input cluster maps; ``None`` = all ``td.cluster_vars``. |
+| ``min_consensus`` | Edge **fraction** in ``[0, 1]``; higher → stricter, usually smaller regions. |
+| ``top_n_clusters`` | Per input, only the **largest N** spacetime clusters may vote. |
+| ``stitch_meridian`` | Native mode only: wrap **first/last column** on the index grid. |
+| ``regridder`` | ``None`` = native; ``HealPixRegridder`` = solve on HealPix, map back. |
+| ``show_progress`` | Progress bar. |
+| ``output_label`` / ``output_label_suffix`` / ``overwrite`` | Naming and replace vs uniquify, like ``compute_clusters``. |
+| ``min_cluster_area`` | Drop clusters with spatial footprint &lt; threshold (``None`` to disable; ``0`` = no filter). |
+| ``temporal_tolerance`` | Time dilation **radius** (integer); local rule, not a cap on final cluster **duration** (chains can be long). Very large **k** can behave like time-saturated matching on short axes. |
+| ``spatial_tolerance`` | Spatial hop **radius**; large values can be slow and over-merge. |
 
-## Parameter Reference
+## Configuration examples
 
-### `cluster_vars`
-
-Which input cluster label variables to aggregate.
-
-- `None`: use all cluster variables in `td.cluster_vars`
-- list of names: use only those cluster maps
-
-### `min_consensus`
-
-Edge support threshold in `[0, 1]`.
-
-Typical interpretation:
-
-- `0.5`: keep edges supported by at least half the maps
-- `0.75`: keep edges supported by at least three quarters of the maps
-- `1.0`: require unanimous support
-
-Higher values give stricter, usually smaller, more conservative consensus clusters.
-
-### `top_n_clusters`
-
-Limit voting to the largest `N` clusters in each input clustering, ranked by their actual spacetime voxel count.
-
-This does not rely on the stored cluster-id order. Smaller excluded clusters do not vote and do not count towards the retained original-support mask.
-
-### `stitch_meridian`
-
-Only affects native grid mode.
-
-If `True`, connect the first and last columns of the original grid.
-
-Use this when the grid is split at the meridian and these columns are true neighbours geographically.
-
-Do not use it for regional domains that do not wrap around.
-
-### `regridder`
-
-Explicitly switch consensus into regridded mode.
-
-Currently supported:
-
-- `HealPixRegridder(...)`
-
-Behaviour:
-
-- `None`: use native grid adjacency
-- provided: use HealPix adjacency internally and map the result back to the original grid
-
-This is the switch that determines whether consensus happens on the original grid topology or on HealPix.
-
-### `show_progress`
-
-Show or hide the progress bar while input clusterings are processed.
-
-### `temporal_tolerance`
-
-Non-negative integer temporal dilation radius.
-
-- `0`: exact-time voting only
-- `1`: allow plus/minus one timestep timing mismatch
-- larger values: tolerate broader timing jitter
-
-This is a local agreement rule, not a cap on the total final cluster duration.
-Large connected components can still extend far in time through transitive chains.
-
-If `temporal_tolerance` is larger than the available time axis, it effectively saturates.
-In that case a cluster id is treated as active at all timesteps where that input map exists,
-so the matching semantics become close to a collapsed-time interpretation. This still does
-not recreate the old collapsed consensus output, because the public result remains a trimmed
-3D spacetime mask on the new spacetime graph.
-
-### `spatial_tolerance`
-
-Non-negative integer spatial dilation radius in graph hops.
-
-- `0`: exact spatial support only
-- `1`: allow one-hop spatial mismatch
-- larger values: allow broader spatial jitter
-
-This is evaluated on the chosen spatial graph, so its meaning depends on the active mode:
-
-- native mode: hops on the native 8-neighbour grid
-- regridded mode: hops on the HealPix neighbour graph
-
-If `spatial_tolerance` is larger than the effective graph diameter of the relevant domain,
-it also saturates and the dilation can reach most or all of the connected spatial graph.
-This is usually both conceptually undesirable and computationally expensive: unlike temporal
-tolerance on a 1D axis, large spatial tolerance requires broad graph-hop expansion and can
-become very slow on large grids.
-
-### `output_label_suffix` / `output_label` / `overwrite`
-
-Control how the new variables are named and whether existing names are replaced or uniquified
-(same idea as for `toad.clustering.compute_clusters`).
-
-### `min_cluster_area`
-
-After consensus, drop clusters whose **spatial** footprint (distinct cells that ever carry that
-id) is below this threshold; those cells become noise ``-1`` and ids are re-sorted. Use ``None``
-to disable, or ``0`` for the same effect as “no size filter” in the implementation.
-
-## Current Modes Summary
-
-### Native mode
-
-Use this when:
-
-- you trust the original model topology
-- the grid is native `x/y` or `i/j`
-- you want spatial tolerance measured on the original grid
-
-Configuration:
+**Three graph modes (same three toggles, rest identical):**
 
 ```python
+# Native grid
 td.compute_consensus(
     min_consensus=0.75,
     temporal_tolerance=0,
@@ -427,18 +239,8 @@ td.compute_consensus(
     stitch_meridian=False,
     regridder=None,
 )
-```
 
-### Native mode with seam stitching
-
-Use this when:
-
-- the original grid wraps across the first/last column
-- you want native topology plus explicit seam closure
-
-Configuration:
-
-```python
+# Native + meridian wrap
 td.compute_consensus(
     min_consensus=0.75,
     temporal_tolerance=0,
@@ -446,19 +248,8 @@ td.compute_consensus(
     stitch_meridian=True,
     regridder=None,
 )
-```
 
-### Explicit HealPix regridded mode
-
-Use this when:
-
-- you want consensus neighbourhoods defined on a common spherical grid
-- you want curvilinear `i/j` grids to be handled through geographic reprojection
-- you want spatial tolerance measured in HealPix neighbour hops
-
-Configuration:
-
-```python
+# HealPix regrid (opt-in; needs lat/lon on the dataset)
 from toad.regridding import HealPixRegridder
 
 td.compute_consensus(
@@ -469,81 +260,24 @@ td.compute_consensus(
 )
 ```
 
-## Important Behaviour Changes Relative to Older Versions
-
-- The old collapsed-time consensus mode has been removed.
-- Consensus is always spacetime-resolved.
-- KNN-based geographic adjacency has been removed.
-- Native grids now use fixed 8-neighbour connectivity.
-- HealPix adjacency now uses native HealPix neighbours instead of KNN on pixel centres.
-- Regridding is now explicit rather than automatic.
-- The API is integrated into the main TOAD workflow via `compute_consensus` (in-place on ``td.data``)
-  instead of returning a free-standing dataset from a `cluster_consensus` method.
-
-## Practical Interpretation
-
-This algorithm is best understood as a way to find robust spacetime event regions whose internal local connectivity is repeatedly supported across multiple input clusterings.
-
-It does not ask:
-
-> which voxels are globally clustered together in most inputs?
-
-It asks:
-
-> which local spacetime neighbour relations are repeatedly supported strongly enough that they form robust connected components?
-
-That is why:
-
-- `min_consensus` acts on local graph edges
-- tolerance affects local matching before voting
-- large final clusters can still form via transitive paths
-
-## Common Pitfalls
-
-### `regridder` changes the computation, not the output grid
-
-If you pass `regridder=HealPixRegridder(...)`, consensus is computed in HealPix space internally, but the **saved** label field in ``td.data`` still lives on the original model grid.
-
-### `temporal_tolerance` does not mean final clusters are only `2k+1` timesteps long
-
-Tolerance is local.
-Connected components can span much longer periods through chains of supported edges.
-
-### `spatial_tolerance` can merge nearby events
-
-If it is too large, nearby but distinct events can become connected through the dilated support.
-
-### `stitch_meridian=True` should only be used when the domain really wraps
-
-It is not a generic option for all native grids.
-
-## Suggested Usage Patterns
-
-### Conservative consensus
+**Tuning agreement vs jitter:**
 
 ```python
+# Stricter local edges, no time/space blur
 td.compute_consensus(
     min_consensus=0.8,
     temporal_tolerance=0,
     spatial_tolerance=0,
 )
-```
 
-### Allow modest timing and spatial jitter
-
-```python
+# Softer edge threshold, allow ±1 step in time and space
 td.compute_consensus(
     min_consensus=0.6,
     temporal_tolerance=1,
     spatial_tolerance=1,
 )
-```
 
-### Force geographic regridding before consensus
-
-```python
-from toad.regridding import HealPixRegridder
-
+# Same, but consensus on HealPix graph
 td.compute_consensus(
     min_consensus=0.6,
     temporal_tolerance=1,
@@ -552,17 +286,47 @@ td.compute_consensus(
 )
 ```
 
-## Related helper functions
+## Changes from older TOAD versions
 
-Once consensus has been computed, the following methods on `td.aggregate` are useful for
-analysing the result (they take the **stored** consensus label array, by variable name):
+- **Collapsed-time** consensus and the old **KNN** geographic adjacency are **removed**; the only
+  path is the **3D** spacetime graph described here.
+- **Native** space uses **fixed 8-neighbour** topology; HealPix uses **native** pixel neighbours, not
+  KNN on pixel centres.
+- **Regridding** is only via an explicit **``regridder``** argument, not automatic.
+- The workflow is **``compute_consensus`` in place** on ``td.data``, not a free-standing
+  ``cluster_consensus``-style return.
 
-- `consensus_shift_time_distribution`
-- `consensus_shift_time_distributions` (for violin-style pools; you may pass
-  `distribution_result=...` from a prior `consensus_shift_time_distribution` call to avoid
-  duplicate work)
-- `consensus_cluster_timeseries`
+## Interpreting the result
 
-These work from the final consensus clusters and use support-aware filtering so that summary
-statistics and extracted diagnostics come only from input clusterings that actually support the
-final consensus region.
+The method finds **spacetime regions** whose **local** internal edges (after dilation) are
+repeatedly supported. It does **not** ask “which voxels are in the same label in a majority of
+maps globally”.
+
+It does ask: **which neighbour relations** along the fixed spacetime graph survive the **W**
+threshold so strongly that they form a **component**? That is why:
+
+- ``min_consensus`` is about **edges**, not per-cell mode labels;
+- tolerances only change **local** matching;
+- the final object can be **long in time** or **large in space** through **chained** edges.
+
+## Common pitfalls
+
+- **HealPix in, native out:** a ``regridder`` only changes **how** the graph is built; the **saved**
+  fields stay on the **model** grid.
+- **``temporal_tolerance = k``** does **not** cap cluster **length** to ``2k+1``; components can
+  extend much farther along time through a chain of surviving edges.
+- **Large ``spatial_tolerance``** can connect distinct nearby events; it can also be **expensive**
+  to compute on big grids.
+- **``stitch_meridian=True``** is wrong for regional, non-wrapping domains.
+- **``regridder``** needs **lat/lon** coordinates; native consensus does not.
+
+## Related helpers
+
+On ``td.aggregate`` (use the **stored** consensus variable name):
+
+- ``consensus_shift_time_distribution``
+- ``consensus_shift_time_distributions`` (optional ``distribution_result=...`` to avoid recomputing)
+- ``consensus_cluster_timeseries``
+
+These use **support-aware** filtering: diagnostics refer to input runs that **actually** support
+each consensus region.

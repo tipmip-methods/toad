@@ -374,9 +374,7 @@ class GeneralStats:
                 - aggregate_score: Product of all score values
 
         Example:
-            >>> stats = td.stats(var="temperature")
-            >>> overview = stats.score_overview()
-            >>> print(overview)
+            >>> td.stats(var="temperature").score_overview()
         """
         # Get all cluster IDs
         cluster_ids = self.td.get_cluster_ids(self.var, exclude_noise=exclude_noise)

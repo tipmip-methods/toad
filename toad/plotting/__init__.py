@@ -1781,6 +1781,10 @@ class Plotter:
         show_legend: bool = True,
         ylabel: Optional[str] = None,
         seed: Optional[int] = None,
+        show_sum: bool = False,
+        show_total: bool = True,
+        total_color: str = "#666666",
+        bw_method: float = 0.18,
         **kwargs: Any,
     ) -> Tuple[matplotlib.figure.Figure, Any, Axes]:
         """Two-panel figure: consensus map (left) and shift-time view (right).
@@ -1799,6 +1803,9 @@ class Plotter:
             spread: Median-plot inter-model spread (``\"iqr\"`` or ``\"std\"``). Ignored when
                 ``kind=\"violins\"``.
             show_legend, ylabel, seed: Forwarded to the shift-time panel.
+            show_sum, show_total, total_color: Used when ``kind=\"violins\"`` only; passed to
+                :meth:`consensus_shift_times_violins` (pooled columns).
+            bw_method: Violin KDE bandwidth (``Axes.violinplot``); ``kind=\"violins\"`` only.
             figsize: Overall figure size; default ``(12, 5.2)``.
             width_ratios: ``GridSpec`` column width ratios (map, right panel).
             wspace: Spacing between panels (``Figure.subplots_adjust``).
@@ -1937,6 +1944,8 @@ class Plotter:
             violin_kw = dict(kwargs)
             violin_kw.pop("ax", None)
             violin_kw.pop("figsize", None)
+            for _k in ("show_sum", "show_total", "total_color", "bw_method"):
+                violin_kw.pop(_k, None)
             violin_cmap = violin_kw.pop("cmap", cmap)
             self.consensus_shift_times_violins(
                 consensus_var=consensus_var,
@@ -1947,6 +1956,10 @@ class Plotter:
                 show_legend=show_legend,
                 ylabel=ylabel,
                 seed=seed,
+                show_sum=show_sum,
+                show_total=show_total,
+                total_color=total_color,
+                bw_method=bw_method,
                 tight_layout=False,
                 **violin_kw,
             )

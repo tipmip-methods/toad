@@ -5,8 +5,6 @@ import pandas as pd
 import xarray as xr
 from scipy.sparse import coo_matrix
 
-from toad.regridding.healpix import HealPixRegridder
-
 
 def _empty_transition_time_df() -> pd.DataFrame:
     """Return an empty long-form transition-time dataframe with stable dtypes."""
@@ -161,106 +159,6 @@ def _add_wrapped_longitude_pairs(
         b = flat_idx_2d[:-1, -1][common].ravel()
         for i, j in zip(a.tolist(), b.tolist()):
             edge_set.add((i, j) if i < j else (j, i))
-
-
-def _build_healpix_edges_from_regridder(
-    lat2d: np.ndarray,
-    lon2d: np.ndarray,
-    regridder: HealPixRegridder | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build undirected native-neighbour edges on the used HealPix subset."""
-    if lat2d.size == 0:
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-        )
-
-    if regridder is None:
-        regridder = HealPixRegridder()
-    if not isinstance(regridder, HealPixRegridder):
-        raise ValueError(
-            "Only HealPixRegridder is currently supported for consensus clustering. "
-            f"Got {type(regridder).__name__}."
-        )
-
-    try:
-        from astropy_healpix import neighbours
-    except ImportError as exc:
-        raise ImportError(
-            "HealPix consensus adjacency requires `astropy-healpix` for native neighbour lookup."
-        ) from exc
-
-    coords_latlon_flat = np.column_stack([lat2d.ravel(), lon2d.ravel()])
-    hp_index_global = regridder.map_orig_to_regrid(coords_latlon_flat)
-    unique_hp_pixels = np.unique(hp_index_global)
-    if unique_hp_pixels.size == 0:
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            hp_index_global.astype(np.int64, copy=False),
-        )
-
-    hp_index_flat = np.searchsorted(unique_hp_pixels, hp_index_global).astype(
-        np.int64, copy=False
-    )
-    with np.errstate(invalid="ignore"):
-        neighbour_global = np.asarray(
-            neighbours(unique_hp_pixels, regridder.nside, order="ring"),
-            dtype=np.int64,
-        )
-
-    source_local = np.broadcast_to(
-        np.arange(unique_hp_pixels.size, dtype=np.int64),
-        neighbour_global.shape,
-    )
-    valid = neighbour_global >= 0
-    if not np.any(valid):
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            hp_index_flat,
-        )
-
-    neighbour_valid = neighbour_global[valid]
-    source_valid = source_local[valid]
-
-    target_local = np.searchsorted(unique_hp_pixels, neighbour_valid)
-    # `searchsorted` can return `len(unique_hp_pixels)` when the neighbour is not in
-    # `unique_hp_pixels`. Do not index with those values—NumPy would evaluate the rhs of `&`
-    # for all elements and raise IndexError before masking.
-    in_bounds = target_local < unique_hp_pixels.size
-    in_subset = np.zeros(in_bounds.shape, dtype=bool)
-    in_subset[in_bounds] = (
-        unique_hp_pixels[target_local[in_bounds]] == neighbour_valid[in_bounds]
-    )
-    if not np.any(in_subset):
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            hp_index_flat,
-        )
-
-    rows = source_valid[in_subset]
-    cols = target_local[in_subset]
-    keep = rows != cols
-    if not np.any(keep):
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            hp_index_flat,
-        )
-
-    rows = rows[keep]
-    cols = cols[keep]
-    edge_pairs = np.column_stack([np.minimum(rows, cols), np.maximum(rows, cols)])
-    edge_pairs = np.unique(edge_pairs, axis=0)
-
-    return (
-        edge_pairs[:, 0].astype(np.int64, copy=False),
-        edge_pairs[:, 1].astype(np.int64, copy=False),
-        hp_index_flat,
-    )
 
 
 def _build_consensus_summary_df_spacetime(
@@ -824,41 +722,6 @@ def _compute_weighted_consensus(
     return W
 
 
-def _aggregate_labels_to_healpix(
-    labels_2d: np.ndarray,
-    hp_index_flat: np.ndarray,
-    n_hp: int,
-) -> np.ndarray:
-    """Map per-cell cluster labels onto HealPix nodes; conflicts become noise (-1).
-
-    Multiple original cells can map to the same HealPix pixel. If they disagree on
-    positive cluster id at this time, that pixel is treated as noise for edge voting.
-    """
-    flat = np.asarray(labels_2d).ravel()
-    out = np.full(n_hp, -1, dtype=flat.dtype)
-    if flat.size == 0 or n_hp == 0:
-        return out
-
-    hp = np.asarray(hp_index_flat, dtype=np.int64)
-    valid = np.isfinite(flat) & (flat >= 0)
-    if not np.any(valid):
-        return out
-
-    hp_valid = hp[valid]
-    labels_valid = flat[valid]
-
-    order = np.argsort(hp_valid, kind="stable")
-    hp_sorted = hp_valid[order]
-    labels_sorted = labels_valid[order]
-
-    unique_hp, start_idx = np.unique(hp_sorted, return_index=True)
-    min_labels = np.minimum.reduceat(labels_sorted, start_idx)
-    max_labels = np.maximum.reduceat(labels_sorted, start_idx)
-    consistent = min_labels == max_labels
-    out[unique_hp[consistent]] = min_labels[consistent]
-    return out
-
-
 def _dilate_cluster_labels_spacetime(
     labels_ts: np.ndarray,
     allowed_labels: np.ndarray,
@@ -983,7 +846,7 @@ def _build_spacetime_graph_edges(
     ``[0, n_space)`` (same flattening order as ``labels.reshape(T, -1).ravel()``).
 
     * At each time slice, replicate ``spatial_rows`` / ``spatial_cols`` from the chosen
-      spatial graph (native 8-neighbour grid or HealPix adjacency).
+      spatial graph (native 8-neighbour grid on the data's index layout).
     * Between consecutive times, connect ``(t, s)`` to ``(t+1, s)`` for every spatial node ``s``.
     """
     sr = np.asarray(spatial_rows, dtype=np.int64)

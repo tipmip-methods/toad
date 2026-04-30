@@ -10,13 +10,10 @@ from tqdm import tqdm
 
 from toad._version import __version__
 from toad.clustering import sorted_cluster_labels
-from toad.regridding.healpix import HealPixRegridder
-from toad.utils import _attrs, get_latlon_info, get_unique_variable_name
+from toad.utils import _attrs, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
-    _aggregate_labels_to_healpix,
     _build_consensus_summary_df_spacetime,
     _build_empty_consensus_time_resolved,
-    _build_healpix_edges_from_regridder,
     _build_spacetime_graph_edges,
     _compute_weighted_consensus,
     _consensus_input_support_mask,
@@ -132,10 +129,6 @@ class _SpacetimeConsensusContext:
     x_len: int
     coords_spatial: dict[str, Any]
     time_coord: xr.DataArray
-    regrid_enabled: bool
-    healpix_nside: int | None
-    hp_index_flat: np.ndarray | None
-    lat_shape: tuple[int, int] | None
     n_space: int
     spatial_er: np.ndarray
     spatial_ec: np.ndarray
@@ -217,9 +210,8 @@ class Aggregation:
         min_consensus: float,
         temporal_tolerance: int,
         spatial_tolerance: int,
-        top_n_clusters: int | None = None,
+        top_n_clusters: int | None = None,  # TODO rename?
         stitch_meridian: bool = False,
-        regridder: HealPixRegridder | None = None,
         show_progress: bool = True,
         output_label_suffix: str = "",
         output_label: str | None = None,
@@ -270,12 +262,6 @@ class Aggregation:
                 wrapped seam. This only affects native-grid adjacency (including curvilinear
                 grids that keep their original ``y/x`` or ``i/j`` topology) and is useful for
                 domains split at the meridian. Default: False.
-            regridder: Optional explicit spatial regridder. If provided, consensus is built on
-                the regridded spatial graph instead of the native grid, even for curvilinear
-                ``i/j`` domains, as long as latitude/longitude coordinates are available.
-                If None, consensus uses the native grid topology. Default: None.
-                **Note:** Currently only HealPixRegridder is supported for consensus clustering.
-                Other regridders will raise a ValueError.
             show_progress: Whether to show the progress bar. Default: True.
             output_label_suffix: Suffix appended to the default output label ``cluster_consensus``.
             output_label: Explicit name for the consensus labels variable. If None, uses
@@ -303,12 +289,8 @@ class Aggregation:
 
             Additional implementation details:
 
-            * Adjacency method depends on grid type:
-              - If `regridder` is provided: inputs are mapped to the regridded graph
-                (currently HealPix) and use native neighbour relationships there.
-              - Otherwise: index-based 8-neighbour adjacency on the original grid, with
-                optional first/last-column seam stitching via
-                `stitch_meridian`.
+            * Spatial adjacency is **index-based 8-neighbour** on the label grid, with
+              optional first/last-column seam stitching via ``stitch_meridian``.
             * Consensus clusters represent regions whose internal edges are repeatedly co-clustered
               across the inputs and may be chained via single-link paths.
             * Large, non-compact clusters can form if consensus is too lenient; increase
@@ -325,13 +307,11 @@ class Aggregation:
             ...     temporal_tolerance=0,
             ...     spatial_tolerance=0,
             ... )
-            >>> td.data["cluster_consensus"].plot()  # consensus labels
-            >>> td.aggregate.consensus_summary().head()  # if one consensus var exists
-            >>> td.aggregate.consensus_summary("cluster_consensus").head()
+            >>> td.plot.consensus_overview()
+            >>> td.aggregate.consensus_summary().head()
 
         Raises:
-            ValueError: If a tolerance is negative, or if `regridder` is provided for data
-                without latitude/longitude coordinates.
+            ValueError: If a tolerance is negative, or if ``min_cluster_area`` is invalid.
             AssertionError: If no cluster_vars are found.
 
         See Also:
@@ -375,7 +355,6 @@ class Aggregation:
             min_consensus=min_consensus,
             top_n_clusters=top_n_clusters,
             stitch_meridian=stitch_meridian,
-            regridder=regridder,
             show_progress=show_progress,
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,
@@ -757,25 +736,9 @@ class Aggregation:
         return da.transpose(time_dim, spatial_dims[0], spatial_dims[1]).values
 
     @staticmethod
-    def _flatten_spacetime_labels(
-        labels_tyx: np.ndarray,
-        *,
-        T: int,
-        n_space: int,
-        regrid_enabled: bool,
-        hp_index_flat: np.ndarray | None,
-    ) -> np.ndarray:
+    def _flatten_spacetime_labels(labels_tyx: np.ndarray) -> np.ndarray:
         """Flatten ``(time, y, x)`` labels to match spacetime node indexing."""
-        if not regrid_enabled:
-            return labels_tyx.reshape(-1)
-
-        assert hp_index_flat is not None
-        flat = np.empty(T * n_space, dtype=labels_tyx.dtype)
-        for t in range(T):
-            flat[t * n_space : (t + 1) * n_space] = _aggregate_labels_to_healpix(
-                labels_tyx[t], hp_index_flat, n_space
-            )
-        return flat
+        return np.asarray(labels_tyx).reshape(-1)
 
     @staticmethod
     def _reshape_spacetime_consensus_outputs(
@@ -787,29 +750,10 @@ class Aggregation:
         n_space: int,
         y_len: int,
         x_len: int,
-        regrid_enabled: bool,
-        hp_index_flat: np.ndarray | None,
-        lat_shape: tuple[int, int] | None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Map flat spacetime consensus results back to ``(time, y, x)`` arrays."""
         clusters_out = np.full((T, y_len, x_len), -1, dtype=np.int32)
         consistency_out = np.zeros((T, y_len, x_len), dtype=np.float32)
-
-        if regrid_enabled:
-            assert hp_index_flat is not None
-            assert lat_shape is not None
-            for t in range(T):
-                sl = slice(t * n_space, (t + 1) * n_space)
-                labels_hp = labels_st[sl]
-                cons_hp = cons_flat[sl]
-                deg_hp = deg[sl]
-                labels_2d = labels_hp[hp_index_flat].reshape(lat_shape)
-                cons_2d = cons_hp[hp_index_flat].reshape(lat_shape)
-                deg_2d = deg_hp[hp_index_flat].reshape(lat_shape)
-                labels_2d[deg_2d == 0] = -1
-                clusters_out[t] = labels_2d.astype(np.int32)
-                consistency_out[t] = cons_2d
-            return clusters_out, consistency_out
 
         for t in range(T):
             sl = slice(t * n_space, (t + 1) * n_space)
@@ -826,9 +770,8 @@ class Aggregation:
         *,
         sample: xr.DataArray,
         stitch_meridian: bool,
-        regridder: HealPixRegridder | None,
     ) -> _SpacetimeConsensusContext:
-        """Build grid and graph context for spacetime consensus."""
+        """Build grid and graph context for spacetime consensus (native 8-neighbour)."""
         spatial_dims = tuple(self.td.space_dims)
         time_dim = self.td.time_dim
         T = int(sample.sizes[time_dim])
@@ -846,50 +789,13 @@ class Aggregation:
             coords_spatial.setdefault(d, sample[d])
         time_coord = sample[time_dim]
 
-        lat_name, lon_name, has_latlon, is_latlon_dims = get_latlon_info(
-            self.td.data, self.td.space_dims
-        )
-        regrid_enabled = regridder is not None
-        healpix_nside: int | None = None
-        lat_shape: tuple[int, int] | None = None
-        hp_index_flat: np.ndarray | None = None
         present_mask2d = np.ones((y_len, x_len), dtype=bool)
-
-        if regrid_enabled and not has_latlon:
-            raise ValueError(
-                "`regridder` requires latitude/longitude coordinates on the dataset."
-            )
-
-        if has_latlon:
-            lat = sample[lat_name].values
-            lon = sample[lon_name].values
-            assert lat is not None and lon is not None
-            if lat.ndim == 1 and lon.ndim == 1:
-                lon, lat = np.meshgrid(lon, lat)
-            lat_shape = lat.shape
-
-            if regrid_enabled:
-                assert regridder is not None
-                spatial_er, spatial_ec, hp_index_flat = (
-                    _build_healpix_edges_from_regridder(lat, lon, regridder=regridder)
-                )
-                n_space = int(hp_index_flat.max()) + 1 if hp_index_flat.size else 0
-                assert regridder.nside is not None
-                healpix_nside = int(regridder.nside)
-            else:
-                er, ec = _native_edges_from_mask(
-                    present_mask2d, flat_idx_2d, stitch_longitude=stitch_meridian
-                )
-                spatial_er = np.asarray(er, dtype=np.int64)
-                spatial_ec = np.asarray(ec, dtype=np.int64)
-                n_space = N
-        else:
-            er, ec = _native_edges_from_mask(
-                present_mask2d, flat_idx_2d, stitch_longitude=stitch_meridian
-            )
-            spatial_er = np.asarray(er, dtype=np.int64)
-            spatial_ec = np.asarray(ec, dtype=np.int64)
-            n_space = N
+        er, ec = _native_edges_from_mask(
+            present_mask2d, flat_idx_2d, stitch_longitude=stitch_meridian
+        )
+        spatial_er = np.asarray(er, dtype=np.int64)
+        spatial_ec = np.asarray(ec, dtype=np.int64)
+        n_space = N
 
         st_er, st_ec = _build_spacetime_graph_edges(T, n_space, spatial_er, spatial_ec)
         return _SpacetimeConsensusContext(
@@ -900,10 +806,6 @@ class Aggregation:
             x_len=x_len,
             coords_spatial=cast(dict[str, Any], coords_spatial),
             time_coord=time_coord,
-            regrid_enabled=regrid_enabled,
-            healpix_nside=healpix_nside,
-            hp_index_flat=hp_index_flat,
-            lat_shape=lat_shape,
             n_space=n_space,
             spatial_er=spatial_er,
             spatial_ec=spatial_ec,
@@ -942,13 +844,7 @@ class Aggregation:
                 time_dim=context.time_dim,
                 spatial_dims=context.spatial_dims,
             )
-            orig_flat = self._flatten_spacetime_labels(
-                labels_orig,
-                T=context.T,
-                n_space=context.n_space,
-                regrid_enabled=context.regrid_enabled,
-                hp_index_flat=context.hp_index_flat,
-            )
+            orig_flat = self._flatten_spacetime_labels(labels_orig)
             original_support_flat |= (
                 np.isfinite(orig_flat) & (orig_flat >= 0) & np.isin(orig_flat, allowed)
             )
@@ -1036,11 +932,8 @@ class Aggregation:
     ) -> np.ndarray:
         """True in ``clusters.values.ravel()`` order where every input label is NaN (no shift).
 
-        Built on the **native** ``(time, y, x)`` grid. Consensus can use a HealPix (or
-        other) graph with a different *internal* spacetime node count, but the merged
-        output labels always match :attr:`_SpacetimeConsensusContext` ``T × y_len × x_len``;
-        the mask must use that same layout, not :meth:`_flatten_spacetime_labels` (which
-        follows the vote lattice when ``regrid_enabled``).
+        Built on the native ``(time, y, x)`` grid (same layout as the stored consensus
+        label field).
         """
         T, y_len, x_len = context.T, context.y_len, context.x_len
         all_nan = np.ones((T, y_len, x_len), dtype=bool)
@@ -1132,9 +1025,6 @@ class Aggregation:
             n_space=context.n_space,
             y_len=context.y_len,
             x_len=context.x_len,
-            regrid_enabled=context.regrid_enabled,
-            hp_index_flat=context.hp_index_flat,
-            lat_shape=context.lat_shape,
         )
         if not np.any(clusters_out >= 0):
             return self._empty_spacetime_consensus_result(context, cluster_vars)
@@ -1150,11 +1040,7 @@ class Aggregation:
             "min_consensus": min_consensus,
             "top_n_clusters": top_n_clusters,
             "stitch_meridian": stitch_meridian,
-            "spatial_adjacency": (
-                "healpix_native_neighbors"
-                if context.regrid_enabled
-                else "native_grid_8_connected"
-            ),
+            "spatial_adjacency": "native_grid_8_connected",
             "spacetime_consensus": True,
             "temporal_tolerance": temporal_tolerance,
             "spatial_tolerance": spatial_tolerance,
@@ -1167,8 +1053,6 @@ class Aggregation:
                 "summary aggregates all timesteps; see compute_consensus docstring."
             ),
         }
-        if context.healpix_nside is not None:
-            _cluster_attrs["nside"] = context.healpix_nside
         da_clusters.attrs.update(_cluster_attrs)
         da_consistency = xr.DataArray(
             consistency_out,
@@ -1188,12 +1072,11 @@ class Aggregation:
         min_consensus: float,
         top_n_clusters: int | None,
         stitch_meridian: bool,
-        regridder: HealPixRegridder | None,
         show_progress: bool,
         temporal_tolerance: int,
         spatial_tolerance: int,
     ) -> xr.Dataset:
-        """Spacetime lattice consensus with native or explicit regridded adjacency.
+        """Spacetime lattice consensus on the native 8-neighbour graph.
 
         Invariants:
         - Node flat index ``t * n_space + s`` matches ``labels.reshape(T, -1).ravel()`` order
@@ -1205,7 +1088,6 @@ class Aggregation:
         context = self._build_spacetime_consensus_context(
             sample=sample,
             stitch_meridian=stitch_meridian,
-            regridder=regridder,
         )
         vote_data = self._accumulate_spacetime_votes(
             cluster_vars=cluster_vars,

@@ -998,11 +998,11 @@ class Plotter:
             np.concatenate(datasets, dtype=np.float64) if datasets else np.array([])
         )
 
-        if isinstance(cmap, str):
-            colors = _get_cmap_seq(cmap, stops=len(ids_sorted))
-        else:
-            cc = cmap.colors  # type: ignore
-            colors = [to_hex(cc[i % len(cc)]) for i in range(len(ids_sorted))]
+        # Match :meth:`consensus_map` / `_discrete_colors_from_cmap` so violin hues agree with map +
+        # colorbar when ``cmap`` is the same string or ListedColormap (avoid `_get_cmap_seq`,
+        # which indexes cmap.N discretely and diverges from normalized sampling).
+        disc = _discrete_colors_from_cmap(cmap, len(ids_sorted))
+        colors = [to_hex(to_rgba(c)) for c in disc]
 
         xticklabels = [str(i) for i in ids_sorted]
 
@@ -1781,6 +1781,10 @@ class Plotter:
         show_legend: bool = True,
         ylabel: Optional[str] = None,
         seed: Optional[int] = None,
+        show_sum: bool = False,
+        show_total: bool = True,
+        total_color: str = "#666666",
+        bw_method: float = 0.18,
         **kwargs: Any,
     ) -> Tuple[matplotlib.figure.Figure, Any, Axes]:
         """Two-panel figure: consensus map (left) and shift-time view (right).
@@ -1799,6 +1803,9 @@ class Plotter:
             spread: Median-plot inter-model spread (``\"iqr\"`` or ``\"std\"``). Ignored when
                 ``kind=\"violins\"``.
             show_legend, ylabel, seed: Forwarded to the shift-time panel.
+            show_sum, show_total, total_color: Used when ``kind=\"violins\"`` only; passed to
+                :meth:`consensus_shift_times_violins` (pooled columns).
+            bw_method: Violin KDE bandwidth (``Axes.violinplot``); ``kind=\"violins\"`` only.
             figsize: Overall figure size; default ``(12, 5.2)``.
             width_ratios: ``GridSpec`` column width ratios (map, right panel).
             wspace: Spacing between panels (``Figure.subplots_adjust``).
@@ -1937,6 +1944,8 @@ class Plotter:
             violin_kw = dict(kwargs)
             violin_kw.pop("ax", None)
             violin_kw.pop("figsize", None)
+            for _k in ("show_sum", "show_total", "total_color", "bw_method"):
+                violin_kw.pop(_k, None)
             violin_cmap = violin_kw.pop("cmap", cmap)
             self.consensus_shift_times_violins(
                 consensus_var=consensus_var,
@@ -1947,6 +1956,10 @@ class Plotter:
                 show_legend=show_legend,
                 ylabel=ylabel,
                 seed=seed,
+                show_sum=show_sum,
+                show_total=show_total,
+                total_color=total_color,
+                bw_method=bw_method,
                 tight_layout=False,
                 **violin_kw,
             )
@@ -1955,6 +1968,93 @@ class Plotter:
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94 if show_legend else 1.0))
 
         return fig, ax_map, ax_right
+
+    def _plot_consensus_raw_shift_indicators(
+        self,
+        target_ax: Axes,
+        ts: Any,
+        cname: str,
+        consensus_da: Any,
+        consensus_cluster_id: int,
+        *,
+        color: Any,
+        alpha: float,
+        shift_indicator_size: float,
+    ) -> None:
+        """Dots where each cell lies in a native cluster window (same idea as :meth:`timeseries`).
+
+        Per input ``cluster_var`` we use its ``BASE_VARIABLE`` with
+        ``get_clusters(...).where(get_cluster_mask(..., union of ids on footprint))``, stacked on
+        the same extraction mask as ``ts``. Only for raw ``cell_xy`` trajectories.
+        """
+        time_dim = self.td.time_dim
+        if "cell_xy" not in ts.dims or int(ts.sizes.get("cell_xy", 0)) == 0:
+            return
+        base_var = ts.attrs.get("base_var")
+        if base_var is None:
+            return
+        mask2d = self.td.aggregate.consensus_extraction_mask_2d(
+            consensus_da, consensus_cluster_id, cname
+        )
+        tslice: slice | None = None
+        if not ts.attrs.get("keep_full_timeseries", True):
+            cm = consensus_da == consensus_cluster_id
+            active = np.flatnonzero(cm.any(dim=tuple(self.td.space_dims)).values)
+            if active.size:
+                tslice = slice(int(active[0]), int(active[-1]) + 1)
+
+        lab_region = self.td.data[cname].where(mask2d)
+        if tslice is not None:
+            lab_region = lab_region.isel({time_dim: tslice})
+
+        vals = np.asarray(lab_region.values, dtype=np.float64).ravel()
+        native_ids = np.unique(vals[np.isfinite(vals) & (vals >= 0)]).astype(int)
+        allowed = set(np.asarray(self.td.get_cluster_ids(base_var), dtype=int).tolist())
+        valid_native = [int(i) for i in native_ids.tolist() if int(i) in allowed]
+        if not valid_native:
+            return
+
+        try:
+            cl_da = self.td.get_clusters(base_var)
+        except ValueError:
+            return
+
+        cl_masked = cl_da.where(self.td.get_cluster_mask(base_var, valid_native)).where(
+            mask2d
+        )
+        if tslice is not None:
+            cl_masked = cl_masked.isel({time_dim: tslice})
+
+        det_stacked = self.td._aggregate_spatial(cl_masked, "raw")
+        try:
+            det_stacked = det_stacked.reindex_like(ts)
+        except ValueError:
+            pass
+        if det_stacked.sizes.get("cell_xy") != ts.sizes.get("cell_xy"):
+            return
+
+        n_cell = int(ts.sizes["cell_xy"])
+        for j in range(n_cell):
+            ts_cell = ts.isel(cell_xy=j)
+            det_cell = det_stacked.isel(cell_xy=j)
+            tcoord = ts_cell.coords[time_dim]
+            valid = np.isfinite(np.asarray(det_cell.values, dtype=float))
+            if not np.any(valid):
+                continue
+            xvals = np.asarray(tcoord.values)[valid]
+            yvals = np.asarray(ts_cell.values, dtype=float)[valid]
+            if xvals.size == 0:
+                continue
+            target_ax.plot(
+                xvals,
+                yvals,
+                marker="o",
+                linestyle="none",
+                color=color,
+                alpha=alpha,
+                markersize=shift_indicator_size,
+                zorder=5,
+            )
 
     def consensus_timeseries(
         self,
@@ -1981,6 +2081,8 @@ class Plotter:
         subplots: bool = False,
         figsize: Optional[Tuple[float, float]] = None,
         show_ylabels: bool = False,
+        plot_shift_indicator: bool = False,
+        shift_indicator_size: float = 5.0,
     ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Union[Axes, np.ndarray]]]:
         """Overlay per-input-cluster timeseries for one consensus cluster (no map).
 
@@ -2007,6 +2109,12 @@ class Plotter:
             subplots: If True, one subplot per contributing input clustering variable.
             figsize: Used when creating a figure.
             show_ylabels: If True, set a default y label on each subplot when ``subplots=True``.
+            plot_shift_indicator: If True (and ``aggregation=\"raw\"`` with per-cell ``cell_xy``
+                data), overlay dots at timesteps where each cell falls inside a **native** cluster
+                window for that input ``cluster_var`` (union of native ids on the consensus
+                extraction footprint; uses the same masking idea as :meth:`timeseries`).
+                Ignored for aggregated trajectories (single line per input).
+            shift_indicator_size: Marker size in points for shift dots.
         """
         consensus_var = self.td._resolve_consensus_var(consensus_var)
         da = self.td.data[consensus_var]
@@ -2027,6 +2135,12 @@ class Plotter:
         if not series_by_input:
             raise ValueError(
                 "No input cluster timeseries returned; check consensus_cluster_id and masks."
+            )
+
+        if plot_shift_indicator and aggregation != "raw":
+            logger.warning(
+                "consensus_timeseries: plot_shift_indicator only applies when aggregation='raw' "
+                "(per-cell trajectories); ignoring."
             )
 
         n_series = len(series_by_input)
@@ -2104,6 +2218,17 @@ class Plotter:
                     colors[i % len(colors)],
                     legend_label=None,
                 )
+                if plot_shift_indicator and aggregation == "raw":
+                    self._plot_consensus_raw_shift_indicators(
+                        ax_arr[i],
+                        ts,
+                        cname,
+                        da,
+                        cluster_id,
+                        color=colors[i % len(colors)],
+                        alpha=alpha,
+                        shift_indicator_size=shift_indicator_size,
+                    )
                 ax_arr[i].set_title(_label_with_n_cells(cname))
                 ax_arr[i].set_ylabel("" if not show_ylabels else str(ts.name or cname))
             fig.suptitle(
@@ -2124,6 +2249,17 @@ class Plotter:
                     colors[i % len(colors)],
                     legend_label=_label_with_n_cells(cname),
                 )
+                if plot_shift_indicator and aggregation == "raw":
+                    self._plot_consensus_raw_shift_indicators(
+                        ax,
+                        ts,
+                        cname,
+                        da,
+                        cluster_id,
+                        color=colors[i % len(colors)],
+                        alpha=alpha,
+                        shift_indicator_size=shift_indicator_size,
+                    )
             if add_legend:
                 if legend_autosize:
                     _legend_shrink_to_fit_axes(

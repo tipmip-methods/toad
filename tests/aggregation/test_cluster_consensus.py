@@ -1,6 +1,4 @@
 import gc
-import sys
-import types
 
 import numpy as np
 import pytest
@@ -8,7 +6,6 @@ import xarray as xr
 from sklearn.cluster import HDBSCAN  # type: ignore
 
 from toad import TOAD
-from toad.regridding.healpix import HealPixRegridder
 from toad.shifts import ASDETECT
 from toad.utils import _attrs
 
@@ -364,63 +361,19 @@ def test_spacetime_context_regular_latlon_defaults_to_native_grid():
     context = td.aggregate._build_spacetime_consensus_context(
         sample=td.data[td.base_vars[0]],
         stitch_meridian=False,
-        regridder=None,
     )
 
-    assert context.regrid_enabled is False
     assert context.n_space == context.y_len * context.x_len
 
 
-def test_spacetime_context_curvilinear_regridder_forces_healpix(monkeypatch):
+def test_spacetime_context_curvilinear_uses_native_grid():
+    """Irregular lat/lon layout still uses index 8-neighbour consensus graph."""
     td = setup_irregular_grid()
-    called = {"value": False}
-
-    def fake_build_healpix_edges(lat, lon, regridder=None):
-        called["value"] = True
-        assert lat.shape == lon.shape
-        n_space = lat.size
-        return (
-            np.array([], dtype=np.int64),
-            np.array([], dtype=np.int64),
-            np.arange(n_space, dtype=np.int64),
-        )
-
-    monkeypatch.setattr(
-        "toad.postprocessing.aggregation._build_healpix_edges_from_regridder",
-        fake_build_healpix_edges,
-    )
-
     context = td.aggregate._build_spacetime_consensus_context(
         sample=td.data[td.base_vars[0]],
         stitch_meridian=False,
-        regridder=HealPixRegridder(nside=1),
     )
-
-    assert called["value"] is True
-    assert context.regrid_enabled is True
-    assert context.hp_index_flat is not None
-
-
-def test_cluster_consensus_regridder_requires_latlon_coordinates():
-    td = setup_native_grid()
-    td.data = td.data.drop_vars(td.cluster_vars, errors="ignore")
-    if len(td.shift_vars) == 0:
-        var = td.base_vars[0]
-        td.compute_shifts(var, method=ASDETECT(ignore_nan_warnings=True))
-    td.compute_clusters(
-        method=HDBSCAN(min_cluster_size=10),
-        time_weight=0.5,
-        shift_threshold=0.8,
-    )
-
-    with pytest.raises(ValueError, match="latitude/longitude"):
-        td.compute_consensus(
-            min_consensus=0.75,
-            temporal_tolerance=0,
-            spatial_tolerance=0,
-            regridder=HealPixRegridder(nside=1),
-            show_progress=False,
-        )
+    assert context.n_space == context.y_len * context.x_len
 
 
 def test_consensus_shift_time_distribution_spacetime():
@@ -908,23 +861,6 @@ def test_largest_cluster_ids_uses_actual_cluster_sizes():
     )
 
 
-def test_aggregate_labels_to_healpix_resolves_conflicts_and_ignores_invalid():
-    from toad.utils.cluster_consensus_utils import _aggregate_labels_to_healpix
-
-    labels = np.array(
-        [
-            [5.0, 5.0, -1.0],
-            [np.nan, 2.0, 7.0],
-        ],
-        dtype=np.float32,
-    )
-    hp_index_flat = np.array([0, 0, 1, 1, 2, 2], dtype=np.int64)
-
-    out = _aggregate_labels_to_healpix(labels, hp_index_flat, n_hp=3)
-
-    np.testing.assert_array_equal(out, np.array([5.0, -1.0, -1.0], dtype=np.float32))
-
-
 def test_native_edges_from_mask_stitches_meridian():
     from toad.utils.cluster_consensus_utils import _native_edges_from_mask
 
@@ -1101,85 +1037,6 @@ def test_cluster_consensus_returns_all_noise_when_threshold_removes_all_edges():
     assert np.all(td.data[cv].values == -1)
     assert np.all(td.data[f"{cv}_consistency"].values == 0)
     assert summary_df.empty
-
-
-def test_cluster_consensus_regridded_healpix_runs_end_to_end_and_maps_back(monkeypatch):
-    labels = np.zeros((1, 2, 2), dtype=np.float32)
-    td = setup_synthetic_consensus_toad({"c1": labels, "c2": labels}, add_latlon=True)
-    regridder = HealPixRegridder(nside=1)
-
-    monkeypatch.setattr(
-        regridder,
-        "map_orig_to_regrid",
-        lambda coords_2d: np.array([100, 100, 500, 500], dtype=np.int64),
-    )
-
-    def fake_neighbours(pix, nside, order="ring"):
-        lookup = {
-            100: np.array([500, -1, -1, -1, -1, -1, -1, -1], dtype=np.int64),
-            500: np.array([100, -1, -1, -1, -1, -1, -1, -1], dtype=np.int64),
-        }
-        pix_arr = np.asarray(pix, dtype=np.int64)
-        return np.column_stack([lookup[int(p)] for p in pix_arr])
-
-    monkeypatch.setitem(
-        sys.modules,
-        "astropy_healpix",
-        types.SimpleNamespace(neighbours=fake_neighbours),
-    )
-
-    td.compute_consensus(
-        min_consensus=1.0,
-        temporal_tolerance=0,
-        spatial_tolerance=0,
-        regridder=regridder,
-        show_progress=False,
-    )
-    cv = td.consensus_cluster_vars[-1]
-    dc = td.data[cv]
-    summary_df = td.aggregate.consensus_summary(cv)
-
-    assert dc.dims == ("time", "y", "x")
-    assert dc.shape == (1, 2, 2)
-    assert dc.attrs["spatial_adjacency"] == "healpix_native_neighbors"
-    assert dc.attrs["nside"] == 1
-    np.testing.assert_array_equal(non_noise_cluster_ids(dc), np.array([0]))
-    assert len(summary_df) == 1
-
-
-def test_build_healpix_edges_from_regridder_compacts_sparse_healpix_ids(monkeypatch):
-    from toad.utils.cluster_consensus_utils import _build_healpix_edges_from_regridder
-
-    regridder = HealPixRegridder(nside=1)
-
-    def fake_map_orig_to_regrid(coords_2d):
-        return np.array([100, 900, 100, 500], dtype=np.int64)
-
-    monkeypatch.setattr(regridder, "map_orig_to_regrid", fake_map_orig_to_regrid)
-
-    def fake_neighbours(pix, nside, order="ring"):
-        lookup = {
-            100: np.array([500, 900, -1, -1, -1, -1, -1, -1], dtype=np.int64),
-            500: np.array([100, -1, -1, -1, -1, -1, -1, -1], dtype=np.int64),
-            900: np.array([100, -1, -1, -1, -1, -1, -1, -1], dtype=np.int64),
-        }
-        pix_arr = np.asarray(pix, dtype=np.int64)
-        return np.column_stack([lookup[int(p)] for p in pix_arr])
-
-    fake_astropy_healpix = types.SimpleNamespace(neighbours=fake_neighbours)
-    monkeypatch.setitem(sys.modules, "astropy_healpix", fake_astropy_healpix)
-
-    lat = np.array([[0.0, 1.0], [2.0, 3.0]])
-    lon = np.array([[0.0, 1.0], [2.0, 3.0]])
-    rows, cols, hp_index_flat = _build_healpix_edges_from_regridder(
-        lat, lon, regridder=regridder
-    )
-
-    assert set(hp_index_flat.tolist()) == {0, 1, 2}
-    assert hp_index_flat.max() == 2
-    assert set(zip(rows.tolist(), cols.tolist())) == {(0, 1), (0, 2)}
-    assert rows.max() <= 2
-    assert cols.max() <= 2
 
 
 def test_compute_weighted_consensus_weighted_A_matches_duplicate_edges():

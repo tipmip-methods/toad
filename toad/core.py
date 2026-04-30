@@ -20,7 +20,6 @@ from toad.clustering.optimizing import (
     default_opt_params,
 )
 from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
-from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     DEFAULT_SHIFT_THRESHOLD,
@@ -466,7 +465,6 @@ class TOAD:
         spatial_tolerance: int,
         top_n_clusters: int | None = None,
         stitch_meridian: bool = False,
-        regridder: HealPixRegridder | None = None,
         show_progress: bool = True,
         output_label_suffix: str = "",
         output_label: str | None = None,
@@ -485,7 +483,6 @@ class TOAD:
             spatial_tolerance: Peak-label dilation radius in spatial graph hops before voting (required).
             top_n_clusters: Optional restriction to the largest N clusters per input map.
             stitch_meridian: Whether to connect the first and last longitude column on native grids.
-            regridder: Optional HealPix regridder for consensus on a regridded graph.
             show_progress: Whether to show a progress bar.
             output_label_suffix: Suffix for the default ``cluster_consensus`` label name.
             output_label: Explicit name for the consensus labels variable.
@@ -502,7 +499,6 @@ class TOAD:
             min_consensus=min_consensus,
             top_n_clusters=top_n_clusters,
             stitch_meridian=stitch_meridian,
-            regridder=regridder,
             show_progress=show_progress,
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,

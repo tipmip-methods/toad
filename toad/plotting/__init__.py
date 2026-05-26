@@ -1,11 +1,12 @@
 import inspect
 import logging
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, List, Literal, Optional, Tuple, Union, cast, overload
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 from cartopy.mpl.geoaxes import GeoAxes
@@ -15,10 +16,12 @@ from matplotlib.colors import (
     BoundaryNorm,
     Colormap,
     ListedColormap,
+    Normalize,
     to_hex,
     to_rgb,
     to_rgba,
 )
+from matplotlib.figure import FigureBase
 from matplotlib.font_manager import FontProperties
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
@@ -80,6 +83,23 @@ default_cmap = "tab20b"
 default_cmap_other = ListedColormap(plt.cm.Greys_r(np.linspace(0.25, 0.75, 256)))  # type: ignore
 
 
+def _maybe_tight_layout(
+    fig: FigureBase | None,
+    *,
+    rect: tuple[float, float, float, float] | None = None,
+) -> None:
+    """Call ``tight_layout`` when *fig* is a matplotlib figure-like container."""
+    if fig is None:
+        return
+    tight_layout = getattr(fig, "tight_layout", None)
+    if tight_layout is None:
+        return
+    if rect is not None:
+        tight_layout(rect=rect)
+    else:
+        tight_layout()
+
+
 def _discrete_colors_from_cmap(cmap: Union[str, ListedColormap], n: int) -> list[Any]:
     """Sample ``n`` colours from a colormap (same rule as :meth:`Plotter.consensus_map`)."""
     if n <= 0:
@@ -91,6 +111,75 @@ def _discrete_colors_from_cmap(cmap: Union[str, ListedColormap], n: int) -> list
     if len(cmap_colors) < n:
         cmap_colors = cmap_colors * (n // len(cmap_colors) + 1)
     return cmap_colors[:n]
+
+
+_CMIP_MEMBER_IN_CLUSTER_VAR = re.compile(r"(r\d+i\d+p\d+f\d+)")
+_SIMPLE_MEMBER_IN_CLUSTER_VAR = re.compile(r"_r(\d+)_")
+
+
+def _member_id_from_cluster_var(cluster_var: str) -> str:
+    """Extract CMIP-style member id (e.g. ``r1i1p1f1``) from an input cluster variable name."""
+    m = _CMIP_MEMBER_IN_CLUSTER_VAR.search(cluster_var)
+    if m:
+        return m.group(1)
+    m = _SIMPLE_MEMBER_IN_CLUSTER_VAR.search(cluster_var)
+    if m:
+        return f"r{m.group(1)}"
+    return cluster_var
+
+
+def _input_cluster_legend_label(
+    cluster_var: str,
+    *,
+    n_cells: int,
+    label_style: Literal["cluster_var", "member_id"] = "cluster_var",
+    include_n_cells: bool = True,
+) -> str:
+    if label_style == "member_id":
+        base = _member_id_from_cluster_var(cluster_var)
+    else:
+        base = cluster_var
+    if include_n_cells:
+        return f"({n_cells}) {base}"
+    return base
+
+
+def _add_horizontal_left_map_colorbar(
+    fig: Any,
+    ax: Axes,
+    mappable: Any,
+    label: str,
+    *,
+    width_frac: float,
+    pad: float,
+    aspect: float,
+    ticks: list[Any] | None = None,
+) -> Any:
+    """Horizontal colorbar under *ax*, left-aligned; label just right of the bar."""
+    fig.canvas.draw()
+    ax_pos = ax.get_position()
+    bar_w = ax_pos.width * width_frac
+    bar_h = max(bar_w / aspect, 0.015)
+    y0 = ax_pos.y0 - pad * ax_pos.height - bar_h
+
+    cax = fig.add_axes([ax_pos.x0, y0, bar_w, bar_h])
+    cb = fig.colorbar(mappable, cax=cax, orientation="horizontal")
+    cax.set_xlabel("")
+    cb.set_label("")
+    if ticks is not None:
+        cb.set_ticks(ticks)
+
+    cb.ax.text(
+        1.05,
+        0.5,
+        label,
+        transform=cb.ax.transAxes,
+        ha="left",
+        va="center",
+        fontsize=plt.rcParams.get("axes.labelsize", 10),
+        clip_on=False,
+    )
+    return cb
 
 
 def _legend_shrink_to_fit_axes(
@@ -248,7 +337,7 @@ class Plotter:
         width_ratios: Optional[List[float]] = None,
         subplot_spec: Any = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
-    ) -> Tuple[matplotlib.figure.Figure, Axes]: ...
+    ) -> Tuple[FigureBase, Axes]: ...
 
     @overload
     def map(
@@ -261,7 +350,7 @@ class Plotter:
         width_ratios: Optional[List[float]] = None,
         subplot_spec: Any = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
-    ) -> Tuple[matplotlib.figure.Figure, np.ndarray]: ...
+    ) -> Tuple[FigureBase, np.ndarray]: ...
 
     def map(
         self,
@@ -273,7 +362,7 @@ class Plotter:
         width_ratios: Optional[List[float]] = None,
         subplot_spec: Optional[Any] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
-    ) -> Tuple[matplotlib.figure.Figure, Union[Axes, np.ndarray]]:
+    ) -> Tuple[FigureBase, Union[Axes, np.ndarray]]:
         """Create map plots with standard features.
 
         Args:
@@ -373,7 +462,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Axes]]: ...
+    ) -> Tuple[FigureBase | None, Optional[Axes]]: ...
 
     @overload
     def cluster_map(
@@ -391,7 +480,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[np.ndarray]]: ...
+    ) -> Tuple[FigureBase | None, Optional[np.ndarray]]: ...
 
     def cluster_map(
         self,
@@ -408,7 +497,7 @@ class Plotter:
         figsize: Optional[Tuple[float, float]] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Union[Axes, np.ndarray]]]:
+    ) -> Tuple[FigureBase | None, Optional[Union[Axes, np.ndarray]]]:
         """Plot one or multiple clusters on a map.
 
         Args:
@@ -427,7 +516,7 @@ class Plotter:
                 - A list of colors to use for each cluster. Overrides cmap.
             cmap: Colormap for multiple clusters. Used only if color is None.
             map_cmap_other: Colormap for remaining clusters. Can be:
-                - A string (e.g., "jet", "viridis") to use a built-in colormap.
+                - A string (e.g., "jet", "cividis") to use a built-in colormap.
                 - A matplotlib colormap object.
             include_all_clusters: If True, plot all clusters on the map. If False, only plot selected clusters.
                 Defaults to True.
@@ -755,9 +844,11 @@ class Plotter:
         colorbar_shrink: float = 0.38,
         colorbar_pad: float = 0.025,
         colorbar_aspect: float = 28.0,
+        colorbar_orientation: Literal["horizontal", "vertical"] = "horizontal",
+        colorbar_location: str | None = None,
         colorbar_label: Optional[str] = None,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Union[Axes, np.ndarray]]]:
+    ) -> Tuple[FigureBase | None, Optional[Union[Axes, np.ndarray]]]:
         """Plot consensus cluster footprints on a map (same layout ideas as :meth:`cluster_map`).
 
         Uses ``(consensus == id).any(time)`` as a 2D mask per consensus cluster id. Labels
@@ -776,6 +867,10 @@ class Plotter:
                 (matplotlib ``shrink``; only when ``subplots=False``). Smaller is shorter.
             colorbar_pad: Space between the map and the colorbar (axes fraction).
             colorbar_aspect: Width/height ratio of the colorbar strip (larger = shorter bar).
+            colorbar_orientation: ``\"horizontal\"`` (default, below map) or ``\"vertical\"``.
+            colorbar_location: For horizontal bars, ``\"left\"`` left-aligns the bar under the
+                map with the label to its right; default centres the bar. For vertical bars,
+                passed to matplotlib ``location`` (e.g. ``\"left\"``).
             colorbar_label: Label under the discrete cluster-id colorbar. Default is
                 ``\"consensus cluster id\"`` (not the variable name).
 
@@ -936,10 +1031,12 @@ class Plotter:
                 color_list=list(color_list),
                 label=colorbar_label
                 if colorbar_label is not None
-                else "consensus cluster id",
+                else "Consensus cluster id",
                 shrink=colorbar_shrink,
                 pad=colorbar_pad,
                 aspect=colorbar_aspect,
+                orientation=colorbar_orientation,
+                location=colorbar_location,
             )
 
         if subplots:
@@ -951,6 +1048,162 @@ class Plotter:
         if ax is None:
             raise ValueError("ax should be set when subplots=False")
         return fig, ax
+
+    def consensus_consistency_map(
+        self,
+        consensus_var: str | None = None,
+        *,
+        time_reduce: Literal["max", "mean"] = "max",
+        ax: Optional[Axes] = None,
+        map_style: Optional[Union[MapStyle, dict]] = None,
+        cmap: Optional[Union[str, Colormap]] = "cividis",
+        vmin: float = 0.0,
+        vmax: float = 1.0,
+        add_colorbar: bool = True,
+        colorbar_orientation: Literal["horizontal", "vertical"] | None = None,
+        colorbar_location: str | None = None,
+        colorbar_shrink: float | None = None,
+        colorbar_pad: float | None = None,
+        colorbar_aspect: float | None = None,
+        colorbar_label: str | None = None,
+        cbar_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Tuple[FigureBase | None, Axes]:
+        """Map member-support consistency from a consensus run (time-collapsed).
+
+        Uses the companion field ``{consensus_var}_consistency``: at each spacetime
+        cell this is (supporting inputs) / (total inputs) on native event voxels,
+        including voxels below the consensus threshold. The map collapses time with
+        ``max`` (default) or ``mean`` over finite values, then masks cells where the
+        result is zero (no input ever detected an event there).
+
+        Args:
+            consensus_var: Consensus labels variable; inferred when unique.
+            time_reduce: ``\"max\"`` (peak agreement at any time) or ``\"mean\"`` over
+                timesteps with data.
+            ax: Axes to draw on; if None, a new figure is created via :meth:`map`.
+            map_style: Passed to :meth:`map` when *ax* is None.
+            cmap: Colormap for the consistency field.
+            vmin, vmax: Color scale bounds; default ``[0, 1]``.
+            add_colorbar: Whether to draw a colorbar (default True).
+            colorbar_orientation: ``\"horizontal\"`` or ``\"vertical\"``. If None,
+                xarray uses its default (vertical on the right).
+            colorbar_location: For horizontal bars, ``\"left\"`` left-aligns the bar under the
+                map with the label to its right. Otherwise passed to matplotlib ``location``.
+            colorbar_shrink, colorbar_pad, colorbar_aspect: Passed to the colorbar
+                (matplotlib ``shrink``, ``pad``, ``aspect``). Omitted when None.
+            colorbar_label: Colorbar label; default ``\"Member support fraction\"``.
+            cbar_kwargs: Extra keyword arguments merged into the colorbar kwargs
+                (after ``colorbar_*`` parameters).
+            **kwargs: Extra arguments forwarded to :meth:`xarray.DataArray.plot` or
+                ``plot.pcolormesh`` (except ``add_colorbar`` and ``cbar_kwargs``).
+
+        Returns:
+            ``(fig, ax)``; figure is None if *ax* was provided.
+        """
+        consensus_var = self.td._resolve_consensus_var(consensus_var)
+        consistency_var = f"{consensus_var}_consistency"
+        if consistency_var not in self.td.data:
+            raise ValueError(
+                f"No matching consistency variable {consistency_var!r} for "
+                f"{consensus_var!r}."
+            )
+        cons = self.td.data[consistency_var]
+        if cons.attrs.get(_attrs.VARIABLE_TYPE) != _attrs.TYPE_CONSENSUS_CONSISTENCY:
+            raise ValueError(
+                f"{consistency_var!r} is not a consensus consistency variable "
+                f"(variable_type={cons.attrs.get(_attrs.VARIABLE_TYPE)!r})."
+            )
+
+        time_dim = self.td.time_dim
+        space_dims = tuple(self.td.space_dims)
+        if time_dim in cons.dims:
+            if time_reduce == "max":
+                field = cons.max(dim=time_dim, skipna=True)
+            elif time_reduce == "mean":
+                field = cons.mean(dim=time_dim, skipna=True)
+            else:
+                raise ValueError(
+                    f"`time_reduce` must be 'max' or 'mean', got {time_reduce!r}."
+                )
+        else:
+            field = cons
+
+        for d in space_dims:
+            if d not in field.dims:
+                field = field.expand_dims({d: 1})
+        field = field.transpose(*space_dims)
+        field = field.where(field > 0)
+
+        config = _normalize_map_style(map_style)
+        if ax is None:
+            fig, ax = self.map(map_style=config)
+        else:
+            fig = None
+
+        title = "Member support fraction"
+
+        cbar_label = (
+            colorbar_label if colorbar_label is not None else "Member support fraction"
+        )
+
+        add_colorbar = kwargs.pop("add_colorbar", add_colorbar)
+        orient = colorbar_orientation or "horizontal"
+        loc = colorbar_location
+
+        shrink = colorbar_shrink if colorbar_shrink is not None else 0.38
+        pad = colorbar_pad if colorbar_pad is not None else 0.04
+        aspect = colorbar_aspect if colorbar_aspect is not None else 28.0
+
+        manual_h_left = add_colorbar and orient == "horizontal" and loc == "left"
+
+        merged_cbar_kwargs: dict[str, Any] = {}
+        if add_colorbar and not manual_h_left:
+            merged_cbar_kwargs["label"] = cbar_label
+            if colorbar_orientation is not None:
+                merged_cbar_kwargs["orientation"] = colorbar_orientation
+            if loc is not None and loc != "left":
+                merged_cbar_kwargs["location"] = loc
+            merged_cbar_kwargs["shrink"] = shrink
+            merged_cbar_kwargs["pad"] = pad
+            merged_cbar_kwargs["aspect"] = aspect
+        if cbar_kwargs:
+            merged_cbar_kwargs.update(cbar_kwargs)
+        if "cbar_kwargs" in kwargs:
+            merged_cbar_kwargs.update(kwargs.pop("cbar_kwargs"))
+
+        plot_params: dict[str, Any] = {
+            "ax": ax,
+            "add_colorbar": add_colorbar and not manual_h_left,
+            "cmap": cmap,
+            "vmin": vmin,
+            "vmax": vmax,
+            **kwargs,
+        }
+        if add_colorbar and not manual_h_left:
+            plot_params["cbar_kwargs"] = merged_cbar_kwargs
+        plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
+        if use_pcolormesh:
+            field.plot.pcolormesh(**plot_params)
+        else:
+            field.plot(**plot_params)
+
+        if manual_h_left:
+            plot_cmap = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
+            sm = ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=plot_cmap)
+            sm.set_array([])
+            _add_horizontal_left_map_colorbar(
+                ax.figure,
+                ax,
+                sm,
+                cbar_label,
+                width_frac=shrink,
+                pad=pad,
+                aspect=aspect,
+            )
+
+        ax.set_title(title)
+        return ax.figure if fig is None else fig, ax
 
     @staticmethod
     def _concat_finite_from_shift_dists(d: dict[int, np.ndarray]) -> np.ndarray:
@@ -1027,7 +1280,6 @@ class Plotter:
         consensus_var: str | None,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]],
         *,
-        shift_threshold: float,
         cmap: Union[str, ListedColormap],
         show_sum: bool,
         show_total: bool,
@@ -1043,7 +1295,6 @@ class Plotter:
         da = self.td.data[consensus_var]
         dists = self.td.aggregate.consensus_shift_time_distributions(
             da,
-            shift_threshold=shift_threshold,
             source_input_cluster_var=source_input_cluster_var,
         )
         dataset, xticklabels, colors = self._distributions_to_violin_tuples(
@@ -1078,7 +1329,7 @@ class Plotter:
         seed: Optional[int] = None,
         tight_layout: bool = True,
         **kwargs: Any,
-    ) -> tuple[Optional[matplotlib.figure.Figure], Axes]:
+    ) -> tuple[FigureBase | None, Axes]:
         """Render violin (+ optional scatter) for transition-time sample lists; shared by consensus/label plotters."""
         n_groups = len(dataset)
         positions = np.arange(n_groups, dtype=float)
@@ -1181,7 +1432,7 @@ class Plotter:
                             markersize=6,
                             markeredgewidth=0.35,
                             alpha=point_alpha,
-                            label="Samples",
+                            label="Shift times",
                         ),
                         Line2D(
                             [0],
@@ -1245,9 +1496,9 @@ class Plotter:
                     ncols=2,
                 )
             if tight_layout:
-                fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.92))
+                _maybe_tight_layout(fig, rect=(0.0, 0.0, 1.0, 0.92))
         elif tight_layout:
-            fig.tight_layout()
+            _maybe_tight_layout(fig)
         return fig, ax
 
     def consensus_shift_times_violins(
@@ -1259,7 +1510,6 @@ class Plotter:
         ax: Optional[Axes] = None,
         figsize: Optional[Tuple[float, float]] = None,
         cmap: Union[str, ListedColormap] = default_cmap,
-        shift_threshold: float = 0.0,
         source_input_cluster_var: str | None = None,
         width: float = 0.75,
         bw_method: float = 0.18,
@@ -1275,7 +1525,7 @@ class Plotter:
         seed: Optional[int] = None,
         tight_layout: bool = True,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
+    ) -> Tuple[FigureBase | None, Axes]:
         """Transition-time samples per consensus cluster: half-violin + scatter or full violins.
 
         Visualises the same pooled :func:`~toad.utils.cluster_consensus_utils.consensus_shift_time_distribution`
@@ -1303,7 +1553,6 @@ class Plotter:
             ax: Axes to draw on; creates a new figure if None.
             figsize: Figure size when creating a new figure.
             cmap: Colormap used to pick face colours per cluster.
-            shift_threshold: Passed through to the aggregation helper.
             source_input_cluster_var: If set, only transition times that came from this input
                 clustering (``cluster_var`` name in the long table) are used.
             width: Violin width passed to ``Axes.violinplot`` (scatter mode uses half of this per side).
@@ -1329,7 +1578,6 @@ class Plotter:
         _cv, dataset, xticklabels, colors = self._consensus_transition_time_groups(
             consensus_var,
             cluster_ids,
-            shift_threshold=shift_threshold,
             cmap=cmap,
             show_sum=show_sum,
             show_total=show_total,
@@ -1342,7 +1590,7 @@ class Plotter:
             dataset,
             xticklabels,
             colors,
-            xlabel="consensus cluster id",
+            xlabel="Consensus cluster id",
             show_scatter=show_scatter,
             ax=ax,
             figsize=figsize,
@@ -1382,7 +1630,7 @@ class Plotter:
         seed: Optional[int] = None,
         tight_layout: bool = True,
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
+    ) -> Tuple[FigureBase | None, Axes]:
         """Transition-time event samples for a **single** 3D cluster label field (not consensus).
 
         Uses the same per-voxel time convention as :meth:`consensus_shift_times_violins` but
@@ -1435,7 +1683,6 @@ class Plotter:
         consensus_var: str | None = None,
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
         *,
-        shift_threshold: float = 0.0,
         spread: Literal["iqr", "std"] = "std",
         ax: Optional[Axes] = None,
         figsize: Optional[Tuple[float, float]] = None,
@@ -1456,7 +1703,7 @@ class Plotter:
         show_legend: bool = True,
         ylabel: Optional[str] = None,
         tight_layout: bool = True,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Axes]:
+    ) -> Tuple[FigureBase | None, Axes]:
         """Per-input median transition time vs median-of-medians summary (from :meth:`consensus_summary`).
 
         One point per input ``cluster_var`` at that map’s spatial median transition time in the cluster;
@@ -1471,7 +1718,6 @@ class Plotter:
             consensus_var: Consensus labels variable; inferred if unique.
             cluster_ids: Subset of consensus cluster ids; default plots every id present in the
                 shift-time dataset.
-            shift_threshold: Passed to :meth:`toad.postprocessing.Aggregation.consensus_shift_time_distribution`.
             spread: ``\"std\"`` (default) — ``errorbar`` from table when possible, else IQR of
                 per-input medians; ``\"iqr\"`` — always a thick vertical line between quartiles of
                 model medians.
@@ -1500,7 +1746,6 @@ class Plotter:
         da = self.td.data[consensus_var]
         dist_ds, _ = self.td.aggregate.consensus_shift_time_distribution(
             da,
-            shift_threshold=shift_threshold,
         )
         if (
             len(dist_ds.data_vars) == 0
@@ -1669,7 +1914,7 @@ class Plotter:
         else:
             ax.set_xticks(plot_ids.astype(float))
             ax.set_xticklabels([str(int(x)) for x in plot_ids])
-        ax.set_xlabel("consensus cluster id")
+        ax.set_xlabel("Consensus cluster id")
         ax.set_ylabel(ylabel if ylabel is not None else self._transition_time_ylabel())
         # ax.set_title(
         #     f"Model median shift times — {consensus_var}",
@@ -1755,9 +2000,9 @@ class Plotter:
                 fontsize=9,
             )
             if tight_layout:
-                fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.92))
+                _maybe_tight_layout(fig, rect=(0.0, 0.0, 1.0, 0.92))
         elif tight_layout:
-            fig.tight_layout()
+            _maybe_tight_layout(fig)
 
         return fig, ax
 
@@ -1767,7 +2012,6 @@ class Plotter:
         cluster_ids: Optional[Union[int, List[int], np.ndarray, range]] = None,
         *,
         kind: Literal["medians", "violins"] = "medians",
-        shift_threshold: float = 0.0,
         spread: Literal["iqr", "std"] = "std",
         figsize: Optional[Tuple[float, float]] = None,
         width_ratios: Tuple[float, float] = (1.25, 1.0),
@@ -1786,7 +2030,7 @@ class Plotter:
         total_color: str = "#666666",
         bw_method: float = 0.18,
         **kwargs: Any,
-    ) -> Tuple[matplotlib.figure.Figure, Any, Axes]:
+    ) -> Tuple[FigureBase, Any, Axes]:
         """Two-panel figure: consensus map (left) and shift-time view (right).
 
         Left: :meth:`consensus_map` on the same ``cluster_ids`` as the right panel (defaults to
@@ -1799,7 +2043,6 @@ class Plotter:
             cluster_ids: Subset of consensus cluster ids. Same filtering as the corresponding
                 shift-time plot; default is every id present in the shift data for ``kind``.
             kind: ``\"medians\"`` (default) or ``\"violins\"`` for the right-hand panel.
-            shift_threshold: Passed to the shift-time panel.
             spread: Median-plot inter-model spread (``\"iqr\"`` or ``\"std\"``). Ignored when
                 ``kind=\"violins\"``.
             show_legend, ylabel, seed: Forwarded to the shift-time panel.
@@ -1832,7 +2075,6 @@ class Plotter:
         if kind == "medians":
             dist_ds, _ = self.td.aggregate.consensus_shift_time_distribution(
                 da,
-                shift_threshold=shift_threshold,
             )
             if (
                 len(dist_ds.data_vars) == 0
@@ -1849,7 +2091,6 @@ class Plotter:
         else:
             dists = self.td.aggregate.consensus_shift_time_distributions(
                 da,
-                shift_threshold=shift_threshold,
             )
             if not dists:
                 raise ValueError(
@@ -1889,18 +2130,17 @@ class Plotter:
 
         fig = plt.figure(figsize=_figsize)
         gs = fig.add_gridspec(1, 2, width_ratios=list(width_ratios))
-        ax_map = fig.add_subplot(gs[0, 0], projection=projection_obj)
+        ax_map = cast(GeoAxes, fig.add_subplot(gs[0, 0], projection=projection_obj))
         ax_right = fig.add_subplot(gs[0, 1])
 
-        if hasattr(ax_map, "projection"):
-            _add_map_features(ax_map, config)
-            if config.extent is None:
-                if ax_map.projection == ccrs.SouthPolarStereo():
-                    ax_map.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
-                elif ax_map.projection == ccrs.NorthPolarStereo():
-                    ax_map.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
-            else:
-                ax_map.set_extent(config.extent, crs=ccrs.PlateCarree())
+        _add_map_features(ax_map, config)
+        if config.extent is None:
+            if ax_map.projection == ccrs.SouthPolarStereo():
+                ax_map.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
+            elif ax_map.projection == ccrs.NorthPolarStereo():
+                ax_map.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
+        else:
+            ax_map.set_extent(config.extent, crs=ccrs.PlateCarree())
         ax_map.set_frame_on(config.map_frame)
 
         map_ids = [int(x) for x in plot_ids.tolist()]
@@ -1931,7 +2171,6 @@ class Plotter:
             self.consensus_shift_times_medians(
                 consensus_var=consensus_var,
                 cluster_ids=cluster_ids,
-                shift_threshold=shift_threshold,
                 spread=spread,
                 ax=ax_right,
                 show_legend=show_legend,
@@ -1952,7 +2191,6 @@ class Plotter:
                 cluster_ids=cluster_ids,
                 ax=ax_right,
                 cmap=violin_cmap,
-                shift_threshold=shift_threshold,
                 show_legend=show_legend,
                 ylabel=ylabel,
                 seed=seed,
@@ -2075,6 +2313,8 @@ class Plotter:
         alpha: float = 1.0,
         linewidth: float = 1.0,
         add_legend: bool = True,
+        legend_input_label: Literal["cluster_var", "member_id"] = "cluster_var",
+        legend_include_n_cells: bool = True,
         legend_autosize: bool = True,
         legend_fontsize_max: Optional[float] = None,
         legend_fontsize_min: float = 4.0,
@@ -2083,7 +2323,7 @@ class Plotter:
         show_ylabels: bool = False,
         plot_shift_indicator: bool = False,
         shift_indicator_size: float = 5.0,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Optional[Union[Axes, np.ndarray]]]:
+    ) -> Tuple[FigureBase | None, Optional[Union[Axes, np.ndarray]]]:
         """Overlay per-input-cluster timeseries for one consensus cluster (no map).
 
         Wraps :meth:`toad.postprocessing.Aggregation.consensus_cluster_timeseries`. When
@@ -2102,6 +2342,11 @@ class Plotter:
             cmap: Colormap for line colors (tab-like sampling).
             alpha, linewidth, add_legend: Line styling. With ``aggregation=\"raw\"``, one legend
                 entry per input ``cluster_var`` (all per-cell lines share colour and label).
+            legend_input_label: ``\"cluster_var\"`` (default) uses the full input variable name;
+                ``\"member_id\"`` uses a CMIP-style member id parsed from the name (e.g.
+                ``r1i1p1f1`` from ``mlotst_r1i1p1f1_dts_cluster``).
+            legend_include_n_cells: If True (default), prefix each legend entry with ``(N)`` where
+                ``N`` is the number of grid cells in the extraction mask.
             legend_autosize: If True (default) and ``subplots=False``, shrink legend font size until
                 the legend box fits inside the axes (helps many/long labels).
             legend_fontsize_max, legend_fontsize_min: Bounds for autosizing (points); max defaults to
@@ -2144,24 +2389,25 @@ class Plotter:
             )
 
         n_series = len(series_by_input)
-        if isinstance(cmap, str):
-            base_cmap = plt.get_cmap(cmap)
-            colors = [base_cmap(i) for i in np.linspace(0, 1, max(n_series, 2))]
-        else:
-            cc = cmap.colors  # type: ignore
-            colors = [cc[i % len(cc)] for i in range(n_series)]
+        colors = _discrete_colors_from_cmap(cmap, n_series)
 
         time_dim = self.td.time_dim
         n_cells_by_input = {
-            cname: self.td.aggregate.consensus_cluster_extraction_n_cells_2d(
-                da, cluster_id, cname
+            cname: int(
+                self.td.aggregate.consensus_extraction_mask_2d(da, cluster_id, cname)
+                .sum()
+                .item()
             )
             for cname in series_by_input
         }
 
-        def _label_with_n_cells(cname: str) -> str:
-            n_cells = n_cells_by_input.get(cname, 0)
-            return f"({n_cells}) {cname}"
+        def _label_for_input(cname: str) -> str:
+            return _input_cluster_legend_label(
+                cname,
+                n_cells=n_cells_by_input.get(cname, 0),
+                label_style=legend_input_label,
+                include_n_cells=legend_include_n_cells,
+            )
 
         def _plot_cluster_ts_lines(
             target_ax: Axes,
@@ -2229,7 +2475,7 @@ class Plotter:
                         alpha=alpha,
                         shift_indicator_size=shift_indicator_size,
                     )
-                ax_arr[i].set_title(_label_with_n_cells(cname))
+                ax_arr[i].set_title(_label_for_input(cname))
                 ax_arr[i].set_ylabel("" if not show_ylabels else str(ts.name or cname))
             fig.suptitle(
                 f"{consensus_var} cluster {cluster_id} — per input clustering",
@@ -2247,7 +2493,7 @@ class Plotter:
                     ax,
                     ts,
                     colors[i % len(colors)],
-                    legend_label=_label_with_n_cells(cname),
+                    legend_label=_label_for_input(cname),
                 )
                 if plot_shift_indicator and aggregation == "raw":
                     self._plot_consensus_raw_shift_indicators(
@@ -2299,7 +2545,7 @@ class Plotter:
                 recognized by matplotlib, or an actual Colormap object. Defaults to 'RdBu_r'.
 
         Returns:
-            Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
+            Tuple[FigureBase | None, matplotlib.axes.Axes]:
                 The created matplotlib Figure (None if ax was provided) and Axes objects.
 
         Notes:
@@ -2389,7 +2635,7 @@ class Plotter:
                 is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
 
         Returns:
-            Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
+            Tuple[FigureBase | None, matplotlib.axes.Axes]:
                 The created matplotlib Figure (None if ax was provided) and Axes objects.
         """
         # Infer variable if not provided
@@ -2435,14 +2681,15 @@ class Plotter:
         cluster_vars: list[str] | None = None,
         ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
-        cmap: Optional[Union[str, Colormap]] = "viridis",
+        cmap: Optional[Union[str, Colormap]] = "cividis",
         **kwargs: Any,
     ):
-        """Plot the fraction of clusterings that ever assign a non-noise label at each cell.
+        """Map the fraction of input clusterings that ever labelled each cell.
 
-        Uses :meth:`toad.postprocessing.aggregation.Aggregation.cluster_occurrence_rate` and
-        draws it on a map (0 = never in a cluster in any run, 1 = in a cluster in every
-        run at some time).
+        Uses :meth:`toad.postprocessing.aggregation.Aggregation.cluster_occurrence_rate`.
+        ``1`` means every included clustering assigned a non-noise label there at some
+        time; ``0`` cells are masked out. Timing and cluster id are not compared across
+        inputs (see that method for details).
 
         Args:
             cluster_vars: Label variables to aggregate; default all :attr:`TOAD.cluster_vars`.
@@ -2453,7 +2700,7 @@ class Plotter:
                 ``plot.pcolormesh`` (e.g. ``vmin``, ``vmax``).
 
         Returns:
-            Tuple[Optional[matplotlib.figure.Figure], matplotlib.axes.Axes]:
+            Tuple[FigureBase | None, matplotlib.axes.Axes]:
             Figure and axes; figure is None if *ax* was provided.
         """
         config = _normalize_map_style(map_style)
@@ -2468,6 +2715,7 @@ class Plotter:
             "ax": ax,
             "add_colorbar": True,
             "cmap": cmap,
+            "cbar_kwargs": {"label": "Cluster occurrence rate"},
             **kwargs,
         }
         plot_params, use_pcolormesh = self._prepare_map_plot_params(ax, plot_params)
@@ -2540,9 +2788,7 @@ class Plotter:
         ] = None,  # Only relevant when plot_map=True
         map_style: Optional[Union[MapStyle, dict]] = None,
         **plot_kwargs: Any,
-    ) -> Tuple[
-        Optional[matplotlib.figure.Figure], Optional[Union[Axes, List[Axes], dict]]
-    ]:
+    ) -> Tuple[FigureBase | None, Optional[Union[Axes, List[Axes], dict]]]:
         """Plot time series from clusters or all data.
 
         This function allows flexible plotting of individual trajectories, aggregated statistics
@@ -2895,7 +3141,7 @@ class Plotter:
         map_style: Optional[Union[MapStyle, dict]] = None,
         mode: Literal["timeseries", "aggregated"] = "timeseries",
         **kwargs: Any,
-    ) -> Tuple[Optional[matplotlib.figure.Figure], dict]:
+    ) -> Tuple[FigureBase | None, dict]:
         """Create an overview plot with map and timeseries for clusters.
 
         This is a convenience method that creates a combined visualization showing
@@ -2930,7 +3176,7 @@ class Plotter:
             plot_median=mode == "aggregated",
             **kwargs,
         )
-        return cast(Tuple[Optional[matplotlib.figure.Figure], dict], result)
+        return cast(Tuple[FigureBase | None, dict], result)
 
     def shift_dist(self, figsize: Optional[tuple] = None, yscale: str = "log", bins=20):
         """Plot histograms showing the distribution of shifts for each shift variable.
@@ -3011,8 +3257,17 @@ class Plotter:
                 plot_params["x"] = space_dims[1]  # x/lon dimension
                 plot_params["y"] = space_dims[0]  # y/lat dimension
 
-        # Determine if we should use pcolormesh (for regular axes without lat/lon)
-        use_pcolormesh = not has_latlon and not is_geoaxes
+        space_dims = self.td.space_dims
+        degenerate_spatial = len(space_dims) >= 2 and any(
+            int(self.td.data.sizes.get(d, 0)) <= 1 for d in space_dims
+        )
+
+        # Regular axes without lat/lon use pcolormesh for explicit dim handling.
+        # Lat/lon + a singleton spatial dimension must also use pcolormesh: xarray's
+        # default plot path treats the field as 1D and rejects both x=lon and y=lat.
+        use_pcolormesh = (not has_latlon and not is_geoaxes) or (
+            has_latlon and degenerate_spatial
+        )
 
         return plot_params, use_pcolormesh
 
@@ -3109,7 +3364,7 @@ class Plotter:
         ax: Optional[Axes],
         map_style: Optional[Union[MapStyle, dict]] = None,
     ) -> Tuple[
-        Optional[matplotlib.figure.Figure],
+        FigureBase | None,
         List[Axes],
         Optional[Axes],
     ]:
@@ -3976,12 +4231,12 @@ class Plotter:
 
     def _package_timeseries_result(
         self,
-        fig: Optional[matplotlib.figure.Figure],
+        fig: FigureBase | None,
         map: bool,
         use_subplots: bool,
         map_ax: Optional[Axes],
         ts_axes_list: List[Axes],
-    ) -> Tuple[Optional[matplotlib.figure.Figure], Union[Axes, List[Axes], dict]]:
+    ) -> Tuple[FigureBase | None, Union[Axes, List[Axes], dict]]:
         """Package return values for timeseries method.
 
         Args:
@@ -4092,7 +4347,7 @@ def _style_violin_bodies_iqr_median(
     parts: Any,
     dataset: List[np.ndarray],
     positions: np.ndarray,
-    colors: List[Union[str, tuple]],
+    colors: Sequence[str | tuple[float, ...]],
     *,
     clip_to_body: bool = True,
 ) -> None:
@@ -4199,7 +4454,7 @@ def _remove_spines(
 
 # Not used...
 def _replace_ax_projection(
-    fig: matplotlib.figure.Figure,
+    fig: FigureBase,
     axs: Union[np.ndarray, Axes],
     row: int,
     col: int,
@@ -4360,7 +4615,7 @@ def _cluster_annotate(
 
 
 def _create_timeseries_layout(
-    fig: matplotlib.figure.Figure,
+    fig: FigureBase,
     n_clusters: int,
     n_subplots_col: int,
     subplot_spec: Any = None,
@@ -4427,8 +4682,10 @@ def _add_consensus_cluster_discrete_colorbar(
     shrink: float,
     pad: float,
     aspect: float,
+    orientation: Literal["horizontal", "vertical"] = "horizontal",
+    location: str | None = None,
 ) -> None:
-    """Horizontal matplotlib colorbar: one segment per consensus cluster id."""
+    """Matplotlib colorbar: one segment per consensus cluster id."""
     n = len(sorted_ids)
     if n == 0:
         return
@@ -4441,10 +4698,26 @@ def _add_consensus_cluster_discrete_colorbar(
     norm = BoundaryNorm(boundaries, cmap.N, clip=True)
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
+    horizontal_left = orientation == "horizontal" and location == "left"
+    if horizontal_left:
+        _add_horizontal_left_map_colorbar(
+            fig,
+            ax,
+            sm,
+            label,
+            width_frac=shrink,
+            pad=pad,
+            aspect=aspect,
+            ticks=sorted_ids.tolist(),
+        )
+        return
+    if location is None:
+        location = "bottom" if orientation == "horizontal" else "left"
     cb = fig.colorbar(
         sm,
         ax=ax,
-        orientation="horizontal",
+        orientation=orientation,
+        location=location,
         shrink=shrink,
         pad=pad,
         aspect=aspect,
@@ -4482,7 +4755,7 @@ def _add_gradient_legend(
         label_text: Optional text label for the legend. If None, no label is added.
         fontsize: Font size for legend text. Defaults to 8.
         cmap: Optional colormap to use for the gradient. If None, uses the colormap
-            from the last plotted image or defaults to viridis.
+            from the last plotted image or defaults to cividis.
         var: Variable name used for optimal legend positioning when legend_pos is None.
             If None, uses projection-based default positions.
 
@@ -4519,9 +4792,9 @@ def _add_gradient_legend(
             if get_cmap_method is not None:
                 cmap = get_cmap_method()
             else:
-                cmap = plt.get_cmap("viridis")  # fallback
+                cmap = plt.get_cmap("cividis")  # fallback
         else:
-            cmap = plt.get_cmap("viridis")  # fallback
+            cmap = plt.get_cmap("cividis")  # fallback
 
     # Normalize cmap to Colormap (convert string to Colormap if needed)
     if isinstance(cmap, str):
@@ -4529,7 +4802,7 @@ def _add_gradient_legend(
 
     # Ensure cmap is a Colormap (fallback if somehow still None or invalid)
     if cmap is None or not isinstance(cmap, Colormap):
-        cmap = plt.get_cmap("viridis")
+        cmap = plt.get_cmap("cividis")
 
     legend_x, legend_y = legend_pos
     legend_width, legend_height = legend_size

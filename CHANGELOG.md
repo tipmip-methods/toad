@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Planned as **1.0.8**:
+
+### Changed
+- **`compute_consensus` redesigned** — spacetime member-support consensus on the native grid; requires `min_consensus`, `temporal_tolerance`, and `spatial_tolerance`. Replaces the old edge-vote method; results will differ. See `tutorials/consensus.ipynb`.
+- HealPix regridding now uses **`astropy-healpix`** instead of the `healpix` package.
+- Clustering and transition times work with **time-last** dimension order (e.g. `y`, `x`, `time`).
+
+### Added
+- Consensus **consistency** field, **`stitch_meridian`**, **`cluster_occurrence_rate()`**, expanded summary/plots, and consensus tutorial + docs.
+- **`TOAD(..., auto_clean=True)`** — optional CMIP-style cleanup on load (off by default).
+
+### Removed
+- Old edge-vote consensus and **`regridder=`** on `compute_consensus` (HealPix remains for `compute_clusters`).
+
+### Fixed
+- Dimension-order bugs in clustering and transition times; HealPix regridder out-of-bounds error.
+
 ## [1.0.7] - 2026-03-26
 
 ### Fixed

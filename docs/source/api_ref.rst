@@ -19,7 +19,7 @@ The :class:`toad.TOAD` class is the primary interface for all TOAD functionality
 
 The TOAD class provides:
 
-- **Computation methods**: :meth:`toad.TOAD.compute_shifts` and :meth:`toad.TOAD.compute_clusters` for the main analysis pipeline
+- **Computation methods**: :meth:`toad.TOAD.compute_shifts` and :meth:`toad.TOAD.compute_clusters` for the main analysis pipeline; :meth:`toad.TOAD.compute_consensus` to merge several cluster maps (see :doc:`consensus_clustering`)
 - **Plotting interface**: Access via :attr:`toad.TOAD.plot` property (returns a :class:`toad.plotting.Plotter` instance)
 - **Statistics interface**: Access via :meth:`toad.TOAD.stats` method (returns a :class:`toad.postprocessing.Stats` instance)
 - **Aggregation interface**: Access via :attr:`toad.TOAD.aggregate` property (returns a :class:`toad.postprocessing.Aggregation` instance)
@@ -46,6 +46,15 @@ Clustering algorithms from scikit-learn (or custom implementations) can be passe
 Common examples:
 - :class:`sklearn.cluster.HDBSCAN`
 - :class:`sklearn.cluster.DBSCAN`
+
+Consensus clustering
+====================
+
+When you have two or more cluster label fields on the same grid (different models, parameters, or
+variables), :meth:`toad.TOAD.compute_consensus` merges them into one spacetime consensus field.
+
+- **Concepts and parameters**: :doc:`consensus_clustering`
+- **Worked example**: :doc:`Consensus tutorial <tutorials/consensus>`
 
 Plotting and Visualization
 ===========================

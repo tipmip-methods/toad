@@ -26,6 +26,7 @@ This documentation provides comprehensive guides for using TOAD in your research
 * :doc:`installation` - Installation instructions for different environments
 * :doc:`quick_start` - Get started with TOAD in minutes
 * :doc:`tutorials` - Detailed tutorials covering core concepts and advanced usage
+* :doc:`consensus_clustering` - Spacetime consensus clustering algorithm and parameters (:doc:`hands-on tutorial <tutorials/consensus>`)
 * :doc:`api_ref` - Complete API reference for all classes and functions
 * :doc:`scientific_ref` - Scientific references and methodology details
 * :doc:`release_notes` - Version history and changelog
@@ -42,7 +43,7 @@ TOAD provides a structured workflow for analyzing Earth-system data:
 
 1. **Shift Detection**: Identify abrupt transitions at individual grid cells using configurable detection methods
 2. **Clustering**: Group detected shifts spatially and temporally to reveal cohesive patterns
-3. **Aggregation & Synthesis**: Aggregate results across multiple datasets, models, or methods to produce consensus clusters
+3. **Aggregation & Synthesis**: Aggregate results across multiple datasets, models, or methods to produce consensus clusters — see :doc:`consensus_clustering` and the :doc:`Consensus tutorial <tutorials/consensus>`
 
 
 About

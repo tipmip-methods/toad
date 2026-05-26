@@ -463,26 +463,29 @@ class TOAD:
         min_consensus: float,
         temporal_tolerance: int,
         spatial_tolerance: int,
-        top_n_clusters: int | None = None,
-        stitch_meridian: bool = False,
+        stitch_meridian: bool | Literal["auto"] = "auto",
         show_progress: bool = True,
         output_label_suffix: str = "",
         output_label: str | None = None,
         overwrite: bool = False,
         min_cluster_area: int | None = 2,
     ) -> None:
-        """Combine multiple clustering results into one spacetime consensus and store it on ``self.data``.
+        """Combine multiple clustering results into one per-voxel member-support consensus.
 
         This delegates to :meth:`toad.postprocessing.Aggregation.compute_consensus`; see that
         docstring for parameters and algorithm details.
 
         Args:
             cluster_vars: Input clustering variables to merge. Defaults to all ``td.cluster_vars``.
-            min_consensus: Minimum vote fraction for consensus edges (required)
-            temporal_tolerance: Peak-label dilation radius along time before voting (required).
-            spatial_tolerance: Peak-label dilation radius in spatial graph hops before voting (required).
-            top_n_clusters: Optional restriction to the largest N clusters per input map.
-            stitch_meridian: Whether to connect the first and last longitude column on native grids.
+            min_consensus: Minimum fraction of input clusterings that must support each retained
+                native event voxel after tolerance dilation (required).
+            temporal_tolerance: Time tolerance used for support dilation and component labelling
+                (required).
+            spatial_tolerance: Spatial tolerance used for support dilation and component labelling
+                (required).
+            stitch_meridian: Whether to connect the first and last longitude column on native
+                grids. ``\"auto\"`` (default) stitches when the grid spans nearly all
+                longitudes; ``False`` disables stitching; ``True`` forces it.
             show_progress: Whether to show a progress bar.
             output_label_suffix: Suffix for the default ``cluster_consensus`` label name.
             output_label: Explicit name for the consensus labels variable.
@@ -497,7 +500,6 @@ class TOAD:
         self.aggregate.compute_consensus(
             cluster_vars=cluster_vars,
             min_consensus=min_consensus,
-            top_n_clusters=top_n_clusters,
             stitch_meridian=stitch_meridian,
             show_progress=show_progress,
             temporal_tolerance=temporal_tolerance,

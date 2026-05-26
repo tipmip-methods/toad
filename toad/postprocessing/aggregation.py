@@ -1,30 +1,29 @@
 import logging
-from dataclasses import dataclass
-from typing import Any, List, Literal, cast
+from typing import Any, List, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.sparse.csgraph import connected_components
-from tqdm import tqdm
 
 from toad._version import __version__
 from toad.clustering import sorted_cluster_labels
+from toad.postprocessing.member_support_consensus import (
+    _accumulate_member_support,
+    _build_grid_context,
+    _build_member_support_dataset,
+    _empty_result,
+    min_consensus_members,
+)
 from toad.utils import _attrs, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
+    StitchMeridianSetting,
     _build_consensus_summary_df_spacetime,
-    _build_empty_consensus_time_resolved,
-    _build_spacetime_graph_edges,
-    _compute_weighted_consensus,
     _consensus_input_support_mask,
-    _dilate_cluster_labels_spacetime,
-    _largest_cluster_ids,
-    _native_edges_from_mask,
-    _trim_spacetime_consensus_to_original_support,
     consensus_shift_time_distribution,
     consensus_shift_time_distributions,
     label_field_shift_time_distributions,
     label_field_shift_time_samples,
+    resolve_stitch_meridian,
 )
 
 logger = logging.getLogger("TOAD")
@@ -69,9 +68,10 @@ def _filter_consensus_labels_min_size(
     For each cluster id, ``area`` is the number of spatial cells where that id appears at
     any time along ``time_dim`` (same definition as the ``area`` column in
     :func:`toad.utils.cluster_consensus_utils._build_consensus_summary_df_spacetime`).
-    Clusters with ``area < min_cluster_area`` are set to noise ``-1``; their consistency
-    values become NaN. Remaining clusters are renumbered by
-    :func:`toad.clustering.sorted_cluster_labels` (largest id 0, etc.).
+    Clusters with ``area < min_cluster_area`` are set to noise ``-1``. Remaining clusters
+    are renumbered by :func:`toad.clustering.sorted_cluster_labels` (largest id 0, etc.).
+    The companion consistency field is left unchanged (member-support fractions are
+    independent of the consensus threshold and cluster-size filter).
     """
     if min_cluster_area <= 0:
         return da_labels, da_consistency
@@ -82,27 +82,31 @@ def _filter_consensus_labels_min_size(
         )
     lab = np.asarray(da_labels.data, dtype=np.float64)
     flat = lab.ravel()
-    uniq = np.unique(flat[np.isfinite(flat) & (flat >= 0)])
-    remove_list: list[int] = []
-    for k in uniq:
-        footprint = (da_labels == float(k)).any(dim=time_dim)
-        area = int(footprint.sum(skipna=True).item())
-        if area < min_cluster_area:
-            remove_list.append(int(k))
-    remove = np.asarray(remove_list, dtype=np.int64)
+    time_axis = da_labels.get_axis_num(time_dim)
+    lab_ts = np.moveaxis(lab, time_axis, 0).reshape(lab.shape[time_axis], -1)
+    valid = np.isfinite(lab_ts) & (lab_ts >= 0)
+    if not np.any(valid):
+        return da_labels, da_consistency
+
+    # Count distinct spatial cells ever labelled with each consensus id (any time)
+    label_ids = lab_ts[valid].astype(np.int64, copy=False)
+    spatial_ids = np.broadcast_to(
+        np.arange(0, lab_ts.shape[1], dtype=np.int64).reshape(1, -1),
+        lab_ts.shape,
+    )[valid]
+    label_space_pairs = np.column_stack((label_ids, spatial_ids))
+    unique_pairs = np.unique(label_space_pairs, axis=0)
+    unique_ids, areas = np.unique(unique_pairs[:, 0], return_counts=True)
+    remove = unique_ids[areas < int(min_cluster_area)]
     if remove.size == 0:
         return da_labels, da_consistency
 
+    # Demote small clusters to noise (-1) and re-sort ids
     flat = flat.copy()
     fin = np.isfinite(flat)
     flat[fin & np.isin(flat, remove.astype(np.float64))] = -1.0
     flat = sorted_cluster_labels(flat)
     lab_out = flat.reshape(lab.shape)
-    cons = np.asarray(da_consistency.data, dtype=np.float32).copy()
-    cons_r = cons.ravel()
-    flat_out = lab_out.ravel()
-    cons_r[(flat_out == -1) | ~np.isfinite(flat_out)] = np.nan
-    cons_out = cons_r.reshape(lab.shape)
     da_l = xr.DataArray(
         lab_out,
         coords=da_labels.coords,
@@ -110,38 +114,77 @@ def _filter_consensus_labels_min_size(
         attrs=da_labels.attrs,
         name=da_labels.name,
     )
-    da_c = xr.DataArray(
-        cons_out,
-        coords=da_consistency.coords,
-        dims=da_consistency.dims,
-        attrs=da_consistency.attrs,
-        name=da_consistency.name,
+    return da_l, da_consistency
+
+
+def _finalize_consensus_variables(
+    td: Any,
+    *,
+    ds_out: xr.Dataset,
+    new_output_label: str,
+    cluster_vars: List[str],
+    min_consensus: float,
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+    stitch_meridian: StitchMeridianSetting,
+    stitch_meridian_resolved: bool,
+    min_cluster_area: int | None,
+    time_dim: str,
+) -> np.ndarray:
+    """Rename solver outputs, post-filter, attach TOAD attrs, and merge into ``td.data``."""
+    # --- rename interim solver variables to user-facing names ---
+    da_labels = ds_out["clusters"].rename(new_output_label)
+    da_consistency = ds_out["consistency"].rename(f"{new_output_label}_consistency")
+
+    # --- optional post-filter on spatial footprint (see _filter_consensus_labels_min_size) ---
+    if min_cluster_area is not None and min_cluster_area > 0:
+        da_labels, da_consistency = _filter_consensus_labels_min_size(
+            da_labels,
+            da_consistency,
+            min_cluster_area,
+            time_dim=time_dim,
+        )
+        da_labels.attrs["min_cluster_area"] = int(min_cluster_area)
+        da_consistency.attrs["min_cluster_area"] = int(min_cluster_area)
+
+    # --- TOAD metadata (method params, variable_type, cluster_vars, version) ---
+    lab = np.asarray(da_labels.data, dtype=np.float64)
+    min_votes = min_consensus_members(len(cluster_vars), min_consensus)
+    consensus_param_attrs: dict[str, object] = {
+        "consensus_method": "member_support",
+        "min_consensus": min_consensus,
+        "min_consensus_members": min_votes,
+        "temporal_tolerance": temporal_tolerance,
+        "spatial_tolerance": spatial_tolerance,
+        "stitch_meridian": (
+            int(stitch_meridian)
+            if isinstance(stitch_meridian, bool)
+            else stitch_meridian
+        ),
+        "stitch_meridian_applied": int(stitch_meridian_resolved),
+    }
+    da_labels.attrs.update(consensus_param_attrs)
+    da_consistency.attrs.update(consensus_param_attrs)
+    da_labels.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CLUSTER
+    u = np.unique(lab[np.isfinite(lab) & (lab >= 0)])
+    da_labels.attrs[_attrs.CLUSTER_IDS] = (
+        u.astype(int) if u.size else np.array([], dtype=int)
     )
-    return da_l, da_c
+    da_labels.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
+    da_labels.attrs[_attrs.TOAD_VERSION] = __version__
 
+    da_consistency.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CONSISTENCY
+    da_consistency.attrs[_attrs.CONSENSUS_LABELS_VAR] = new_output_label
+    da_consistency.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
+    da_consistency.attrs[_attrs.TOAD_VERSION] = __version__
 
-@dataclass(frozen=True)
-class _SpacetimeConsensusContext:
-    spatial_dims: tuple[str, str]
-    time_dim: str
-    T: int
-    y_len: int
-    x_len: int
-    coords_spatial: dict[str, Any]
-    time_coord: xr.DataArray
-    n_space: int
-    spatial_er: np.ndarray
-    spatial_ec: np.ndarray
-    st_er: np.ndarray
-    st_ec: np.ndarray
-
-
-@dataclass(frozen=True)
-class _SpacetimeVoteData:
-    rows_V: np.ndarray
-    cols_V: np.ndarray
-    n_contributing_maps: int
-    original_support_flat: np.ndarray
+    # --- merge label + consistency pair into td.data ---
+    td.data = xr.merge(
+        [td.data, da_labels, da_consistency],
+        combine_attrs="override",
+        compat="override",
+    )
+    return lab
 
 
 class Aggregation:
@@ -156,12 +199,15 @@ class Aggregation:
         self,
         cluster_vars: list[str] | None = None,
     ) -> xr.DataArray:
-        """Share of clusterings (label fields) in which a grid cell is ever a cluster.
+        """Share of input clusterings in which a grid cell was ever assigned a cluster.
 
-        This is an **aggregation** over several clustering results, not a statistic
-        tied to a single :attr:`TOAD.cluster_vars` entry. For each space point it counts
-        how many of the given label variables assign a non-noise id at any time, then
-        divides by the number of those variables (not part of the consensus graph API).
+        For each spatial cell and each label field, TOAD checks whether any timestep
+        has a non-noise label (``>= 0``); multiple cluster events at different times
+        in the same run still count as one ``yes``. The result is the mean over inputs,
+        in ``[0, 1]`` (``1`` = every included clustering ever labelled that cell).
+
+        This is a time-collapsed hotspot diagnostic, not spacetime consensus: it does
+        not require agreement on timing or cluster id across inputs.
 
         Args:
             cluster_vars: Label variables to include. If None, uses all
@@ -169,8 +215,7 @@ class Aggregation:
                 cluster membership.
 
         Returns:
-            2D DataArray in ``[0, 1]`` named ``cluster_occurrence_rate`` or a uniquified
-            name if that variable already exists in the dataset.
+            2D DataArray named ``cluster_occurrence_rate`` (or a uniquified name).
         """
         cluster_vars = cluster_vars if cluster_vars else self.td.cluster_vars
         if not cluster_vars:
@@ -178,18 +223,14 @@ class Aggregation:
                 "cluster_vars is empty; add cluster label variables or pass a non-empty list."
             )
 
-        num_clusterings = len(cluster_vars)
-        cluster_normalized = xr.where(
-            self.td.data[cluster_vars[0]].max(dim=self.td.time_dim) > -1,
-            1.0 / num_clusterings,
-            0,
+        ever_clustered = xr.concat(
+            [
+                (self.td.data[cvar].max(dim=self.td.time_dim) > -1).astype(np.float32)
+                for cvar in cluster_vars
+            ],
+            dim="_cluster_input",
         )
-        for cluster_var in cluster_vars[1:]:
-            cluster_normalized = cluster_normalized + xr.where(
-                self.td.data[cluster_var].max(dim=self.td.time_dim) > -1,
-                1.0 / num_clusterings,
-                0,
-            )
+        cluster_normalized = ever_clustered.mean(dim="_cluster_input")
 
         output_label = get_unique_variable_name(
             "cluster_occurrence_rate", self.td.data, self.td.logger
@@ -198,7 +239,10 @@ class Aggregation:
         cluster_normalized.attrs.update(
             {
                 "cluster_vars": list(cluster_vars),
-                "description": "Normalized occurrence rate of points being part of any cluster",
+                "description": (
+                    "Fraction of input clusterings that ever assigned a non-noise "
+                    "label at this cell (time collapsed; 1 = all inputs)"
+                ),
             }
         )
         return cluster_normalized
@@ -210,118 +254,101 @@ class Aggregation:
         min_consensus: float,
         temporal_tolerance: int,
         spatial_tolerance: int,
-        top_n_clusters: int | None = None,  # TODO rename?
-        stitch_meridian: bool = False,
+        stitch_meridian: StitchMeridianSetting = "auto",
         show_progress: bool = True,
         output_label_suffix: str = "",
         output_label: str | None = None,
         overwrite: bool = False,
         min_cluster_area: int | None = 2,
     ) -> None:
-        """Build a spacetime consensus clustering and merge it into ``self.td.data``.
+        """Merge several input cluster maps into one spacetime consensus field on ``self.td.data``.
 
-        Writes two variables: consensus labels (``variable_type=consensus_cluster``) and
-        a companion consistency field (``variable_type=consensus_consistency``). The list of
-        input clustering variables is stored on both as ``cluster_vars``.
+        Use this when you have multiple cluster label fields on the same time × space grid
+        (different models, parameters, or variables) and want regions where enough inputs
+        agree that an abrupt shift occurred, within chosen time and space windows.
 
-        **Label encoding** (same idea as :func:`toad.clustering.compute_clusters`): ``NaN`` where
-        every input cluster field is ``NaN`` (no abrupt shift at that spacetime cell); ``-1`` where
-        at least one input had a defined label (including noise ``-1``) but the voxel is not in a
-        consensus component; non-negative integers for consensus cluster ids. Consistency is
-        ``NaN`` wherever the label is ``NaN``.
+        **Algorithm**
+
+        1. For each input, build a mask of **native event voxels** (non-noise cluster labels,
+           ``>= 0``).
+        2. Dilate each mask in ``(time, y, x)`` by ``temporal_tolerance`` and
+           ``spatial_tolerance`` for **support counting only**.
+        3. At each native event voxel, count how many distinct inputs have dilated support
+           covering that cell.
+        4. Retain the voxel if the count reaches ``max(1, ceil(min_consensus * n_inputs))``.
+        5. Group retained voxels into consensus cluster ids using the same tolerances for
+           spacetime connectivity (``max(1, tolerance)`` along each axis).
+        6. Optionally drop clusters whose spatial footprint is below ``min_cluster_area``.
+
+        Dilation never writes extra cells to the output: only voxels that were **detected** in
+        at least one input can appear in the consensus mask. Spatial tolerance is in native
+        grid indices, not kilometres. With ``stitch_meridian``, the first and last longitude
+        column can be treated as neighbours during dilation and labelling on global grids.
+
+        **Writes**
+
+        Two variables are merged into ``self.td.data`` (default names ``cluster_consensus`` and
+        ``cluster_consensus_consistency``):
+
+        * **Labels** (``variable_type=consensus_cluster``): ``NaN`` if every input has no
+          abrupt shift at that cell; ``-1`` if at least one input had a defined label but the
+          cell is not in consensus (or was filtered out); non-negative integers are consensus
+          cluster ids.
+        * **Consistency** (``variable_type=consensus_consistency``): supporting inputs divided
+          by total inputs at each native event voxel, **including** voxels below the consensus
+          threshold; ``0`` where no input assigned a cluster; ``NaN`` where the label is
+          ``NaN``.
+
+        Both arrays store ``cluster_vars``, ``min_consensus``, ``min_consensus_members``,
+        tolerance settings, and ``stitch_meridian`` / ``stitch_meridian_applied``. For a
+        per-cluster table after the fact, call :meth:`consensus_summary`.
 
         Args:
-            cluster_vars: List of clustering variable names to include in the consensus.
-                If None, uses all cluster variables in ``self.td.cluster_vars``.
-            min_consensus: Minimum fraction (in [0,1]) of clusterings that must support an edge
-                for it to be included in the consensus graph after ``W = V/A``. Higher values =
-                stricter consensus. Required (callers must choose explicitly).
-            temporal_tolerance: Non-negative integer (required; no implicit default).
-                Dilation radius applied to peak-event voxel labels before voting. If a cell is
-                labelled at time ``t`` in an input clustering, it is treated as active for that
-                same cluster id at all times ``t'`` with ``|t' - t| <= temporal_tolerance`` when
-                computing consensus votes. ``0`` means no dilation (exact-time peak voxels only).
-                This pools timing jitter before the standard same-time spatial / consecutive-time
-                consensus graph is evaluated. The returned ``clusters`` mask is then trimmed back
-                to voxels that had support in at least one original undilated input clustering, so
-                tolerance affects matching but does not directly thicken the public output mask.
-                This is a local agreement rule, not a global cap on the final cluster time span:
-                connected components may still extend over more than ``temporal_tolerance`` timesteps
-                via transitive chains.
-            spatial_tolerance: Non-negative integer (required; no implicit default).
-                Spatial dilation radius measured in graph hops on the spatial adjacency used
-                by the consensus graph. ``0`` means exact spatial support only. Positive values
-                let nearby spatially displaced detections support the same local consensus edge.
-                As with ``temporal_tolerance``, this affects matching only; the returned mask is
-                trimmed back to original undilated support afterwards.
-            top_n_clusters: If set, only the largest N clusters by actual spacetime size in
-                each input clustering are used when voting for edges. This is computed inside
-                consensus and does not rely on the stored cluster-id order. If None, all
-                clusters are included. Default: None.
-            stitch_meridian: Whether to stitch the first and last native-grid columns into a
-                wrapped seam. This only affects native-grid adjacency (including curvilinear
-                grids that keep their original ``y/x`` or ``i/j`` topology) and is useful for
-                domains split at the meridian. Default: False.
-            show_progress: Whether to show the progress bar. Default: True.
-            output_label_suffix: Suffix appended to the default output label ``cluster_consensus``.
-            output_label: Explicit name for the consensus labels variable. If None, uses
-                ``"cluster_consensus" + output_label_suffix``.
-            overwrite: If True, replace existing variables with the same names. If False,
-                append ``_1``, ``_2``, … when a name is already taken (same convention as
-                :func:`toad.clustering.compute_clusters`).
-            min_cluster_area: Post-filter on spatial footprint: consensus clusters whose
-                spatial extent (number of grid cells where the cluster appears at any time)
-                is **strictly below** this threshold are dropped; those voxels become noise
-                (``-1``) and remaining cluster ids are re-sorted by size. Default: ``2`` (drop
-                single-cell clusters). Set to ``None`` to disable this post-filter entirely.
-                Non-negative integers are allowed; ``0`` disables filtering (same effect as
-                choosing a threshold that never removes a cluster).
+            cluster_vars: Input clustering variables to include. If None, uses all
+                ``self.td.cluster_vars``.
+            min_consensus: Fraction in ``[0, 1]`` of inputs required per retained voxel after
+                dilation. Required; no default.
+            temporal_tolerance: Time-step radius for support dilation and cluster connectivity.
+                Required; ``0`` means exact-time support only.
+            spatial_tolerance: Grid-cell radius in ``y/x`` for support dilation and cluster
+                connectivity. Required; ``0`` means exact spatial support only.
+            stitch_meridian: ``False``, ``True``, or ``\"auto\"`` (default). ``\"auto\"`` enables
+                seam stitching when the grid spans nearly all longitudes.
+            show_progress: Show a progress bar while processing inputs. Default: True.
+            output_label_suffix: Suffix for the default label name ``cluster_consensus``.
+            output_label: Explicit consensus labels variable name. If None, uses
+                ``\"cluster_consensus\" + output_label_suffix``.
+            overwrite: Replace existing variables with the same names. If False, uniquify
+                names like :func:`toad.clustering.compute_clusters`.
+            min_cluster_area: Drop consensus clusters whose spatial footprint (cells at any
+                time) is strictly below this value; ids are re-sorted afterward. Default ``2``.
+                ``None`` disables the filter.
 
-        Notes:
-            The method builds one graph on ``(time × space)`` nodes (see
-            ``_build_spacetime_graph_edges``), accumulates ``V`` /
-            ``A`` on that edge set, thresholds, then one connected-components pass. Optional
-            ``temporal_tolerance`` and ``spatial_tolerance`` first dilate peak-event labels in
-            time and space for matching, so nearby events can agree through the standard graph
-            rather than by adding new edge families. After trimming back to original support,
-            labels are re-sorted **globally** by final spacetime component size so output
-            slices share stable ids.
-
-            Additional implementation details:
-
-            * Spatial adjacency is **index-based 8-neighbour** on the label grid, with
-              optional first/last-column seam stitching via ``stitch_meridian``.
-            * Consensus clusters represent regions whose internal edges are repeatedly co-clustered
-              across the inputs and may be chained via single-link paths.
-            * Large, non-compact clusters can form if consensus is too lenient; increase
-              `min_consensus` or apply additional filtering for tighter components if needed.
-            * Suitable for identifying robust tipping regions or domains unaffected by clustering noise.
-            * The per-cluster summary table is not built during this method; call
-              :meth:`consensus_summary` when you need it. (The internal solver used to
-              construct a summary DataFrame that was then unused; that extra work was removed.)
+        See Also:
+            :doc:`consensus_clustering` for a longer guide and :doc:`Consensus tutorial
+            <tutorials/consensus>` for a worked example.
 
         Example:
             >>> td.compute_consensus(
-            ...     cluster_vars=['clust_a', 'clust_b'],
+            ...     cluster_vars=['var_dts_cluster', 'var_dts_cluster_1'],
             ...     min_consensus=0.7,
-            ...     temporal_tolerance=0,
-            ...     spatial_tolerance=0,
+            ...     temporal_tolerance=5,
+            ...     spatial_tolerance=1,
+            ...     min_cluster_area=10,
             ... )
             >>> td.plot.consensus_overview()
             >>> td.aggregate.consensus_summary().head()
 
         Raises:
-            ValueError: If a tolerance is negative, or if ``min_cluster_area`` is invalid.
-            AssertionError: If no cluster_vars are found.
+            ValueError: If no cluster variables are found, a tolerance is negative,
+            ``min_consensus`` is outside ``[0, 1]``, or ``min_cluster_area`` is invalid.
 
-        See Also:
-            Evidence accumulation clustering (EAC) method from Fred & Jain (2005). This
-            implementation uses spatial adjacency instead of dense all-pairs co-association
-            for scalability.
         """
+        # --- inputs and parameters ---
         if cluster_vars is None:
             cluster_vars = list(self.td.cluster_vars)
-        assert len(cluster_vars) > 0, "No cluster variables provided/found."
+        if len(cluster_vars) == 0:
+            raise ValueError("No cluster variables provided/found.")
 
         if temporal_tolerance < 0:
             raise ValueError(
@@ -331,11 +358,26 @@ class Aggregation:
             raise ValueError(
                 f"`spatial_tolerance` must be >= 0, got {spatial_tolerance}."
             )
+        if not (0.0 <= min_consensus <= 1.0):
+            raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
         if min_cluster_area is not None and min_cluster_area < 0:
             raise ValueError(
                 f"`min_cluster_area` must be >= 0 or None, got {min_cluster_area}."
             )
 
+        # --- grid layout (meridian stitching for labelling / dilation on global lon grids) ---
+        spatial_dims = tuple(self.td.space_dims)
+        stitch_meridian_resolved = resolve_stitch_meridian(
+            stitch_meridian,
+            dataset=self.td.data,
+            spatial_dims=spatial_dims,
+        )
+        if stitch_meridian == "auto" and stitch_meridian_resolved:
+            self.td.logger.info(
+                "Meridian seam stitching enabled automatically (global longitude grid)."
+            )
+
+        # --- output variable names ---
         new_output_label = (
             output_label if output_label else f"cluster_consensus{output_label_suffix}"
         )
@@ -350,47 +392,49 @@ class Aggregation:
             if consistency_drop in self.td.data:
                 self.td.data = self.td.data.drop_vars(consistency_drop)
 
-        ds_out = self._cluster_consensus_spacetime(
+        # --- member-support solver: dilated votes → threshold → connected components ---
+        sample = self.td.data[cluster_vars[0]]
+        context = _build_grid_context(
+            sample,
+            spatial_dims=spatial_dims,
+            time_dim=self.td.time_dim,
+            stitch_meridian=stitch_meridian_resolved,
+        )
+        native_union, member_vote_count = _accumulate_member_support(
+            self.td,
             cluster_vars=cluster_vars,
-            min_consensus=min_consensus,
-            top_n_clusters=top_n_clusters,
-            stitch_meridian=stitch_meridian,
-            show_progress=show_progress,
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,
+            show_progress=show_progress,
+            context=context,
         )
-
-        da_labels = ds_out["clusters"].rename(new_output_label)
-        da_consistency = ds_out["consistency"].rename(f"{new_output_label}_consistency")
-
-        if min_cluster_area is not None and min_cluster_area > 0:
-            da_labels, da_consistency = _filter_consensus_labels_min_size(
-                da_labels,
-                da_consistency,
-                min_cluster_area,
-                time_dim=self.td.time_dim,
+        if not np.any(native_union):
+            ds_out = _empty_result(self.td, cluster_vars, context)
+        else:
+            ds_out = _build_member_support_dataset(
+                self.td,
+                cluster_vars=cluster_vars,
+                min_consensus=min_consensus,
+                temporal_tolerance=temporal_tolerance,
+                spatial_tolerance=spatial_tolerance,
+                context=context,
+                native_union=native_union,
+                member_vote_count=member_vote_count,
             )
-            da_labels.attrs["min_cluster_area"] = int(min_cluster_area)
-            da_consistency.attrs["min_cluster_area"] = int(min_cluster_area)
 
-        lab = np.asarray(da_labels.data, dtype=np.float64)
-        da_labels.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CLUSTER
-        u = np.unique(lab[np.isfinite(lab) & (lab >= 0)])
-        da_labels.attrs[_attrs.CLUSTER_IDS] = (
-            u.astype(int) if u.size else np.array([], dtype=int)
-        )
-        da_labels.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
-        da_labels.attrs[_attrs.TOAD_VERSION] = __version__
-
-        da_consistency.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CONSISTENCY
-        da_consistency.attrs[_attrs.CONSENSUS_LABELS_VAR] = new_output_label
-        da_consistency.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
-        da_consistency.attrs[_attrs.TOAD_VERSION] = __version__
-
-        self.td.data = xr.merge(
-            [self.td.data, da_labels, da_consistency],
-            combine_attrs="override",
-            compat="override",
+        # --- optional size filter, TOAD attrs, merge into td.data ---
+        lab = _finalize_consensus_variables(
+            self.td,
+            ds_out=ds_out,
+            new_output_label=new_output_label,
+            cluster_vars=cluster_vars,
+            min_consensus=min_consensus,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            stitch_meridian=stitch_meridian,
+            stitch_meridian_resolved=stitch_meridian_resolved,
+            min_cluster_area=min_cluster_area,
+            time_dim=self.td.time_dim,
         )
 
         logger.info(_format_consensus_summary(new_output_label, lab))
@@ -398,14 +442,20 @@ class Aggregation:
     def consensus_summary(self, consensus_var: str | None = None) -> pd.DataFrame:
         """Rebuild the per-cluster summary table from stored consensus label and consistency arrays.
 
+        Shift-time columns use strict same-``(time, y, x)`` agreement between consensus
+        and each input (see :func:`toad.utils.cluster_consensus_utils.consensus_shift_time_distribution`).
+        To plot full base-variable trajectories over a shared spatial region with a looser
+        time rule, use :meth:`consensus_cluster_timeseries` instead.
+
         Args:
             consensus_var: Name of the consensus labels variable (``variable_type=consensus_cluster``).
                 If None, infers the variable when exactly one consensus label exists on the dataset
                 (same resolution rules as :meth:`toad.core.TOAD._resolve_consensus_var`).
 
         Returns:
-            DataFrame with one row per consensus cluster. Includes ``median_median_shift_time``
-            (median of per-input spatial medians), related between-input std columns, and
+            DataFrame with one row per consensus cluster. Includes ``mean_consistency``,
+            spatial ``area`` and centroid columns, ``median_median_shift_time`` (median of
+            per-input spatial medians), related between-input std columns, and
             ``pooled_median_shift_time`` / ``pooled_std_shift_time`` over all pooled event-time
             samples; see :func:`toad.utils.cluster_consensus_utils._build_consensus_summary_df_spacetime`.
         """
@@ -429,7 +479,6 @@ class Aggregation:
         *,
         spatial_dims: tuple[str, str] | None = None,
         time_dim: str | None = None,
-        shift_threshold: float = 0.0,
     ) -> tuple[xr.Dataset, pd.DataFrame]:
         """Export event-time samples behind the consensus summary shift columns.
 
@@ -441,7 +490,6 @@ class Aggregation:
             da_clusters: Consensus labels from :meth:`compute_consensus` / :meth:`TOAD.compute_consensus`.
             spatial_dims: Defaults to ``self.td.space_dims``.
             time_dim: Inferred from ``self.td.time_dim`` when present on ``da_clusters``.
-            shift_threshold: Unused for spacetime consensus. Kept only for API compatibility.
 
         Returns:
             ``(xr.Dataset, pandas.DataFrame)`` — see the utility docstring.
@@ -451,7 +499,6 @@ class Aggregation:
             da_clusters,
             spatial_dims=spatial_dims,
             time_dim=time_dim,
-            shift_threshold=shift_threshold,
         )
 
     def consensus_shift_time_distributions(
@@ -460,7 +507,6 @@ class Aggregation:
         *,
         spatial_dims: tuple[str, str] | None = None,
         time_dim: str | None = None,
-        shift_threshold: float = 0.0,
         distribution_result: tuple[xr.Dataset, pd.DataFrame] | None = None,
         source_input_cluster_var: str | None = None,
     ) -> dict[int, np.ndarray]:
@@ -475,7 +521,6 @@ class Aggregation:
             da_clusters: Consensus labels from :meth:`compute_consensus` / :meth:`TOAD.compute_consensus`.
             spatial_dims: Defaults to ``self.td.space_dims``.
             time_dim: Inferred from ``self.td.time_dim`` when present on ``da_clusters``.
-            shift_threshold: Passed to ``compute_transition_time`` (default ``0.0``).
             distribution_result: If provided, a prior ``(dataset, dataframe)`` tuple from
                 :meth:`consensus_shift_time_distribution` for the same inputs; recomputation
                 of the long table is skipped.
@@ -493,7 +538,6 @@ class Aggregation:
             da_clusters,
             spatial_dims=spatial_dims,
             time_dim=time_dim,
-            shift_threshold=shift_threshold,
             distribution_result=distribution_result,
             source_input_cluster_var=source_input_cluster_var,
         )
@@ -549,10 +593,16 @@ class Aggregation:
     ) -> xr.DataArray:
         """2D boolean mask of grid cells used by :meth:`consensus_cluster_timeseries`.
 
-        A cell is True iff at some time (if applicable) the consensus label matches
-        ``consensus_cluster_id`` and the input ``cluster_var`` is supported
-        (non-noise in the allowed set). Same construction as the spatial mask passed
-        to :meth:`toad.core.TOAD.get_timeseries` in :meth:`consensus_cluster_timeseries`.
+        A cell is True iff, at **some** timestep, the consensus label equals
+        ``consensus_cluster_id`` **and** the input ``cluster_var`` has a non-noise label
+        (``>= 0``). Those conditions need not hold at the **same** time — the mask is
+        collapsed with OR over time, then used to extract **full** time series on the
+        resulting spatial footprint.
+
+        This is looser than the support rule in :meth:`consensus_summary` /
+        :func:`~toad.utils.cluster_consensus_utils.consensus_shift_time_distribution`,
+        which require consensus and input to agree at the same ``(time, y, x)`` when
+        computing shift-time statistics.
 
         Args:
             da_clusters: Consensus label field.
@@ -572,21 +622,10 @@ class Aggregation:
             spatial_dims=tuple(self.td.space_dims),
             time_dim=time_dim if has_time_dim else None,
         )
+        # OR over time: consensus and input need not agree at the same timestep
         if has_time_dim:
             return (cluster_mask & support_mask).any(dim=time_dim)
         return cluster_mask & support_mask
-
-    def consensus_cluster_extraction_n_cells_2d(
-        self,
-        da_clusters: xr.DataArray,
-        consensus_cluster_id: int,
-        cluster_var: str,
-    ) -> int:
-        """Count of True cells in :meth:`consensus_extraction_mask_2d`."""
-        m = self.consensus_extraction_mask_2d(
-            da_clusters, consensus_cluster_id, cluster_var
-        )
-        return int(m.sum().item())
 
     def consensus_cluster_timeseries(
         self,
@@ -605,10 +644,15 @@ class Aggregation:
     ) -> dict[str, xr.DataArray]:
         """Extract per-input timeseries for one consensus cluster.
 
-        This mirrors :meth:`toad.core.TOAD.get_timeseries`, but uses a consensus
-        cluster from :meth:`compute_consensus` as the mask and returns one result
-        per input ``cluster_var``. The output is convenient for overlaying model
-        trajectories from the same consensus region.
+        Uses :meth:`consensus_extraction_mask_2d` — a **spatial** footprint where consensus
+        and each input were active at least once (not necessarily at the same time), then
+        aggregates the base variable over those cells for the full time axis (see
+        ``keep_full_timeseries``). Convenient for overlaying trajectories from the same
+        region across inputs.
+
+        For *when* shifts occurred, use :meth:`consensus_summary` or
+        :meth:`consensus_shift_time_distribution` instead; those require consensus and
+        input labels at the same ``(time, y, x)`` voxel.
 
         Args:
             da_clusters: Consensus labels from :meth:`compute_consensus` / :meth:`TOAD.compute_consensus`.
@@ -625,12 +669,9 @@ class Aggregation:
                 masked out.
 
         Returns:
-            Mapping ``{cluster_var: xr.DataArray}`` for input clusterings that actually
-            support the requested consensus cluster. Timeseries are extracted from the
-            supported spatial footprint of the consensus cluster, i.e. cells that both
-            belong to the consensus cluster and are supported by the given input
-            clustering at least once in time. Each value has the same output form as
-            :meth:`toad.core.TOAD.get_timeseries` for the chosen aggregation.
+            Mapping ``{cluster_var: xr.DataArray}`` for input clusterings with a
+            non-empty footprint. Each series matches :meth:`toad.core.TOAD.get_timeseries`
+            for the chosen ``aggregation``.
         """
         if cluster_vars is None:
             cluster_vars_attr = da_clusters.attrs.get("cluster_vars")
@@ -724,400 +765,3 @@ class Aggregation:
                 "under the current extraction settings."
             )
         return out
-
-    def _labels_tyx(
-        self,
-        cvar_name: str,
-        time_dim: str,
-        spatial_dims: tuple[str, str],
-    ) -> np.ndarray:
-        """Return cluster labels in canonical ``(time, y, x)`` order."""
-        da = self.td.data[cvar_name]
-        return da.transpose(time_dim, spatial_dims[0], spatial_dims[1]).values
-
-    @staticmethod
-    def _flatten_spacetime_labels(labels_tyx: np.ndarray) -> np.ndarray:
-        """Flatten ``(time, y, x)`` labels to match spacetime node indexing."""
-        return np.asarray(labels_tyx).reshape(-1)
-
-    @staticmethod
-    def _reshape_spacetime_consensus_outputs(
-        *,
-        labels_st: np.ndarray,
-        cons_flat: np.ndarray,
-        deg: np.ndarray,
-        T: int,
-        n_space: int,
-        y_len: int,
-        x_len: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Map flat spacetime consensus results back to ``(time, y, x)`` arrays."""
-        clusters_out = np.full((T, y_len, x_len), -1, dtype=np.int32)
-        consistency_out = np.zeros((T, y_len, x_len), dtype=np.float32)
-
-        for t in range(T):
-            sl = slice(t * n_space, (t + 1) * n_space)
-            labels_2d = labels_st[sl].reshape((y_len, x_len))
-            cons_2d = cons_flat[sl].reshape((y_len, x_len))
-            deg_2d = deg[sl].reshape((y_len, x_len))
-            labels_2d[deg_2d == 0] = -1
-            clusters_out[t] = labels_2d.astype(np.int32)
-            consistency_out[t] = cons_2d
-        return clusters_out, consistency_out
-
-    def _build_spacetime_consensus_context(
-        self,
-        *,
-        sample: xr.DataArray,
-        stitch_meridian: bool,
-    ) -> _SpacetimeConsensusContext:
-        """Build grid and graph context for spacetime consensus (native 8-neighbour)."""
-        spatial_dims = tuple(self.td.space_dims)
-        time_dim = self.td.time_dim
-        T = int(sample.sizes[time_dim])
-        y_len = sample.sizes[spatial_dims[0]]
-        x_len = sample.sizes[spatial_dims[1]]
-        N = y_len * x_len
-        flat_idx_2d = np.arange(N, dtype=np.int64).reshape((y_len, x_len))
-
-        coords_spatial = {
-            name: coord
-            for name, coord in sample.coords.items()
-            if (len(coord.dims) > 0) and set(coord.dims).issubset(spatial_dims)
-        }
-        for d in spatial_dims:
-            coords_spatial.setdefault(d, sample[d])
-        time_coord = sample[time_dim]
-
-        present_mask2d = np.ones((y_len, x_len), dtype=bool)
-        er, ec = _native_edges_from_mask(
-            present_mask2d, flat_idx_2d, stitch_longitude=stitch_meridian
-        )
-        spatial_er = np.asarray(er, dtype=np.int64)
-        spatial_ec = np.asarray(ec, dtype=np.int64)
-        n_space = N
-
-        st_er, st_ec = _build_spacetime_graph_edges(T, n_space, spatial_er, spatial_ec)
-        return _SpacetimeConsensusContext(
-            spatial_dims=spatial_dims,
-            time_dim=time_dim,
-            T=T,
-            y_len=y_len,
-            x_len=x_len,
-            coords_spatial=cast(dict[str, Any], coords_spatial),
-            time_coord=time_coord,
-            n_space=n_space,
-            spatial_er=spatial_er,
-            spatial_ec=spatial_ec,
-            st_er=st_er,
-            st_ec=st_ec,
-        )
-
-    def _accumulate_spacetime_votes(
-        self,
-        *,
-        cluster_vars: List[str],
-        top_n_clusters: int | None,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-        show_progress: bool,
-        context: _SpacetimeConsensusContext,
-    ) -> _SpacetimeVoteData | None:
-        """Collect sparse vote edges and undilated support across all input maps."""
-        n_st = context.T * context.n_space
-        rows_V_parts: list[np.ndarray] = []
-        cols_V_parts: list[np.ndarray] = []
-        n_contributing_maps = 0
-        original_support_flat = np.zeros(n_st, dtype=bool)
-
-        cvar_iter = tqdm(
-            cluster_vars, disable=not show_progress, desc="spacetime consensus"
-        )
-        for cvar in cvar_iter:
-            allowed = _largest_cluster_ids(self.td, cvar, top_n_clusters)
-            if allowed.size == 0:
-                continue
-            n_contributing_maps += 1
-
-            labels_orig = self._labels_tyx(
-                cvar_name=cvar,
-                time_dim=context.time_dim,
-                spatial_dims=context.spatial_dims,
-            )
-            orig_flat = self._flatten_spacetime_labels(labels_orig)
-            original_support_flat |= (
-                np.isfinite(orig_flat) & (orig_flat >= 0) & np.isin(orig_flat, allowed)
-            )
-
-            labels_dilated = _dilate_cluster_labels_spacetime(
-                orig_flat.reshape(context.T, context.n_space),
-                allowed,
-                temporal_tolerance=temporal_tolerance,
-                spatial_tolerance=spatial_tolerance,
-                spatial_rows=context.spatial_er,
-                spatial_cols=context.spatial_ec,
-            )
-            labels_flat = labels_dilated.reshape(-1)
-
-            lu = labels_flat[context.st_er]
-            lv = labels_flat[context.st_ec]
-            keep_votes = (
-                (lu == lv)
-                & (lu >= 0)
-                & np.isfinite(lu)
-                & np.isfinite(lv)
-                & np.isin(lu, allowed)
-            )
-            if np.any(keep_votes):
-                rows_V_parts.append(context.st_er[keep_votes])
-                cols_V_parts.append(context.st_ec[keep_votes])
-
-        if not rows_V_parts:
-            return None
-
-        return _SpacetimeVoteData(
-            rows_V=np.concatenate(rows_V_parts).astype(np.int64, copy=False),
-            cols_V=np.concatenate(cols_V_parts).astype(np.int64, copy=False),
-            n_contributing_maps=n_contributing_maps,
-            original_support_flat=original_support_flat,
-        )
-
-    @staticmethod
-    def _solve_spacetime_consensus_components(
-        *,
-        min_consensus: float,
-        context: _SpacetimeConsensusContext,
-        vote_data: _SpacetimeVoteData,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-        """Solve the weighted consensus graph and extract trimmed components."""
-        n_st = context.T * context.n_space
-        W = _compute_weighted_consensus(
-            vote_data.rows_V,
-            vote_data.cols_V,
-            context.st_er,
-            context.st_ec,
-            (n_st, n_st),
-            min_consensus,
-            data_A=np.full(
-                context.st_er.shape[0], vote_data.n_contributing_maps, dtype=np.float32
-            ),
-        )
-        if W.nnz == 0:
-            return None
-
-        node_sum = np.array(W.sum(axis=1)).ravel()
-        node_deg = np.array(W.count_nonzero(axis=1)).ravel().astype(np.float32)
-        cons_flat = np.divide(
-            node_sum, node_deg, out=np.zeros_like(node_sum), where=node_deg > 0
-        ).astype(np.float32)
-
-        bin_adj = W.copy()
-        bin_adj.data[:] = 1.0
-        bin_adj = bin_adj.maximum(bin_adj.T)
-        _, labels_st = connected_components(bin_adj, directed=False, return_labels=True)
-        deg = np.array(bin_adj.getnnz(axis=1))
-        labels_st = labels_st.astype(np.int64, copy=False)
-        labels_st[deg == 0] = -1
-        labels_st = sorted_cluster_labels(labels_st)
-        labels_st, cons_flat = _trim_spacetime_consensus_to_original_support(
-            labels_st, cons_flat, vote_data.original_support_flat
-        )
-        labels_st = sorted_cluster_labels(labels_st)
-        return labels_st, cons_flat, deg
-
-    def _all_inputs_no_shift_mask_flat(
-        self,
-        cluster_vars: List[str],
-        context: _SpacetimeConsensusContext,
-    ) -> np.ndarray:
-        """True in ``clusters.values.ravel()`` order where every input label is NaN (no shift).
-
-        Built on the native ``(time, y, x)`` grid (same layout as the stored consensus
-        label field).
-        """
-        T, y_len, x_len = context.T, context.y_len, context.x_len
-        all_nan = np.ones((T, y_len, x_len), dtype=bool)
-        for cvar in cluster_vars:
-            lab_tyx = self._labels_tyx(cvar, context.time_dim, context.spatial_dims)
-            if lab_tyx.shape != (T, y_len, x_len):
-                raise ValueError(
-                    f"Label field {cvar!r} has shape {lab_tyx.shape}, expected "
-                    f"({T}, {y_len}, {x_len}) for consensus no-shift mask."
-                )
-            all_nan &= np.isnan(np.asarray(lab_tyx, dtype=np.float64))
-        return all_nan.ravel()
-
-    def _mark_no_shift_nan_on_consensus_dataset(
-        self,
-        ds: xr.Dataset,
-        cluster_vars: List[str],
-        context: _SpacetimeConsensusContext,
-    ) -> xr.Dataset:
-        """Set consensus label NaN and consistency NaN where all inputs have no shift (aligns with compute_clusters)."""
-        all_none = self._all_inputs_no_shift_mask_flat(cluster_vars, context)
-        da_c = ds["clusters"]
-        T, y_len, x_len = context.T, context.y_len, context.x_len
-        flat = np.asarray(da_c.data, dtype=np.float64).ravel()
-        m = (flat == -1) & all_none
-        flat = flat.copy()
-        flat[m] = np.nan
-        new_lab = flat.reshape((T, y_len, x_len))
-        new_lab_f = new_lab.ravel()
-        cons = np.asarray(ds["consistency"].data, dtype=np.float32).copy().reshape(-1)
-        cons[~np.isfinite(new_lab_f)] = np.nan
-        cons = cons.reshape((T, y_len, x_len))
-        return xr.Dataset(
-            {
-                "clusters": xr.DataArray(
-                    new_lab,
-                    coords=da_c.coords,
-                    dims=da_c.dims,
-                    attrs=da_c.attrs,
-                    name=da_c.name,
-                ),
-                "consistency": xr.DataArray(
-                    cons,
-                    coords=ds["consistency"].coords,
-                    dims=ds["consistency"].dims,
-                    attrs=ds["consistency"].attrs,
-                    name=ds["consistency"].name,
-                ),
-            }
-        )
-
-    def _empty_spacetime_consensus_result(
-        self,
-        context: _SpacetimeConsensusContext,
-        cluster_vars: List[str],
-    ) -> xr.Dataset:
-        """Return an all-noise spacetime consensus result with matching metadata shape."""
-        ds = _build_empty_consensus_time_resolved(
-            context.T,
-            context.y_len,
-            context.x_len,
-            context.coords_spatial,
-            context.spatial_dims,
-            context.time_coord,
-            context.time_dim,
-        )
-        return self._mark_no_shift_nan_on_consensus_dataset(ds, cluster_vars, context)
-
-    def _build_spacetime_consensus_result(
-        self,
-        *,
-        cluster_vars: List[str],
-        min_consensus: float,
-        top_n_clusters: int | None,
-        stitch_meridian: bool,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-        context: _SpacetimeConsensusContext,
-        labels_st: np.ndarray,
-        cons_flat: np.ndarray,
-        deg: np.ndarray,
-    ) -> xr.Dataset:
-        """Assemble spacetime consensus xarray outputs (summary is built in :meth:`compute_consensus`)."""
-        clusters_out, consistency_out = self._reshape_spacetime_consensus_outputs(
-            labels_st=labels_st,
-            cons_flat=cons_flat,
-            deg=deg,
-            T=context.T,
-            n_space=context.n_space,
-            y_len=context.y_len,
-            x_len=context.x_len,
-        )
-        if not np.any(clusters_out >= 0):
-            return self._empty_spacetime_consensus_result(context, cluster_vars)
-
-        da_clusters = xr.DataArray(
-            clusters_out,
-            coords={context.time_dim: context.time_coord, **context.coords_spatial},
-            dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
-            name="clusters",
-        )
-        _cluster_attrs: dict[str, object] = {
-            "cluster_vars": cluster_vars,
-            "min_consensus": min_consensus,
-            "top_n_clusters": top_n_clusters,
-            "stitch_meridian": stitch_meridian,
-            "spatial_adjacency": "native_grid_8_connected",
-            "spacetime_consensus": True,
-            "temporal_tolerance": temporal_tolerance,
-            "spatial_tolerance": spatial_tolerance,
-            "description": (
-                "Spacetime lattice consensus (time × space graph). "
-                "Cluster ids are global across time (same id = same connected component). "
-                "temporal_tolerance and spatial_tolerance dilate peak-event labels for "
-                "matching, but the returned mask is trimmed to original undilated event "
-                "support; "
-                "summary aggregates all timesteps; see compute_consensus docstring."
-            ),
-        }
-        da_clusters.attrs.update(_cluster_attrs)
-        da_consistency = xr.DataArray(
-            consistency_out,
-            coords={context.time_dim: context.time_coord, **context.coords_spatial},
-            dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
-            name="consistency",
-        )
-        return self._mark_no_shift_nan_on_consensus_dataset(
-            xr.Dataset({"clusters": da_clusters, "consistency": da_consistency}),
-            cluster_vars,
-            context,
-        )
-
-    def _cluster_consensus_spacetime(
-        self,
-        cluster_vars: List[str],
-        min_consensus: float,
-        top_n_clusters: int | None,
-        stitch_meridian: bool,
-        show_progress: bool,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-    ) -> xr.Dataset:
-        """Spacetime lattice consensus on the native 8-neighbour graph.
-
-        Invariants:
-        - Node flat index ``t * n_space + s`` matches ``labels.reshape(T, -1).ravel()`` order
-          with ``labels`` in ``(time, y, x)`` layout (transposed from disk order if needed).
-        - ``sorted_cluster_labels`` is applied only to the full ``labels_st`` vector, not per
-          time slice, so cluster ids are stable across ``time_dim``.
-        """
-        sample = self.td.data[cluster_vars[0]]
-        context = self._build_spacetime_consensus_context(
-            sample=sample,
-            stitch_meridian=stitch_meridian,
-        )
-        vote_data = self._accumulate_spacetime_votes(
-            cluster_vars=cluster_vars,
-            top_n_clusters=top_n_clusters,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-            context=context,
-        )
-        if vote_data is None:
-            return self._empty_spacetime_consensus_result(context, cluster_vars)
-
-        solved = self._solve_spacetime_consensus_components(
-            min_consensus=min_consensus,
-            context=context,
-            vote_data=vote_data,
-        )
-        if solved is None:
-            return self._empty_spacetime_consensus_result(context, cluster_vars)
-
-        labels_st, cons_flat, deg = solved
-        return self._build_spacetime_consensus_result(
-            cluster_vars=cluster_vars,
-            min_consensus=min_consensus,
-            top_n_clusters=top_n_clusters,
-            stitch_meridian=stitch_meridian,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            context=context,
-            labels_st=labels_st,
-            cons_flat=cons_flat,
-            deg=deg,
-        )

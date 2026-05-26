@@ -33,7 +33,8 @@ Next Steps
 ----------
 
 - **Learn the basics**: Check out the :doc:`tutorials/basics` tutorial for a comprehensive introduction
-- **Customize methods**: Learn how to :doc:`tutorials/custom_clustering` and :doc:`tutorials/custom_shifts_detection` 
+- **Customize methods**: Learn how to :doc:`tutorials/custom_clustering` and :doc:`tutorials/custom_shifts_detection`
+- **Combine clusterings**: When you have several label fields on the same grid, see :doc:`consensus_clustering` and the :doc:`Consensus tutorial <tutorials/consensus>`
 
 Data Format
 -----------

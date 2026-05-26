@@ -312,3 +312,28 @@ class TestPlottingWithExplicitVar:
             )
             assert fig is not None
             plt.close(fig)
+
+
+def test_member_id_from_cluster_var():
+    from toad.plotting import _input_cluster_legend_label, _member_id_from_cluster_var
+
+    assert _member_id_from_cluster_var("mlotst_r1i1p1f1_dts_cluster") == "r1i1p1f1"
+    assert _member_id_from_cluster_var("foo_r2_cluster") == "r2"
+    assert (
+        _input_cluster_legend_label(
+            "mlotst_r3i1p1f1_dts_cluster",
+            n_cells=4,
+            label_style="member_id",
+            include_n_cells=False,
+        )
+        == "r3i1p1f1"
+    )
+    assert (
+        _input_cluster_legend_label(
+            "foo_r1_cluster",
+            n_cells=2,
+            label_style="cluster_var",
+            include_n_cells=True,
+        )
+        == "(2) foo_r1_cluster"
+    )

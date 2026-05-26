@@ -1,9 +1,104 @@
-from typing import Any, Tuple
+from typing import Any, Literal, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.sparse import coo_matrix
+
+from toad.utils import detect_latlon_names
+
+StitchMeridianSetting = bool | Literal["auto"]
+FULL_LONGITUDE_COVERAGE_DEG = 350.0
+
+# ---------------------------------------------------------------------------
+# Meridian seam detection (for stitch_meridian="auto")
+# ---------------------------------------------------------------------------
+
+
+def _longitude_vector_along_x_dim(
+    dataset: xr.Dataset,
+    spatial_dims: Tuple[str, str],
+    lon_name: str,
+) -> np.ndarray | None:
+    """Return longitude values along the last native spatial dimension."""
+    x_dim = spatial_dims[1]
+    lon_coord = dataset.coords.get(lon_name)
+    if lon_coord is None:
+        lon_coord = dataset.get(lon_name)
+    if lon_coord is None:
+        return None
+
+    lon_vals = np.asarray(lon_coord.values, dtype=np.float64)
+    if lon_vals.ndim == 1:
+        if x_dim in lon_coord.dims and len(lon_coord.dims) == 1:
+            return lon_vals
+        return None
+
+    if lon_vals.ndim == 2 and set(lon_coord.dims) == set(spatial_dims):
+        y_dim = spatial_dims[0]
+        if lon_coord.dims[0] == y_dim:
+            mid = lon_vals.shape[0] // 2
+            return lon_vals[mid, :]
+        mid = lon_vals.shape[1] // 2
+        return lon_vals[:, mid]
+    return None
+
+
+def _longitude_coverage_degrees(lon_vec: np.ndarray) -> float:
+    """Angular span covered by ``lon_vec`` on a 0–360° circle."""
+    lon = np.mod(np.asarray(lon_vec, dtype=np.float64), 360.0)
+    lon = lon[np.isfinite(lon)]
+    if lon.size < 2:
+        return 0.0
+    sorted_lon = np.sort(lon)
+    gaps = np.diff(np.concatenate([sorted_lon, sorted_lon[:1] + 360.0]))
+    return float(360.0 - gaps.max())
+
+
+def _longitude_seam_gap_degrees(lon_vec: np.ndarray) -> float:
+    """Shortest angular distance between the first and last grid columns."""
+    lon = np.mod(np.asarray(lon_vec, dtype=np.float64), 360.0)
+    lon0, lon1 = float(lon[0]), float(lon[-1])
+    return min(abs(lon1 - lon0), 360.0 - abs(lon1 - lon0))
+
+
+def infer_stitch_meridian(
+    dataset: xr.Dataset,
+    spatial_dims: Tuple[str, str],
+) -> bool:
+    """Return True when the native grid spans nearly all longitudes with a wrapped seam."""
+    _, lon_name = detect_latlon_names(dataset)
+    if lon_name is None:
+        return False
+
+    lon_vec = _longitude_vector_along_x_dim(dataset, spatial_dims, lon_name)
+    if lon_vec is None or lon_vec.size < 2:
+        return False
+
+    coverage = _longitude_coverage_degrees(lon_vec)
+    if coverage < FULL_LONGITUDE_COVERAGE_DEG:
+        return False
+
+    seam_gap = _longitude_seam_gap_degrees(lon_vec)
+    mean_spacing = coverage / max(lon_vec.size - 1, 1)
+    return seam_gap <= max(2.0 * mean_spacing, 5.0)
+
+
+def resolve_stitch_meridian(
+    setting: StitchMeridianSetting,
+    *,
+    dataset: xr.Dataset,
+    spatial_dims: Tuple[str, str],
+) -> bool:
+    """Resolve ``stitch_meridian`` from ``False``, ``True``, or ``\"auto\"``."""
+    if setting is True:
+        return True
+    if setting is False:
+        return False
+    if setting == "auto":
+        return infer_stitch_meridian(dataset, spatial_dims)
+    raise ValueError(
+        f"`stitch_meridian` must be False, True, or 'auto', got {setting!r}."
+    )
 
 
 def _empty_transition_time_df() -> pd.DataFrame:
@@ -35,27 +130,6 @@ def _consensus_cluster_vars(td: Any, da_clusters: xr.DataArray) -> list[str]:
     return list(cluster_vars_attr)
 
 
-def _largest_cluster_ids(
-    td: Any,
-    cluster_var: str,
-    top_n_clusters: int | None = None,
-) -> np.ndarray:
-    """Return cluster ids, optionally restricted to the largest N by actual size."""
-    cluster_ids = np.asarray(td.get_cluster_ids(cluster_var), dtype=np.int64)
-    cluster_ids = cluster_ids[cluster_ids >= 0]
-    if top_n_clusters is None or int(top_n_clusters) <= 0 or cluster_ids.size <= 1:
-        return cluster_ids
-
-    cluster_counts = td.get_cluster_counts(cluster_var, exclude_noise=True)
-    if len(cluster_counts) == 0:
-        return np.array([], dtype=np.int64)
-
-    sorted_ids = np.fromiter(
-        cluster_counts.keys(), dtype=np.int64, count=len(cluster_counts)
-    )
-    return sorted_ids[: int(top_n_clusters)]
-
-
 def _consensus_input_support_mask(
     td: Any,
     da_clusters: xr.DataArray,
@@ -64,101 +138,30 @@ def _consensus_input_support_mask(
     spatial_dims: Tuple[str, str] | None = None,
     time_dim: str | None = None,
 ) -> xr.DataArray:
-    """Mask where one input clustering actually supports the final consensus labels.
+    """Boolean mask of non-noise labels in one input clustering.
 
-    The returned boolean mask has the same dimensionality as ``da_clusters`` and
-    marks exact 3D support on ``(time, y, x)`` voxels.
+    Returns where ``cluster_var`` has a cluster assignment (label ``>= 0``), with the
+    same dimensionality as ``da_clusters`` when ``time_dim`` is a dimension; otherwise
+    a 2D mask with any cluster activity collapsed over time.
+
+    This does **not** intersect with ``da_clusters`` — callers combine it with consensus
+    labels themselves. For example, :func:`consensus_shift_time_distribution` requires
+    consensus ``>= 0`` **and** this mask at the **same** ``(time, y, x)``; see
+    :meth:`Aggregation.consensus_extraction_mask_2d` for the looser rule used when
+    extracting full time series over a shared spatial footprint.
     """
     if spatial_dims is None:
         spatial_dims = tuple(td.space_dims)
     if time_dim is None and td.time_dim in da_clusters.dims:
         time_dim = td.time_dim
 
-    top_n_clusters = da_clusters.attrs.get("top_n_clusters")
-    allowed = _largest_cluster_ids(td, cluster_var, top_n_clusters)
-
     labels = td.data[cluster_var].transpose(
         td.time_dim, spatial_dims[0], spatial_dims[1]
     )
-    support_3d = labels.isin(allowed)
+    support_3d = labels.notnull() & (labels >= 0)
     if time_dim is not None and time_dim in da_clusters.dims:
         return support_3d.transpose(time_dim, spatial_dims[0], spatial_dims[1])
     return support_3d.any(dim=td.time_dim)
-
-
-def _add_adjacent_true_pairs(
-    mask2d: np.ndarray,
-    edge_set: set[tuple[int, int]],
-    flat_idx_2d: np.ndarray,
-) -> None:
-    """Add undirected 8-neighbour edges for True cells in a 2D mask.
-
-    Modifies edge_set in-place by adding edges between adjacent True cells.
-
-    Args:
-        mask2d: 2D boolean array indicating valid cells.
-        edge_set: Set to which edges will be added (modified in-place).
-        flat_idx_2d: 2D array of flattened indices for each grid cell.
-    """
-    # Horizontal neighbors
-    common = mask2d[:, :-1] & mask2d[:, 1:]
-    if common.any():
-        a = flat_idx_2d[:, :-1][common].ravel()
-        b = flat_idx_2d[:, 1:][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-    # Vertical neighbors
-    common = mask2d[:-1, :] & mask2d[1:, :]
-    if common.any():
-        a = flat_idx_2d[:-1, :][common].ravel()
-        b = flat_idx_2d[1:, :][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-    # Diagonal neighbors: top-left to bottom-right
-    common = mask2d[:-1, :-1] & mask2d[1:, 1:]
-    if common.any():
-        a = flat_idx_2d[:-1, :-1][common].ravel()
-        b = flat_idx_2d[1:, 1:][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-    # Diagonal neighbors: top-right to bottom-left
-    common = mask2d[:-1, 1:] & mask2d[1:, :-1]
-    if common.any():
-        a = flat_idx_2d[:-1, 1:][common].ravel()
-        b = flat_idx_2d[1:, :-1][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-
-
-def _add_wrapped_longitude_pairs(
-    mask2d: np.ndarray,
-    edge_set: set[tuple[int, int]],
-    flat_idx_2d: np.ndarray,
-) -> None:
-    """Add 8-neighbour seam edges between first/last grid columns."""
-    if mask2d.shape[1] < 2:
-        return
-
-    common = mask2d[:, 0] & mask2d[:, -1]
-    if common.any():
-        a = flat_idx_2d[:, 0][common].ravel()
-        b = flat_idx_2d[:, -1][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-
-    common = mask2d[:-1, 0] & mask2d[1:, -1]
-    if common.any():
-        a = flat_idx_2d[:-1, 0][common].ravel()
-        b = flat_idx_2d[1:, -1][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
-
-    common = mask2d[1:, 0] & mask2d[:-1, -1]
-    if common.any():
-        a = flat_idx_2d[1:, 0][common].ravel()
-        b = flat_idx_2d[:-1, -1][common].ravel()
-        for i, j in zip(a.tolist(), b.tolist()):
-            edge_set.add((i, j) if i < j else (j, i))
 
 
 def _build_consensus_summary_df_spacetime(
@@ -170,12 +173,19 @@ def _build_consensus_summary_df_spacetime(
 ) -> pd.DataFrame:
     """Build summary statistics over all ``(time × space)`` consensus labels.
 
-    One row is returned per cluster id that appears anywhere in the spacetime field. Column
-    ``area`` is the number of unique spatial cells in the cluster footprint. Transition-time
-    fields are derived from the
-    actual event-time voxels returned by :func:`consensus_shift_time_distribution`.
-    Pooled shift columns use all transition-time samples in the long table for that
-    cluster (across all ``cluster_var``), not the median-of-medians.
+    One row is returned per cluster id that appears anywhere in the spacetime field.
+
+    * ``area`` — number of unique **spatial** cells in the cluster footprint (any time).
+    * ``mean_consistency`` — mean member-support fraction over **spacetime** voxels
+      with that id (a cell appearing at many timesteps contributes multiple values).
+    * Transition-time columns — from :func:`consensus_shift_time_distribution`: event
+      times only where consensus and the input both have a non-noise label at the
+      **same** ``(time, y, x)``. ``median_median_*`` columns summarise across inputs;
+      ``pooled_*`` columns pool every event row (voxel-weighted, not one vote per input).
+
+    For full base-variable time series over a shared region (times need not match),
+    use :meth:`Aggregation.consensus_cluster_timeseries` instead — it uses a looser
+    2D footprint via :meth:`Aggregation.consensus_extraction_mask_2d`.
 
     Args:
         td: TOAD object containing clustering results.
@@ -217,6 +227,7 @@ def _build_consensus_summary_df_spacetime(
     mean_sd1_vals: list[float] = []
     coord0 = td.data[sd0]
     coord1 = td.data[sd1]
+    # --- per-cluster spatial footprint and centroid (time collapsed) ---
     for cid in cluster_ids:
         footprint = (labels3d == cid).any(dim=time_dim)
         area_vals.append(int(footprint.sum(skipna=True).item()))
@@ -233,12 +244,12 @@ def _build_consensus_summary_df_spacetime(
         }
     )
 
+    # --- strict same-(t,y,x) event times → summary shift columns ---
     dist_ds, df_cell = consensus_shift_time_distribution(
         td,
         labels3d,
         spatial_dims=spatial_dims,
         time_dim=time_dim,
-        shift_threshold=0.0,
     )
     if len(dist_ds.data_vars) == 0:
         df_transitions = pd.DataFrame(
@@ -419,40 +430,36 @@ def consensus_shift_time_distribution(
     da_clusters: xr.DataArray,
     spatial_dims: Tuple[str, str] | None = None,
     time_dim: str | None = None,
-    shift_threshold: float = 0.0,
 ) -> tuple[xr.Dataset, pd.DataFrame]:
     """Per-consensus-cluster event-time samples used to build summary shift columns.
 
-    This function uses the actual numeric time coordinate of each supported labelled
-    voxel. In other words, the exported samples come from the exact peak-event voxels
-    that belong to the consensus cluster, not from a derived 2D transition-time map.
-    This matches the intended interpretation of a spacetime consensus cluster as a set
-    of event voxels at specific times.
+    Each sample is the numeric time coordinate at a spacetime voxel where **both**
+    the consensus label and the input ``cluster_var`` are non-noise (``>= 0``) at
+    the **same** ``(time, y, x)``. Dilated-only support or events at different
+    timesteps on the same grid cell do not contribute.
 
-    **Dataset (always returned when clusterings exist):**
+    This is stricter than :meth:`Aggregation.consensus_extraction_mask_2d`, which
+    collapses over time so that consensus at one timestep and an input cluster at
+    another can still define the same spatial cell — that looser rule is for
+    extracting full time series, not for timing statistics here.
 
-    - ``spatial_mean_transition_time``: for each ``(consensus_cluster_id, cluster_var)``,
-      mean event time over the labelled ``(time, y, x)`` voxels themselves.
-    - ``spatial_median_transition_time``: median event time over those voxels (same support).
-    - ``spatial_std_transition_time``: standard deviation within that consensus set, per
-      ``cluster_var``.
+    **Dataset** (when clusterings exist):
 
-    Summary table columns are derived from these arrays:
+    - ``spatial_mean_transition_time`` / ``spatial_median_transition_time`` /
+      ``spatial_std_transition_time`` — per ``(consensus_cluster_id, cluster_var)`` over
+      the matching voxels above.
 
-    - ``median_median_shift_time`` = median over ``cluster_var`` of ``spatial_median``
-      (finite only) — i.e. median across input clusterings of the per-map spatial median time.
-    - ``std_median_shift_time`` = std over ``cluster_var`` of ``spatial_median`` (spread of
-      per-map medians across input clusterings).
-    - ``median_std_shift_time`` = median over ``cluster_var`` of ``spatial_std``.
-    - ``std_std_shift_time`` = std over ``cluster_var`` of ``spatial_std``.
-    - In :func:`_build_consensus_summary_df_spacetime`, also ``pooled_median_shift_time``
-      and ``pooled_std_shift_time``: median and (sample) std of all ``transition_time`` rows
-      for that ``consensus_cluster_id`` in the long dataframe (pooled over inputs).
+    **Summary table mapping:**
 
-    **Long DataFrame** (second return value): one row per labelled voxel and input
-    clustering with columns ``consensus_cluster_id``, ``cluster_var``, ``transition_time``.
-    For spacetime consensus the same physical ``(y, x)`` can therefore appear multiple
-    times if the same consensus cluster is present there at multiple timesteps.
+    - ``median_median_shift_time`` — median over ``cluster_var`` of ``spatial_median``.
+    - ``std_median_shift_time`` — std over ``cluster_var`` of ``spatial_median``.
+    - ``median_std_shift_time`` / ``std_std_shift_time`` — same for ``spatial_std``.
+    - ``pooled_median_shift_time`` / ``pooled_std_shift_time`` — median and sample std
+      of all ``transition_time`` rows for that id in the long dataframe.
+
+    **Long DataFrame:** columns ``consensus_cluster_id``, ``cluster_var``,
+    ``transition_time`` (one row per matching voxel; the same ``(y, x)`` may appear
+    multiple times at different timesteps).
 
     Args:
         td: TOAD instance with ``cluster_vars`` and shifts.
@@ -461,7 +468,6 @@ def consensus_shift_time_distribution(
         spatial_dims: Grid dimension names; default ``tuple(td.space_dims)``.
         time_dim: Time dimension of ``da_clusters`` if 3D; default ``td.time_dim`` when
             that dimension is present.
-        shift_threshold: Unused for spacetime consensus. Kept only for API compatibility.
 
     Returns:
         ``(dataset, dataframe)``. If there are no cluster variables or no positive
@@ -500,6 +506,7 @@ def consensus_shift_time_distribution(
             spatial_dims=spatial_dims,
             time_dim=time_dim,
         )
+        # Keep consensus label only where input also has a cluster at the same voxel
         support_labels = labels.where(support_mask, other=-1)
         lab = np.asarray(support_labels.values)
         tt_b = np.broadcast_to(
@@ -577,9 +584,10 @@ def consensus_shift_time_distribution(
             ),
         },
         attrs={
-            "shift_threshold": str(shift_threshold),
             "spatial_dims": f"{sd0}, {sd1}",
-            "support_rule": "input clustering must overlap the consensus cluster",
+            "support_rule": (
+                "consensus and input both non-noise at the same (time, y, x) voxel"
+            ),
         },
     )
 
@@ -591,7 +599,6 @@ def consensus_shift_time_distributions(
     da_clusters: xr.DataArray,
     spatial_dims: Tuple[str, str] | None = None,
     time_dim: str | None = None,
-    shift_threshold: float = 0.0,
     *,
     distribution_result: tuple[xr.Dataset, pd.DataFrame] | None = None,
     source_input_cluster_var: str | None = None,
@@ -623,7 +630,6 @@ def consensus_shift_time_distributions(
             da_clusters,
             spatial_dims=spatial_dims,
             time_dim=time_dim,
-            shift_threshold=shift_threshold,
         )
     if source_input_cluster_var is not None:
         df_cell = df_cell[df_cell["cluster_var"] == source_input_cluster_var]
@@ -632,282 +638,12 @@ def consensus_shift_time_distributions(
 
     out: dict[int, np.ndarray] = {}
     for cid, grp in df_cell.groupby("consensus_cluster_id", sort=True):
-        vals = grp["transition_time"].to_numpy(dtype=np.float64, copy=True)
+        vals = np.asarray(grp["transition_time"], dtype=np.float64).copy()
         out[int(np.asarray(cid).item())] = vals[np.isfinite(vals)]
     return out
 
 
-def _native_edges_from_mask(
-    mask2d: np.ndarray,
-    flat_idx_2d: np.ndarray,
-    stitch_longitude: bool = False,
-) -> tuple[list[int], list[int]]:
-    """Return undirected native 8-neighbour edges where ``mask2d`` is True.
-
-    Args:
-        mask2d: 2D boolean array indicating valid cells.
-        flat_idx_2d: 2D array of flattened indices for each grid cell.
-        stitch_longitude: If True, connect first/last columns as a wrapped meridian seam,
-            including diagonal seam neighbours.
-
-    Returns:
-        Tuple of two lists (rows, cols) representing undirected adjacency edges
-        between True cells in the mask (i < j for all edges).
-    """
-    edges: set[tuple[int, int]] = set()
-    _add_adjacent_true_pairs(mask2d, edges, flat_idx_2d)
-    if stitch_longitude:
-        _add_wrapped_longitude_pairs(mask2d, edges, flat_idx_2d)
-    if not edges:
-        return [], []
-    r, c = zip(*edges)
-    return list(r), list(c)
-
-
-def _compute_weighted_consensus(
-    rows_V: list[int] | np.ndarray,
-    cols_V: list[int] | np.ndarray,
-    rows_A: list[int] | np.ndarray,
-    cols_A: list[int] | np.ndarray,
-    shape: tuple[int, int],
-    min_consensus: float,
-    data_A: np.ndarray | None = None,
-):
-    """Build V, A CSR matrices, compute W=V/A on V support, threshold by min_consensus.
-
-    Args:
-        rows_V: Row indices for vote edges (1-D int array or sequence; no Python ``tolist()`` needed).
-        cols_V: Column indices for vote edges.
-        rows_A: Row indices for availability edges.
-        cols_A: Column indices for availability edges.
-        shape: Shape tuple (n_nodes, n_nodes) for the sparse matrices.
-        min_consensus: Minimum consensus threshold (in [0,1]). Edges with weight >= min_consensus are kept.
-        data_A: Optional weights for availability edges. If omitted, each availability edge
-            contributes 1. This is useful when many clusterings share the same availability
-            edge set, so the denominator can be represented once with a larger weight instead
-            of by duplicating identical edges.
-
-    Returns:
-        Sparse CSR matrix W containing weighted consensus scores, thresholded by min_consensus.
-        W[i,j] = V[i,j] / A[i,j] for edges present in V, zero otherwise if below threshold.
-    """
-    rv = np.asarray(rows_V, dtype=np.int64)
-    cv = np.asarray(cols_V, dtype=np.int64)
-    ra = np.asarray(rows_A, dtype=np.int64)
-    ca = np.asarray(cols_A, dtype=np.int64)
-    da = (
-        np.ones(ra.shape[0], dtype=np.float32)
-        if data_A is None
-        else np.asarray(data_A, dtype=np.float32)
-    )
-    V = coo_matrix(
-        (np.ones(rv.shape[0], dtype=np.float32), (rv, cv)),
-        shape=shape,
-    ).tocsr()
-    A = coo_matrix(
-        (da, (ra, ca)),
-        shape=shape,
-    ).tocsr()
-    # Note: tocsr() already sums duplicates, so sum_duplicates() is not needed
-    V = V.maximum(V.T)
-    A = A.maximum(A.T)
-    V_idx = V.nonzero()
-    A_on_V = A[V_idx].A1
-    with np.errstate(divide="ignore", invalid="ignore"):
-        W = V.copy()
-        W.data = np.divide(V.data, A_on_V, out=np.zeros_like(V.data), where=A_on_V > 0)
-    mask_keep = W.data >= float(min_consensus)
-    W.data = np.where(mask_keep, W.data, 0).astype(W.data.dtype, copy=False)
-    W.eliminate_zeros()
-    return W
-
-
-def _dilate_cluster_labels_spacetime(
-    labels_ts: np.ndarray,
-    allowed_labels: np.ndarray,
-    *,
-    temporal_tolerance: int,
-    spatial_tolerance: int = 0,
-    spatial_rows: np.ndarray | None = None,
-    spatial_cols: np.ndarray | None = None,
-) -> np.ndarray:
-    """Dilate sparse peak-event labels on a ``(time, space)`` lattice.
-
-    For each allowed cluster id ``cid`` at node ``(t, s)``, the dilated output marks
-    the same cluster id on all nodes ``(t', s')`` that are within ``temporal_tolerance``
-    timesteps and ``spatial_tolerance`` spatial graph hops. Spatial graph hops are
-    defined by the undirected edge list ``spatial_rows`` / ``spatial_cols``.
-
-    If dilations from different cluster ids overlap at the same lattice node, that node
-    is marked as ``-1`` (conflict / ambiguous) so it cannot contribute positive votes.
-    """
-    labels = np.asarray(labels_ts)
-    k_t = max(0, int(temporal_tolerance))
-    k_s = max(0, int(spatial_tolerance))
-    if labels.ndim != 2:
-        raise ValueError(
-            f"`labels_ts` must have shape (time, space), got ndim={labels.ndim}."
-        )
-    if labels.size == 0 or allowed_labels.size == 0:
-        return labels.copy()
-    if k_s > 0 and (spatial_rows is None or spatial_cols is None):
-        raise ValueError(
-            "`spatial_rows` and `spatial_cols` are required when spatial_tolerance > 0."
-        )
-    if k_t == 0 and k_s == 0:
-        return labels.copy()
-
-    if np.issubdtype(labels.dtype, np.floating):
-        out = np.full(labels.shape, np.nan, dtype=labels.dtype)
-    else:
-        out = np.full(labels.shape, -1, dtype=labels.dtype)
-    assigned = np.zeros(labels.shape, dtype=bool)
-
-    occ_mask = np.isfinite(labels) & np.isin(labels, allowed_labels)
-    occ_t, occ_s = np.nonzero(occ_mask)
-    if occ_t.size == 0:
-        return out
-    occ_vals = labels[occ_t, occ_s]
-
-    neighborhoods: dict[int, np.ndarray] = {}
-    if k_s == 0:
-        for s in np.unique(occ_s):
-            neighborhoods[int(s)] = np.array([int(s)], dtype=np.int64)
-    else:
-        assert spatial_rows is not None and spatial_cols is not None
-        n_space = labels.shape[1]
-        adjacency: list[list[int]] = [[] for _ in range(n_space)]
-        for u, v in zip(spatial_rows.tolist(), spatial_cols.tolist()):
-            adjacency[int(u)].append(int(v))
-            adjacency[int(v)].append(int(u))
-
-        for s in np.unique(occ_s):
-            root = int(s)
-            seen = {root}
-            frontier = {root}
-            for _ in range(k_s):
-                next_frontier: set[int] = set()
-                for node in frontier:
-                    next_frontier.update(adjacency[node])
-                next_frontier -= seen
-                if not next_frontier:
-                    break
-                seen.update(next_frontier)
-                frontier = next_frontier
-            neighborhoods[root] = np.array(sorted(seen), dtype=np.int64)
-
-    # Process only actual peak-event voxels. This is much cheaper than scanning the full
-    # lattice once per cluster id when labels are sparse.
-    for t, s, cid in zip(occ_t.tolist(), occ_s.tolist(), occ_vals.tolist()):
-        lo = max(0, t - k_t)
-        hi = min(labels.shape[0], t + k_t + 1)
-        for s_dst in neighborhoods[int(s)].tolist():
-            region_assigned = assigned[lo:hi, s_dst]
-            region_out = out[lo:hi, s_dst]
-
-            same_cid = region_out == cid
-            conflicts = region_assigned & ~same_cid
-            region_out[conflicts] = -1
-
-            # Write conflicts first, then fill only truly fresh cells. Once a node has been
-            # assigned, later different ids can only keep it at -1 rather than reclaim it.
-            fresh = ~region_assigned
-            region_out[fresh] = cid
-            assigned[lo:hi, s_dst] = True
-
-    return out
-
-
-def _dilate_cluster_labels_in_time(
-    labels_tyx: np.ndarray,
-    allowed_labels: np.ndarray,
-    temporal_tolerance: int,
-) -> np.ndarray:
-    """Dilate peak-event labels along time at fixed spatial cells."""
-    labels = np.asarray(labels_tyx)
-    out = _dilate_cluster_labels_spacetime(
-        labels.reshape(labels.shape[0], -1),
-        allowed_labels,
-        temporal_tolerance=temporal_tolerance,
-        spatial_tolerance=0,
-    )
-    return out.reshape(labels.shape)
-
-
-def _build_spacetime_graph_edges(
-    T: int,
-    n_space: int,
-    spatial_rows: np.ndarray,
-    spatial_cols: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Undirected edges for a (time × space) lattice: spatial neighbours at each t + time chains.
-
-    Nodes are indexed ``flat = t * n_space + s`` with ``t`` in ``[0, T)`` and ``s`` in
-    ``[0, n_space)`` (same flattening order as ``labels.reshape(T, -1).ravel()``).
-
-    * At each time slice, replicate ``spatial_rows`` / ``spatial_cols`` from the chosen
-      spatial graph (native 8-neighbour grid on the data's index layout).
-    * Between consecutive times, connect ``(t, s)`` to ``(t+1, s)`` for every spatial node ``s``.
-    """
-    sr = np.asarray(spatial_rows, dtype=np.int64)
-    sc = np.asarray(spatial_cols, dtype=np.int64)
-    if T <= 0 or n_space <= 0:
-        return np.array([], dtype=np.int64), np.array([], dtype=np.int64)
-    t_off = (np.arange(T, dtype=np.int64) * n_space)[:, None]
-    er_sp = (sr[None, :] + t_off).ravel() if sr.size else np.array([], dtype=np.int64)
-    ec_sp = (sc[None, :] + t_off).ravel() if sc.size else np.array([], dtype=np.int64)
-    if T <= 1:
-        return er_sp, ec_sp
-    s = np.arange(n_space, dtype=np.int64)
-    t_lo = np.arange(T - 1, dtype=np.int64)
-    u_t = (t_lo[:, None] * n_space + s[None, :]).ravel()
-    v_t = ((t_lo + 1)[:, None] * n_space + s[None, :]).ravel()
-    return np.concatenate([er_sp, u_t]), np.concatenate([ec_sp, v_t])
-
-
-def _trim_spacetime_consensus_to_original_support(
-    labels_flat: np.ndarray,
-    consistency_flat: np.ndarray,
-    original_support_flat: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Trim consensus outputs back to undilated event support.
-
-    Matching may use temporally dilated labels, but the public spacetime consensus mask should
-    only contain voxels that were present in at least one original undilated input clustering.
-    """
-    keep = (
-        np.asarray(original_support_flat, dtype=bool)
-        & np.isfinite(labels_flat)
-        & (labels_flat >= 0)
-    )
-    labels_trim = np.asarray(labels_flat).copy()
-    cons_trim = np.asarray(consistency_flat).copy()
-    labels_trim[~keep] = -1
-    cons_trim[~keep] = 0
-    return labels_trim, cons_trim
-
-
-def _build_empty_consensus_time_resolved(
-    T: int,
-    y_len: int,
-    x_len: int,
-    coords_spatial: dict,
-    spatial_dims: Tuple[str, str],
-    time_coord: xr.DataArray,
-    time_dim: str,
-) -> xr.Dataset:
-    """Empty time-resolved consensus (all noise, zero consistency)."""
-    sd0, sd1 = spatial_dims
-    da_clusters = xr.DataArray(
-        np.full((T, y_len, x_len), -1, dtype=np.int32),
-        coords={time_dim: time_coord, **coords_spatial},
-        dims=[time_dim, sd0, sd1],
-        name="clusters",
-    )
-    da_consistency = xr.DataArray(
-        np.zeros((T, y_len, x_len), dtype=np.float32),
-        coords={time_dim: time_coord, **coords_spatial},
-        dims=[time_dim, sd0, sd1],
-        name="consistency",
-    )
-    return xr.Dataset({"clusters": da_clusters, "consistency": da_consistency})
+# Native grid edges for meridian-stitch connectivity; re-export for tests.
+from toad.postprocessing.member_support_consensus import (  # noqa: E402, F401
+    _native_edges_from_mask,
+)

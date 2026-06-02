@@ -2,7 +2,7 @@
 
 You have several cluster maps from different runs, models, or parameter choices — all on the same time × space grid. Consensus asks a simple question: **where did multiple clusterings agree that something happened?**
 
-`td.compute_consensus()` answers that by building one combined label field (plus a consistency score) and storing it in `td.data`.
+`td.compute_consensus()` answers that by building one combined label field (plus a consensus rate field) and storing it in `td.data`.
 
 For a worked example with plots, see the {doc}`Consensus tutorial <tutorials/consensus>`.
 
@@ -22,7 +22,7 @@ Nothing is added to the output just because it appeared in the dilated “suppor
 | --- | --- |
 | **You need** | At least two cluster variables (`cluster_vars=None` uses all `td.cluster_vars`). Labels: cluster id ≥ 0, `-1` = noise, `NaN` = no abrupt shift. |
 | **You must set** | `min_consensus`, `temporal_tolerance`, `spatial_tolerance` |
-| **You get** | Consensus labels (default name `cluster_consensus`) and consistency (`cluster_consensus_consistency`). For a summary table: `td.aggregate.consensus_summary()`. |
+| **You get** | Consensus labels (default name `cluster_consensus`) and rate (`cluster_consensus_rate`). For a summary table: `td.aggregate.consensus_summary()`. |
 
 ```python
 td.compute_consensus(

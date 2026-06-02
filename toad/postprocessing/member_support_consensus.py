@@ -499,10 +499,10 @@ def _mark_no_shift_nan(
     flat = flat.copy()
     flat[(flat == -1) & all_none] = np.nan
     new_lab = flat.reshape(T, y_len, x_len)
-    # Consistency is undefined wherever the label is NaN
-    cons = np.asarray(ds["consistency"].data, dtype=np.float32).copy().reshape(-1)
-    cons[~np.isfinite(new_lab.ravel())] = np.nan
-    cons = cons.reshape(T, y_len, x_len)
+    # Rate is undefined wherever the label is NaN
+    rate = np.asarray(ds["rate"].data, dtype=np.float32).copy().reshape(-1)
+    rate[~np.isfinite(new_lab.ravel())] = np.nan
+    rate = rate.reshape(T, y_len, x_len)
     return xr.Dataset(
         {
             "clusters": xr.DataArray(
@@ -512,12 +512,12 @@ def _mark_no_shift_nan(
                 attrs=da_c.attrs,
                 name=da_c.name,
             ),
-            "consistency": xr.DataArray(
-                cons,
-                coords=ds["consistency"].coords,
-                dims=ds["consistency"].dims,
-                attrs=ds["consistency"].attrs,
-                name=ds["consistency"].name,
+            "rate": xr.DataArray(
+                rate,
+                coords=ds["rate"].coords,
+                dims=ds["rate"].dims,
+                attrs=ds["rate"].attrs,
+                name=ds["rate"].name,
             ),
         }
     )
@@ -538,14 +538,14 @@ def _empty_result(
         dims=[context.time_dim, sd0, sd1],
         name="clusters",
     )
-    da_consistency = xr.DataArray(
+    da_rate = xr.DataArray(
         np.zeros((T, y_len, x_len), dtype=np.float32),
         coords={context.time_dim: context.time_coord, **context.coords_spatial},
         dims=[context.time_dim, sd0, sd1],
-        name="consistency",
+        name="rate",
     )
     return _mark_no_shift_nan(
-        xr.Dataset({"clusters": da_clusters, "consistency": da_consistency}),
+        xr.Dataset({"clusters": da_clusters, "rate": da_rate}),
         td,
         cluster_vars,
         context,
@@ -563,7 +563,7 @@ def _build_member_support_dataset(
     native_union: np.ndarray,
     member_vote_count: np.ndarray,
 ) -> xr.Dataset:
-    """Threshold votes, label retained voxels, and return interim clusters + consistency."""
+    """Threshold votes, label retained voxels, and return interim clusters + rate."""
     n_members = len(cluster_vars)
     min_votes = min_consensus_members(n_members, min_consensus)
     n_st = context.T * context.n_space
@@ -572,9 +572,9 @@ def _build_member_support_dataset(
     keep = native_union & (member_vote_count >= min_votes)
 
     # --- member support fraction at every native event voxel (incl. sub-threshold) ---
-    consistency_flat = np.zeros(n_st, dtype=np.float32)
+    rate_flat = np.zeros(n_st, dtype=np.float32)
     if np.any(native_union):
-        consistency_flat[native_union] = (
+        rate_flat[native_union] = (
             member_vote_count[native_union].astype(np.float32) / n_members
         )
 
@@ -594,7 +594,7 @@ def _build_member_support_dataset(
     clusters_out = np.asarray(labels_flat, dtype=np.int32).reshape(
         context.T, context.y_len, context.x_len
     )
-    consistency_out = np.asarray(consistency_flat, dtype=np.float32).reshape(
+    rate_out = np.asarray(rate_flat, dtype=np.float32).reshape(
         context.T, context.y_len, context.x_len
     )
     da_clusters = xr.DataArray(
@@ -603,14 +603,14 @@ def _build_member_support_dataset(
         dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
         name="clusters",
     )
-    da_consistency = xr.DataArray(
-        consistency_out,
+    da_rate = xr.DataArray(
+        rate_out,
         coords={context.time_dim: context.time_coord, **context.coords_spatial},
         dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
-        name="consistency",
+        name="rate",
     )
     ds = _mark_no_shift_nan(
-        xr.Dataset({"clusters": da_clusters, "consistency": da_consistency}),
+        xr.Dataset({"clusters": da_clusters, "rate": da_rate}),
         td,
         cluster_vars,
         context,

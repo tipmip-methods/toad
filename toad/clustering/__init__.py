@@ -31,6 +31,7 @@ import xarray as xr
 from sklearn.base import ClusterMixin
 
 from toad._version import __version__
+from toad.clustering.methods.space_time_dbscan import SpaceTimeDBSCAN
 from toad.clustering.optimizing import (
     _optimize_clusters,
     combined_spatial_nonlinearity,
@@ -39,8 +40,8 @@ from toad.clustering.optimizing import (
 from toad.regridding import HealPixRegridder
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
-    _attrs,
     DEFAULT_SHIFT_THRESHOLD,
+    _attrs,
     _reorder_space_dims,
     get_latlon_info,
     get_unique_variable_name,
@@ -54,6 +55,7 @@ __all__ = [
     "default_opt_params",
     "combined_spatial_nonlinearity",
     "sorted_cluster_labels",
+    "SpaceTimeDBSCAN",
 ]
 
 # to avoid circular import we use TYPE_CHECKING for importing TOAD obj

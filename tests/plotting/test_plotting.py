@@ -188,6 +188,26 @@ class TestTimeseries:
             assert fig is not None
             plt.close(fig)
 
+    def test_timeseries_shared_ylabel(self, td_with_clusters):
+        """Test shared y-label beside timeseries subplots."""
+        td = td_with_clusters
+        cluster_ids = td.get_cluster_ids(td.cluster_vars[0])
+
+        if len(cluster_ids) >= 2:
+            fig, result = td.plot.timeseries(
+                cluster_ids=list(cluster_ids[:2]),
+                plot_map=True,
+                shared_ylabel="Test quantity (units)",
+            )
+            assert fig is not None
+            label_texts = [
+                t.get_text()
+                for t in fig.texts
+                if t.get_text() == "Test quantity (units)"
+            ]
+            assert len(label_texts) == 1
+            plt.close(fig)
+
     def test_timeseries_with_provided_ax(self, td_with_clusters):
         """Test timeseries with a pre-created axes."""
         td = td_with_clusters
@@ -315,10 +335,16 @@ class TestPlottingWithExplicitVar:
 
 
 def test_member_id_from_cluster_var():
-    from toad.plotting import _input_cluster_legend_label, _member_id_from_cluster_var
+    from toad.plotting import (
+        _input_cluster_legend_label,
+        _member_id_from_cluster_var,
+        _realisation_from_cluster_var,
+    )
 
     assert _member_id_from_cluster_var("mlotst_r1i1p1f1_dts_cluster") == "r1i1p1f1"
     assert _member_id_from_cluster_var("foo_r2_cluster") == "r2"
+    assert _realisation_from_cluster_var("mlotst_r3i1p1f1_dts_cluster") == "r3"
+    assert _realisation_from_cluster_var("foo_r2_cluster") == "r2"
     assert (
         _input_cluster_legend_label(
             "mlotst_r3i1p1f1_dts_cluster",
@@ -327,6 +353,15 @@ def test_member_id_from_cluster_var():
             include_n_cells=False,
         )
         == "r3i1p1f1"
+    )
+    assert (
+        _input_cluster_legend_label(
+            "mlotst_r5i1p1f1_dts_cluster",
+            n_cells=12,
+            label_style="realisation",
+            include_n_cells=True,
+        )
+        == "(12) r5"
     )
     assert (
         _input_cluster_legend_label(

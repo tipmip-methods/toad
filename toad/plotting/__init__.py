@@ -35,7 +35,7 @@ from toad.utils import (
 
 _VIOLIN_SIDE_SUPPORTED = "side" in inspect.signature(Axes.violinplot).parameters
 
-__all__ = ["Plotter", "MapStyle"]
+__all__ = ["Plotter", "MapStyle", "add_shared_ylabel"]
 
 logger = logging.getLogger("TOAD")
 
@@ -100,6 +100,48 @@ def _maybe_tight_layout(
         tight_layout()
 
 
+def add_shared_ylabel(
+    fig: FigureBase,
+    axes: Sequence[Axes],
+    label: str,
+    *,
+    pad: float = 0.03,
+    fontsize: float | None = None,
+) -> None:
+    """Place a single rotated y-axis label beside a column of subplots.
+
+    The label is centred vertically on the union of *axes* bounding boxes in
+    figure coordinates. Call after layout is final (uses ``fig.canvas.draw()``).
+
+    Args:
+        fig: Figure containing *axes*.
+        axes: Subplots sharing the same y quantity (typically one column).
+        label: Label text.
+        pad: Horizontal offset left of the leftmost axes (figure fraction).
+        fontsize: Label font size; defaults to ``axes.labelsize``.
+    """
+    if not axes or not label:
+        return
+
+    canvas = getattr(fig, "canvas", None)
+    if canvas is not None:
+        canvas.draw()
+
+    positions = [ax.get_position() for ax in axes]
+    top = max(p.y1 for p in positions)
+    bottom = min(p.y0 for p in positions)
+    left = min(p.x0 for p in positions)
+    fig.text(
+        left - pad,
+        (top + bottom) / 2,
+        label,
+        va="center",
+        ha="right",
+        rotation="vertical",
+        fontsize=fontsize or plt.rcParams.get("axes.labelsize", 10),
+    )
+
+
 def _discrete_colors_from_cmap(cmap: Union[str, ListedColormap], n: int) -> list[Any]:
     """Sample ``n`` colours from a colormap (same rule as :meth:`Plotter.consensus_map`)."""
     if n <= 0:
@@ -128,15 +170,26 @@ def _member_id_from_cluster_var(cluster_var: str) -> str:
     return cluster_var
 
 
+def _realisation_from_cluster_var(cluster_var: str) -> str:
+    """Extract realisation index (e.g. ``r1``) from an input cluster variable name."""
+    member = _member_id_from_cluster_var(cluster_var)
+    m = re.match(r"r(\d+)", member)
+    if m:
+        return f"r{m.group(1)}"
+    return member
+
+
 def _input_cluster_legend_label(
     cluster_var: str,
     *,
     n_cells: int,
-    label_style: Literal["cluster_var", "member_id"] = "cluster_var",
+    label_style: Literal["cluster_var", "member_id", "realisation"] = "cluster_var",
     include_n_cells: bool = True,
 ) -> str:
     if label_style == "member_id":
         base = _member_id_from_cluster_var(cluster_var)
+    elif label_style == "realisation":
+        base = _realisation_from_cluster_var(cluster_var)
     else:
         base = cluster_var
     if include_n_cells:
@@ -792,6 +845,18 @@ class Plotter:
             if ax is None:
                 raise ValueError("ax should be set when subplots=False")
         return fig, ax
+
+    def _timeseries_var_ylabel(self, var_name: str) -> str:
+        """Y-axis label from a data variable's metadata."""
+        try:
+            da = self.td.data[var_name]
+        except (KeyError, AttributeError, TypeError):
+            return var_name
+        name = da.attrs.get("long_name") or var_name
+        units = str(da.attrs.get("units", "")).strip()
+        if units:
+            return f"{name} ({units})"
+        return str(name)
 
     def _time_axis_ylabel(self) -> str:
         """Y-axis label from the dataset time coordinate (name and units)."""
@@ -2301,7 +2366,9 @@ class Plotter:
         alpha: float = 1.0,
         linewidth: float = 1.0,
         add_legend: bool = True,
-        legend_input_label: Literal["cluster_var", "member_id"] = "cluster_var",
+        legend_input_label: Literal[
+            "cluster_var", "member_id", "realisation"
+        ] = "cluster_var",
         legend_include_n_cells: bool = True,
         legend_autosize: bool = True,
         legend_fontsize_max: Optional[float] = None,
@@ -2332,7 +2399,8 @@ class Plotter:
                 entry per input ``cluster_var`` (all per-cell lines share colour and label).
             legend_input_label: ``\"cluster_var\"`` (default) uses the full input variable name;
                 ``\"member_id\"`` uses a CMIP-style member id parsed from the name (e.g.
-                ``r1i1p1f1`` from ``mlotst_r1i1p1f1_dts_cluster``).
+                ``r1i1p1f1`` from ``mlotst_r1i1p1f1_dts_cluster``); ``\"realisation\"`` uses only
+                the realisation index (e.g. ``r1``, ``r2``).
             legend_include_n_cells: If True (default), prefix each legend entry with ``(N)`` where
                 ``N`` is the number of grid cells in the extraction mask.
             legend_autosize: If True (default) and ``subplots=False``, shrink legend font size until
@@ -2766,6 +2834,11 @@ class Plotter:
         wspace: float = 0.1,
         hspace: float = 0.1,
         show_ylabels: bool = False,  # Only relevant for subplots
+        shared_ylabel: Optional[
+            str
+        ] = None,  # One label for subplot column; "auto" infers
+        shared_ylabel_pad: float = 0.03,
+        shared_ylabel_fontsize: Optional[float] = None,
         vertical: bool = False,  # Only relevant when plot_map=True
         width_ratios: Tuple[float, float] = (
             1.0,
@@ -2843,6 +2916,12 @@ class Plotter:
             wspace: Width space between timeseries subplots (if ncols > 1).
             hspace: Height space between timeseries rows.
             show_ylabels: If True, show y-axis label on the timeseries plots. Only relevant for subplots.
+            shared_ylabel: If set, draw one rotated y-label beside the timeseries column instead of
+                per-panel labels. Pass ``"auto"`` to use the first panel's inferred label or
+                variable metadata. Ignored when ``subplots=False``.
+            shared_ylabel_pad: Horizontal gap between the shared label and the leftmost subplot
+                (figure fraction).
+            shared_ylabel_fontsize: Font size for the shared label; defaults to ``axes.labelsize``.
             vertical: If True, arrange map above timeseries plots. Otherwise, map is placed to the left.
                 Only used if plot_map=True.
             width_ratios: Tuple of relative widths for map vs. timeseries section (used in horizontal layout).
@@ -3112,6 +3191,23 @@ class Plotter:
             normalize=normalize,
             y_label=y_label,
         )
+
+        if shared_ylabel is not None and use_subplots and len(ts_axes_list) > 0:
+            if shared_ylabel == "auto":
+                shared_label = y_label or self._timeseries_var_ylabel(timeseries_var)
+            else:
+                shared_label = shared_ylabel
+            n_ts_rows = int(np.ceil(len(ts_axes_list) / ncols))
+            ylabel_axes = ts_axes_list[:n_ts_rows]
+            plot_fig = fig if fig is not None else ts_axes_list[0].figure
+            if plot_fig is not None:
+                add_shared_ylabel(
+                    plot_fig,
+                    ylabel_axes,
+                    shared_label,
+                    pad=shared_ylabel_pad,
+                    fontsize=shared_ylabel_fontsize,
+                )
 
         # Return appropriate values using helper function
         return self._package_timeseries_result(

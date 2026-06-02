@@ -58,7 +58,7 @@ def _format_consensus_summary(output_label: str, labels: np.ndarray) -> str:
 
 def _filter_consensus_labels_min_size(
     da_labels: xr.DataArray,
-    da_consistency: xr.DataArray,
+    da_rate: xr.DataArray,
     min_cluster_area: int,
     *,
     time_dim: str,
@@ -70,11 +70,11 @@ def _filter_consensus_labels_min_size(
     :func:`toad.utils.cluster_consensus_utils._build_consensus_summary_df_spacetime`).
     Clusters with ``area < min_cluster_area`` are set to noise ``-1``. Remaining clusters
     are renumbered by :func:`toad.clustering.sorted_cluster_labels` (largest id 0, etc.).
-    The companion consistency field is left unchanged (member-support fractions are
+    The companion rate field is left unchanged (member-support fractions are
     independent of the consensus threshold and cluster-size filter).
     """
     if min_cluster_area <= 0:
-        return da_labels, da_consistency
+        return da_labels, da_rate
     if time_dim not in da_labels.dims:
         raise ValueError(
             f"`time_dim` {time_dim!r} must be a dimension of `da_labels`, "
@@ -86,7 +86,7 @@ def _filter_consensus_labels_min_size(
     lab_ts = np.moveaxis(lab, time_axis, 0).reshape(lab.shape[time_axis], -1)
     valid = np.isfinite(lab_ts) & (lab_ts >= 0)
     if not np.any(valid):
-        return da_labels, da_consistency
+        return da_labels, da_rate
 
     # Count distinct spatial cells ever labelled with each consensus id (any time)
     label_ids = lab_ts[valid].astype(np.int64, copy=False)
@@ -99,7 +99,7 @@ def _filter_consensus_labels_min_size(
     unique_ids, areas = np.unique(unique_pairs[:, 0], return_counts=True)
     remove = unique_ids[areas < int(min_cluster_area)]
     if remove.size == 0:
-        return da_labels, da_consistency
+        return da_labels, da_rate
 
     # Demote small clusters to noise (-1) and re-sort ids
     flat = flat.copy()
@@ -114,7 +114,7 @@ def _filter_consensus_labels_min_size(
         attrs=da_labels.attrs,
         name=da_labels.name,
     )
-    return da_l, da_consistency
+    return da_l, da_rate
 
 
 def _finalize_consensus_variables(
@@ -134,18 +134,18 @@ def _finalize_consensus_variables(
     """Rename solver outputs, post-filter, attach TOAD attrs, and merge into ``td.data``."""
     # --- rename interim solver variables to user-facing names ---
     da_labels = ds_out["clusters"].rename(new_output_label)
-    da_consistency = ds_out["consistency"].rename(f"{new_output_label}_consistency")
+    da_rate = ds_out["rate"].rename(f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}")
 
     # --- optional post-filter on spatial footprint (see _filter_consensus_labels_min_size) ---
     if min_cluster_area is not None and min_cluster_area > 0:
-        da_labels, da_consistency = _filter_consensus_labels_min_size(
+        da_labels, da_rate = _filter_consensus_labels_min_size(
             da_labels,
-            da_consistency,
+            da_rate,
             min_cluster_area,
             time_dim=time_dim,
         )
         da_labels.attrs["min_cluster_area"] = int(min_cluster_area)
-        da_consistency.attrs["min_cluster_area"] = int(min_cluster_area)
+        da_rate.attrs["min_cluster_area"] = int(min_cluster_area)
 
     # --- TOAD metadata (method params, variable_type, cluster_vars, version) ---
     lab = np.asarray(da_labels.data, dtype=np.float64)
@@ -164,7 +164,7 @@ def _finalize_consensus_variables(
         "stitch_meridian_applied": int(stitch_meridian_resolved),
     }
     da_labels.attrs.update(consensus_param_attrs)
-    da_consistency.attrs.update(consensus_param_attrs)
+    da_rate.attrs.update(consensus_param_attrs)
     da_labels.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CLUSTER
     u = np.unique(lab[np.isfinite(lab) & (lab >= 0)])
     da_labels.attrs[_attrs.CLUSTER_IDS] = (
@@ -173,14 +173,14 @@ def _finalize_consensus_variables(
     da_labels.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
     da_labels.attrs[_attrs.TOAD_VERSION] = __version__
 
-    da_consistency.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_CONSISTENCY
-    da_consistency.attrs[_attrs.CONSENSUS_LABELS_VAR] = new_output_label
-    da_consistency.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
-    da_consistency.attrs[_attrs.TOAD_VERSION] = __version__
+    da_rate.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_RATE
+    da_rate.attrs[_attrs.CONSENSUS_LABELS_VAR] = new_output_label
+    da_rate.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
+    da_rate.attrs[_attrs.TOAD_VERSION] = __version__
 
-    # --- merge label + consistency pair into td.data ---
+    # --- merge label + rate pair into td.data ---
     td.data = xr.merge(
-        [td.data, da_labels, da_consistency],
+        [td.data, da_labels, da_rate],
         combine_attrs="override",
         compat="override",
     )
@@ -288,13 +288,13 @@ class Aggregation:
         **Writes**
 
         Two variables are merged into ``self.td.data`` (default names ``cluster_consensus`` and
-        ``cluster_consensus_consistency``):
+        ``cluster_consensus_rate``):
 
         * **Labels** (``variable_type=consensus_cluster``): ``NaN`` if every input has no
           abrupt shift at that cell; ``-1`` if at least one input had a defined label but the
           cell is not in consensus (or was filtered out); non-negative integers are consensus
           cluster ids.
-        * **Consistency** (``variable_type=consensus_consistency``): supporting inputs divided
+        * **Rate** (``variable_type=consensus_rate``): supporting inputs divided
           by total inputs at each native event voxel, **including** voxels below the consensus
           threshold; ``0`` where no input assigned a cluster; ``NaN`` where the label is
           ``NaN``.
@@ -388,9 +388,9 @@ class Aggregation:
         else:
             if new_output_label in self.td.data:
                 self.td.data = self.td.data.drop_vars(new_output_label)
-            consistency_drop = f"{new_output_label}_consistency"
-            if consistency_drop in self.td.data:
-                self.td.data = self.td.data.drop_vars(consistency_drop)
+            rate_drop = f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}"
+            if rate_drop in self.td.data:
+                self.td.data = self.td.data.drop_vars(rate_drop)
 
         # --- member-support solver: dilated votes → threshold → connected components ---
         sample = self.td.data[cluster_vars[0]]
@@ -440,7 +440,7 @@ class Aggregation:
         logger.info(_format_consensus_summary(new_output_label, lab))
 
     def consensus_summary(self, consensus_var: str | None = None) -> pd.DataFrame:
-        """Rebuild the per-cluster summary table from stored consensus label and consistency arrays.
+        """Rebuild the per-cluster summary table from stored consensus label and rate arrays.
 
         Shift-time columns use strict same-``(time, y, x)`` agreement between consensus
         and each input (see :func:`toad.utils.cluster_consensus_utils.consensus_shift_time_distribution`).
@@ -453,24 +453,20 @@ class Aggregation:
                 (same resolution rules as :meth:`toad.core.TOAD._resolve_consensus_var`).
 
         Returns:
-            DataFrame with one row per consensus cluster. Includes ``mean_consistency``,
+            DataFrame with one row per consensus cluster. Includes ``mean_consensus_rate``,
             spatial ``area`` and centroid columns, ``median_median_shift_time`` (median of
             per-input spatial medians), related between-input std columns, and
             ``pooled_median_shift_time`` / ``pooled_std_shift_time`` over all pooled event-time
             samples; see :func:`toad.utils.cluster_consensus_utils._build_consensus_summary_df_spacetime`.
         """
         consensus_var = self.td._resolve_consensus_var(consensus_var)
-        consistency_var = f"{consensus_var}_consistency"
-        if consistency_var not in self.td.data:
-            raise ValueError(
-                f"No matching consistency variable {consistency_var!r} for {consensus_var!r}."
-            )
+        rate_var = self.td._resolve_consensus_rate_var(consensus_var)
         labels = self.td.data[consensus_var]
-        consistency = self.td.data[consistency_var]
+        rate = self.td.data[rate_var]
         spatial_dims = tuple(self.td.space_dims)
         time_dim = self.td.time_dim
         return _build_consensus_summary_df_spacetime(
-            self.td, labels, consistency, spatial_dims, time_dim
+            self.td, labels, rate, spatial_dims, time_dim
         )
 
     def consensus_shift_time_distribution(

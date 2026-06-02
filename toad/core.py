@@ -608,7 +608,7 @@ class TOAD:
             _attrs.TYPE_SHIFT,
             _attrs.TYPE_CLUSTER,
             _attrs.TYPE_CONSENSUS_CLUSTER,
-            _attrs.TYPE_CONSENSUS_CONSISTENCY,
+            _attrs.TYPE_CONSENSUS_RATE,
         )
         return [
             str(x)
@@ -686,6 +686,25 @@ class TOAD:
                 f"Multiple consensus variables {names}. Pass consensus_var explicitly."
             )
         return names[0]
+
+    @staticmethod
+    def consensus_rate_var_name(consensus_var: str) -> str:
+        """Companion variable name for member-support fractions (``{consensus_var}_rate``)."""
+        return f"{consensus_var}{_attrs.CONSENSUS_RATE_SUFFIX}"
+
+    def _resolve_consensus_rate_var(self, consensus_var: str) -> str:
+        """Return the rate companion variable for a consensus labels variable name."""
+        name = self.consensus_rate_var_name(consensus_var)
+        if name not in self.data:
+            raise ValueError(
+                f"No matching consensus rate variable {name!r} for {consensus_var!r}."
+            )
+        if not self._is_consensus_rate_variable(name):
+            raise ValueError(
+                f"{name!r} is not a consensus rate variable "
+                f"(expected attrs['{_attrs.VARIABLE_TYPE}'] == {_attrs.TYPE_CONSENSUS_RATE!r})."
+            )
+        return name
 
     def remove_cluster(self, cluster_id: int, var: str | None = None):
         """Remove a cluster from the dataset.
@@ -858,13 +877,13 @@ class TOAD:
         Remove all consensus outputs from the dataset.
 
         Drops every variable with ``variable_type`` consensus label or consensus
-        consistency (labels and their ``*_consistency`` companions).
+        rate (labels and their ``*_rate`` companions).
         """
         to_drop = [
             str(x)
             for x in self.data.data_vars
             if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
-            in (_attrs.TYPE_CONSENSUS_CLUSTER, _attrs.TYPE_CONSENSUS_CONSISTENCY)
+            in (_attrs.TYPE_CONSENSUS_CLUSTER, _attrs.TYPE_CONSENSUS_RATE)
         ]
         if to_drop:
             self.data = self.data.drop_vars(to_drop)
@@ -1208,13 +1227,19 @@ class TOAD:
             == _attrs.TYPE_CONSENSUS_CLUSTER
         )
 
+    def _is_consensus_rate_variable(self, var: str) -> bool:
+        """Check if a variable is a consensus rate companion variable."""
+        return (
+            self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CONSENSUS_RATE
+        )
+
     def _is_base_variable(self, var: str) -> bool:
         """Check if a variable is a base variable."""
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) not in [
             _attrs.TYPE_SHIFT,
             _attrs.TYPE_CLUSTER,
             _attrs.TYPE_CONSENSUS_CLUSTER,
-            _attrs.TYPE_CONSENSUS_CONSISTENCY,
+            _attrs.TYPE_CONSENSUS_RATE,
         ]
 
     def _aggregate_spatial(

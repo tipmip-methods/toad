@@ -1049,7 +1049,7 @@ class Plotter:
             raise ValueError("ax should be set when subplots=False")
         return fig, ax
 
-    def consensus_consistency_map(
+    def consensus_rate_map(
         self,
         consensus_var: str | None = None,
         *,
@@ -1069,9 +1069,9 @@ class Plotter:
         cbar_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Tuple[FigureBase | None, Axes]:
-        """Map member-support consistency from a consensus run (time-collapsed).
+        """Map member-support consensus rate from a consensus run (time-collapsed).
 
-        Uses the companion field ``{consensus_var}_consistency``: at each spacetime
+        Uses the companion field ``{consensus_var}_rate``: at each spacetime
         cell this is (supporting inputs) / (total inputs) on native event voxels,
         including voxels below the consensus threshold. The map collapses time with
         ``max`` (default) or ``mean`` over finite values, then masks cells where the
@@ -1083,7 +1083,7 @@ class Plotter:
                 timesteps with data.
             ax: Axes to draw on; if None, a new figure is created via :meth:`map`.
             map_style: Passed to :meth:`map` when *ax* is None.
-            cmap: Colormap for the consistency field.
+            cmap: Colormap for the consensus rate field.
             vmin, vmax: Color scale bounds; default ``[0, 1]``.
             add_colorbar: Whether to draw a colorbar (default True).
             colorbar_orientation: ``\"horizontal\"`` or ``\"vertical\"``. If None,
@@ -1092,7 +1092,7 @@ class Plotter:
                 map with the label to its right. Otherwise passed to matplotlib ``location``.
             colorbar_shrink, colorbar_pad, colorbar_aspect: Passed to the colorbar
                 (matplotlib ``shrink``, ``pad``, ``aspect``). Omitted when None.
-            colorbar_label: Colorbar label; default ``\"Member support fraction\"``.
+            colorbar_label: Colorbar label; default ``\"Consensus rate\"``.
             cbar_kwargs: Extra keyword arguments merged into the colorbar kwargs
                 (after ``colorbar_*`` parameters).
             **kwargs: Extra arguments forwarded to :meth:`xarray.DataArray.plot` or
@@ -1102,32 +1102,22 @@ class Plotter:
             ``(fig, ax)``; figure is None if *ax* was provided.
         """
         consensus_var = self.td._resolve_consensus_var(consensus_var)
-        consistency_var = f"{consensus_var}_consistency"
-        if consistency_var not in self.td.data:
-            raise ValueError(
-                f"No matching consistency variable {consistency_var!r} for "
-                f"{consensus_var!r}."
-            )
-        cons = self.td.data[consistency_var]
-        if cons.attrs.get(_attrs.VARIABLE_TYPE) != _attrs.TYPE_CONSENSUS_CONSISTENCY:
-            raise ValueError(
-                f"{consistency_var!r} is not a consensus consistency variable "
-                f"(variable_type={cons.attrs.get(_attrs.VARIABLE_TYPE)!r})."
-            )
+        rate_var = self.td._resolve_consensus_rate_var(consensus_var)
+        rate = self.td.data[rate_var]
 
         time_dim = self.td.time_dim
         space_dims = tuple(self.td.space_dims)
-        if time_dim in cons.dims:
+        if time_dim in rate.dims:
             if time_reduce == "max":
-                field = cons.max(dim=time_dim, skipna=True)
+                field = rate.max(dim=time_dim, skipna=True)
             elif time_reduce == "mean":
-                field = cons.mean(dim=time_dim, skipna=True)
+                field = rate.mean(dim=time_dim, skipna=True)
             else:
                 raise ValueError(
                     f"`time_reduce` must be 'max' or 'mean', got {time_reduce!r}."
                 )
         else:
-            field = cons
+            field = rate
 
         for d in space_dims:
             if d not in field.dims:
@@ -1141,11 +1131,9 @@ class Plotter:
         else:
             fig = None
 
-        title = "Member support fraction"
+        title = "Consensus rate"
 
-        cbar_label = (
-            colorbar_label if colorbar_label is not None else "Member support fraction"
-        )
+        cbar_label = colorbar_label if colorbar_label is not None else "Consensus rate"
 
         add_colorbar = kwargs.pop("add_colorbar", add_colorbar)
         orient = colorbar_orientation or "horizontal"

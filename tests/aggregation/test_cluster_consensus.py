@@ -172,8 +172,8 @@ def test_min_cluster_area_filter_removes_small_clusters():
     np.testing.assert_allclose(out_cons.values, cons)
 
 
-def test_consistency_independent_of_min_consensus_with_min_cluster_area():
-    """Member-support consistency must not change when only min_consensus differs."""
+def test_rate_independent_of_min_consensus_with_min_cluster_area():
+    """Member-support rate must not change when only min_consensus differs."""
     fields = {}
     for i in range(5):
         fields[f"foo_r{i + 1}_cluster"] = np.full((4, 2, 4), -1, dtype=np.float32)
@@ -194,11 +194,11 @@ def test_consistency_independent_of_min_consensus_with_min_cluster_area():
             min_cluster_area=2,
             show_progress=False,
         )
-        return td.data["cluster_consensus_consistency"].values
+        return td.data["cluster_consensus_rate"].values
 
-    cons_low = run(0.6)
-    cons_high = run(0.8)
-    np.testing.assert_allclose(cons_low, cons_high, equal_nan=True)
+    rate_low = run(0.6)
+    rate_high = run(0.8)
+    np.testing.assert_allclose(rate_low, rate_high, equal_nan=True)
 
 
 def test_member_support_retains_voxels_with_enough_dilated_votes():
@@ -230,8 +230,8 @@ def test_member_support_retains_voxels_with_enough_dilated_votes():
     expected[2, 0, 1] = 0
     np.testing.assert_array_equal(da.values, expected)
 
-    cons = td.data["cluster_consensus_consistency"]
-    assert np.allclose(cons.values[da.values == 0], 0.75)
+    rate = td.data["cluster_consensus_rate"]
+    assert np.allclose(rate.values[da.values == 0], 0.75)
 
 
 def test_member_support_connects_voxels_across_temporal_gap():
@@ -285,7 +285,7 @@ def test_member_support_discards_voxels_below_vote_threshold():
 
 
 def test_compute_consensus_end_to_end_on_irregular_grid():
-    """End-to-end consensus on a curvilinear grid with summary consistency checks."""
+    """End-to-end consensus on a curvilinear grid with summary rate checks."""
     td = setup_irregular_grid()
     td.data = td.data.drop_vars(td.cluster_vars, errors="ignore")
 
@@ -309,10 +309,10 @@ def test_compute_consensus_end_to_end_on_irregular_grid():
     cv = td.consensus_cluster_vars[-1]
     summary_df = td.aggregate.consensus_summary(cv)
     clusters = td.data[cv]
-    consistency = td.data[f"{cv}_consistency"]
+    rate = td.data[f"{cv}_rate"]
 
     assert td.time_dim in clusters.dims
-    assert clusters.shape == consistency.shape
+    assert clusters.shape == rate.shape
     assert "pooled_median_shift_time" in summary_df.columns
 
     cvals = np.asarray(clusters.values, dtype=np.float64)
@@ -552,12 +552,12 @@ def test_all_noise_inputs_yield_no_consensus_clusters():
     summary_df = td.aggregate.consensus_summary(cv)
 
     assert np.all(td.data[cv].values == -1)
-    assert np.all(td.data[f"{cv}_consistency"].values == 0)
+    assert np.all(td.data[f"{cv}_rate"].values == 0)
     assert summary_df.empty
 
 
 def test_high_min_consensus_yields_all_noise():
-    """Strict threshold leaves all native events as noise but keeps partial consistency."""
+    """Strict threshold leaves all native events as noise but keeps partial rate values."""
     labels_a = np.array([[[0, 0, -1, -1]]], dtype=np.float32)
     labels_b = np.array([[[-1, -1, 0, 0]]], dtype=np.float32)
     td = setup_synthetic_consensus_toad({"c1": labels_a, "c2": labels_b})
@@ -569,13 +569,13 @@ def test_high_min_consensus_yields_all_noise():
         show_progress=False,
     )
     cv = td.consensus_cluster_vars[-1]
-    cons = td.data[f"{cv}_consistency"]
+    rate = td.data[f"{cv}_rate"]
     summary_df = td.aggregate.consensus_summary(cv)
 
     assert np.all(td.data[cv].values == -1)
     assert summary_df.empty
-    np.testing.assert_allclose(cons.values[0, 0, 0:2], 0.5)
-    np.testing.assert_allclose(cons.values[0, 0, 2:4], 0.5)
+    np.testing.assert_allclose(rate.values[0, 0, 0:2], 0.5)
+    np.testing.assert_allclose(rate.values[0, 0, 2:4], 0.5)
 
 
 def test_compute_consensus_rejects_invalid_parameters():
@@ -613,8 +613,8 @@ def test_compute_consensus_rejects_invalid_parameters():
         )
 
 
-def test_consensus_consistency_map_runs():
-    """Smoke test for consensus consistency map plotting."""
+def test_consensus_rate_map_runs():
+    """Smoke test for consensus rate map plotting."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -635,14 +635,14 @@ def test_consensus_consistency_map_runs():
         show_progress=False,
     )
 
-    fig, ax = td.plot.consensus_consistency_map(time_reduce="max")
+    fig, ax = td.plot.consensus_rate_map(time_reduce="max")
     assert fig is not None
     assert ax is not None
     import matplotlib.pyplot as plt
 
     plt.close(fig)
 
-    fig_h, ax_h = td.plot.consensus_consistency_map(
+    fig_h, ax_h = td.plot.consensus_rate_map(
         time_reduce="max",
         colorbar_orientation="horizontal",
         colorbar_location="left",

@@ -167,7 +167,7 @@ def _consensus_input_support_mask(
 def _build_consensus_summary_df_spacetime(
     td: Any,
     labels3d: xr.DataArray,
-    consistency3d: xr.DataArray,
+    rate3d: xr.DataArray,
     spatial_dims: Tuple[str, str],
     time_dim: str,
 ) -> pd.DataFrame:
@@ -176,7 +176,7 @@ def _build_consensus_summary_df_spacetime(
     One row is returned per cluster id that appears anywhere in the spacetime field.
 
     * ``area`` — number of unique **spatial** cells in the cluster footprint (any time).
-    * ``mean_consistency`` — mean member-support fraction over **spacetime** voxels
+    * ``mean_consensus_rate`` — mean member-support fraction over **spacetime** voxels
       with that id (a cell appearing at many timesteps contributes multiple values).
     * Transition-time columns — from :func:`consensus_shift_time_distribution`: event
       times only where consensus and the input both have a non-noise label at the
@@ -191,7 +191,7 @@ def _build_consensus_summary_df_spacetime(
         td: TOAD object containing clustering results.
         labels3d: 3D DataArray of consensus cluster labels (``-1`` = shift but not
             in consensus; ``NaN`` = no abrupt shift in any input, matching ``compute_clusters``).
-        consistency3d: 3D consistency scores, same dims as ``labels3d``.
+        rate3d: 3D consensus rate scores, same dims as ``labels3d``.
         spatial_dims: Tuple of spatial dimension names.
         time_dim: Name of the time dimension (must be a dim of ``labels3d``).
 
@@ -205,7 +205,7 @@ def _build_consensus_summary_df_spacetime(
 
     empty_cols = [
         "cluster_id",
-        "mean_consistency",
+        "mean_consensus_rate",
         "area",
         f"mean_{sd0}",
         f"mean_{sd1}",
@@ -220,8 +220,8 @@ def _build_consensus_summary_df_spacetime(
     if not np.any(np.isfinite(v) & (v >= 0)):
         return pd.DataFrame({c: [] for c in empty_cols})
 
-    mean_consistency = consistency3d.groupby(cluster_map).mean(skipna=True)
-    cluster_ids = mean_consistency[dim].values.astype(int)
+    mean_rate = rate3d.groupby(cluster_map).mean(skipna=True)
+    cluster_ids = mean_rate[dim].values.astype(int)
     area_vals: list[int] = []
     mean_sd0_vals: list[float] = []
     mean_sd1_vals: list[float] = []
@@ -237,7 +237,7 @@ def _build_consensus_summary_df_spacetime(
     df = pd.DataFrame(
         {
             "cluster_id": cluster_ids,
-            "mean_consistency": mean_consistency.values.astype(np.float32),
+            "mean_consensus_rate": mean_rate.values.astype(np.float32),
             "area": np.asarray(area_vals, dtype=np.int32),
             f"mean_{sd0}": np.asarray(mean_sd0_vals, dtype=np.float32),
             f"mean_{sd1}": np.asarray(mean_sd1_vals, dtype=np.float32),

@@ -4,6 +4,7 @@ from typing import Union
 
 import cftime
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from toad.utils import (
@@ -344,9 +345,110 @@ class TimeStats:
         return self._return_time(float(np.mean(numeric_times)))
 
     def median(self, cluster_id) -> Union[float, cftime.datetime, np.datetime64]:
-        """Return median time of the cluster."""
+        """Median model time while the cluster mask is active anywhere in space.
+
+        This summarises the cluster's temporal footprint in the 3D cluster mask
+        (equivalent to :meth:`median_activity_time`). It is **not** the median
+        per-cell peak shift time; for that, use :meth:`pooled_median_transition_time`.
+        """
         numeric_times = self._get_cluster_numeric_times(cluster_id)
         return self._return_time(float(np.median(numeric_times)))
+
+    def median_activity_time(
+        self, cluster_id
+    ) -> Union[float, cftime.datetime, np.datetime64]:
+        """Median model time while the cluster exists anywhere in space.
+
+        See :meth:`median` for details.
+        """
+        return self.median(cluster_id)
+
+    def _pooled_transition_time_values(
+        self,
+        cluster_id: int,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+    ) -> np.ndarray:
+        """Per-cell peak-shift times (finite values only) within one cluster."""
+        transition_map = self.compute_transition_time(
+            cluster_ids=[cluster_id],
+            shift_threshold=shift_threshold,
+        )
+        values = transition_map.values.astype(float, copy=False).ravel()
+        return values[np.isfinite(values)]
+
+    def pooled_median_transition_time(
+        self,
+        cluster_id: int,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+    ) -> Union[float, cftime.datetime, np.datetime64]:
+        """Median of per-cell peak-shift times within the cluster.
+
+        Each grid cell contributes one transition time: the model time of
+        maximum ``|shift|`` above ``shift_threshold`` (same field as
+        :meth:`compute_transition_time`). This pools all cells in the cluster,
+        analogous to ``pooled_median_shift_time`` in
+        :meth:`Aggregation.consensus_summary`.
+        """
+        values = self._pooled_transition_time_values(cluster_id, shift_threshold)
+        if values.size == 0:
+            return np.nan
+        return self._return_time(float(np.median(values)))
+
+    def pooled_std_transition_time(
+        self,
+        cluster_id: int,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+    ) -> float:
+        """Sample standard deviation of per-cell peak-shift times in the cluster."""
+        values = self._pooled_transition_time_values(cluster_id, shift_threshold)
+        if values.size == 0:
+            return np.nan
+        return float(np.std(values))
+
+    def summary(
+        self,
+        cluster_ids: int | list[int] | range | None = None,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+    ) -> pd.DataFrame:
+        """Per-cluster table of activity-time vs pooled transition-time summaries.
+
+        Returns one row per cluster with:
+
+        * ``median_activity_time`` — median timestep while the cluster mask is
+          active anywhere in space (:meth:`median_activity_time`).
+        * ``pooled_median_transition_time`` / ``pooled_std_transition_time`` —
+          median and sample std of per-cell peak-shift times (pooled over all
+          cells), matching the spirit of ``pooled_*`` columns in
+          :meth:`Aggregation.consensus_summary`.
+        * ``n_transition_cells`` — number of cells with a finite transition time.
+        * ``start`` / ``end`` — first and last timestep with any cluster member.
+        """
+        if cluster_ids is None:
+            cluster_ids = list(self.td.get_cluster_ids(self.var))
+        elif isinstance(cluster_ids, int):
+            cluster_ids = [cluster_ids]
+        else:
+            cluster_ids = list(cluster_ids)
+
+        rows: list[dict] = []
+        for cluster_id in cluster_ids:
+            values = self._pooled_transition_time_values(cluster_id, shift_threshold)
+            rows.append(
+                {
+                    "cluster_id": int(cluster_id),
+                    "median_activity_time": self.median_activity_time(cluster_id),
+                    "pooled_median_transition_time": self.pooled_median_transition_time(
+                        cluster_id, shift_threshold
+                    ),
+                    "pooled_std_transition_time": self.pooled_std_transition_time(
+                        cluster_id, shift_threshold
+                    ),
+                    "n_transition_cells": int(values.size),
+                    "start": self.start(cluster_id),
+                    "end": self.end(cluster_id),
+                }
+            )
+        return pd.DataFrame(rows)
 
     def std(self, cluster_id) -> float:
         """Return standard deviation of the time of the cluster."""
@@ -438,7 +540,7 @@ class TimeStats:
             shift_threshold=shift_threshold,
         )
 
-        max_dts_mask = np.abs(max_dts_mask)
+        max_dts_mask = xr.apply_ufunc(np.abs, max_dts_mask)
 
         # Reductions use the named time dimension (not axis index), so (y, x, time) and similar orders work.
         time_dim = self.td.time_dim
@@ -462,5 +564,8 @@ class TimeStats:
         )
         time_values.attrs["long_name"] = self.td.data[self.td.time_dim].name
         time_values.attrs["units"] = self.td.numeric_time_values_unit()
-        time_values.attrs["description"] = "Time point of maximum rate of change"
+        time_values.attrs["description"] = (
+            "Time point of maximum rate of change; pool over cells with "
+            "TimeStats.pooled_median_transition_time"
+        )
         return time_values

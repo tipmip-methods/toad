@@ -1071,6 +1071,35 @@ class TOAD:
 
         return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
 
+    def cluster_summary(
+        self,
+        var: str | None = None,
+        cluster_ids: int | list[int] | range | None = None,
+        *,
+        extended: bool = False,
+        shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+        exclude_noise: bool = True,
+    ):
+        """Per-cluster overview table for a clustering result.
+
+        Convenience alias for :meth:`Stats.cluster_summary`. See that method for
+        column definitions and examples.
+
+        Args:
+            var: Base variable, cluster variable, or None to infer when unambiguous.
+            cluster_ids: Subset of clusters to include. Defaults to all non-noise clusters.
+            extended: Include IQR bounds, shift amplitudes, pooled transition times,
+                and clustering metadata.
+            shift_threshold: Minimum shift magnitude for pooled transition-time columns.
+            exclude_noise: Exclude noise (cluster ID -1) when ``cluster_ids`` is None.
+        """
+        return self.stats(var).cluster_summary(
+            cluster_ids=cluster_ids,
+            extended=extended,
+            shift_threshold=shift_threshold,
+            exclude_noise=exclude_noise,
+        )
+
     def get_cluster_ids(
         self, var: str | None = None, exclude_noise: bool = True
     ) -> np.ndarray:

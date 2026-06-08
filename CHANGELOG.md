@@ -18,6 +18,8 @@ Planned as **1.0.8**:
 ### Added
 - Consensus **rate** field (`{consensus_var}_rate`), **`stitch_meridian`**, **`cluster_occurrence_rate()`**, expanded summary/plots, and consensus tutorial + docs.
 - **`TOAD(..., auto_clean=True)`** — optional CMIP-style cleanup on load (off by default).
+- **`cluster_summary()`** on `TOAD` and `Stats` — per-cluster overview table (time span, size, footprint, centre; optional IQR, shift amplitudes, pooled transition times, and clustering metadata). Analogous to `consensus_summary` for standard cluster variables.
+- **`TimeStats` timing summaries** — `median_activity_time`, `pooled_median_transition_time`, `pooled_std_transition_time`, and `summary()` DataFrame contrasting cluster temporal footprint vs per-cell peak-shift times (same field as `compute_transition_time` / `time_of_max_shift_map`).
 
 ### Removed
 - Old edge-vote consensus and **`regridder=`** on `compute_consensus` (HealPix remains for `compute_clusters`).

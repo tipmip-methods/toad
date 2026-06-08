@@ -73,6 +73,31 @@ class TestTimeStats:
             # Should have same spatial shape as data
             assert result.dims == td.data[shifts_var].dims[1:]
 
+    def test_activity_vs_pooled_transition_time(self, td_with_clusters):
+        """Both time summaries exist; pooled uses per-cell peak-shift times."""
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+        cid = td.get_cluster_ids(cluster_var)[0]
+        time_stats = td.stats(cluster_var).time
+
+        activity = time_stats.median_activity_time(cid)
+        pooled = time_stats.pooled_median_transition_time(cid)
+        assert activity is not None
+        assert np.isfinite(float(pooled)) or isinstance(pooled, (int, float))
+
+        summary = time_stats.summary(cluster_ids=[cid])
+        assert list(summary.columns) == [
+            "cluster_id",
+            "median_activity_time",
+            "pooled_median_transition_time",
+            "pooled_std_transition_time",
+            "n_transition_cells",
+            "start",
+            "end",
+        ]
+        assert summary.loc[0, "cluster_id"] == cid
+        assert summary.loc[0, "n_transition_cells"] > 0
+
 
 class TestSpaceStats:
     """Test space-related statistics functions."""
@@ -241,6 +266,66 @@ class TestGeneralStats:
 
         # All cluster_ids should be present
         assert set(df["cluster_id"]) == set(cluster_ids)
+
+
+class TestClusterSummary:
+    """Test cluster overview summary table."""
+
+    def test_cluster_summary_minimal(self, td_with_clusters):
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+        cluster_ids = td.get_cluster_ids(cluster_var)
+
+        df_stats = td.stats(cluster_var).cluster_summary()
+        df_alias = td.cluster_summary(cluster_var)
+
+        assert isinstance(df_stats, pd.DataFrame)
+        pd.testing.assert_frame_equal(df_stats, df_alias)
+
+        assert len(df_stats) == len(cluster_ids)
+        assert set(df_stats["cluster_id"]) == set(cluster_ids)
+
+        required_cols = {
+            "cluster_id",
+            "start_time",
+            "end_time",
+            "duration_timesteps",
+            "size",
+            "footprint_area",
+            "median_time",
+            "center_lat",
+            "center_lon",
+        }
+        assert required_cols.issubset(df_stats.columns)
+
+        row = df_stats.loc[df_stats["cluster_id"] == cluster_ids[0]].iloc[0]
+        assert row["size"] > 0
+        assert row["footprint_area"] > 0
+        assert row["duration_timesteps"] >= 0
+
+    def test_cluster_summary_extended(self, td_with_clusters):
+        td = td_with_clusters
+        cluster_var = td.cluster_vars[0]
+        cid = td.get_cluster_ids(cluster_var)[0]
+
+        df = td.cluster_summary(cluster_var, extended=True, cluster_ids=[cid])
+
+        extended_cols = {
+            "iqr_68_start",
+            "iqr_68_end",
+            "avg_amplitude",
+            "max_amplitude",
+            "pooled_median_transition_time",
+            "pooled_std_transition_time",
+            "n_transition_cells",
+            "variable",
+            "method",
+            "shift_threshold",
+        }
+        assert extended_cols.issubset(df.columns)
+        assert df.loc[0, "cluster_id"] == cid
+        assert df.loc[0, "n_transition_cells"] > 0
+        assert df.loc[0, "method"] == "HDBSCAN"
 
 
 class TestSmartInference:

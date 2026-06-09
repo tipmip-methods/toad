@@ -4675,26 +4675,25 @@ def _cluster_annotate(
             Only used when relative_coords=False.
     """
     black_or_white = _get_high_constrast_text_color(acol)
-    t = ax.annotate(
+    ax.annotate(
         text=str(cluster_id),
         xy=(x, y),
         xycoords="axes fraction" if relative_coords else "data",
         annotation_clip=True,  # don't show if outside the extent of the axis
-        color=black_or_white,
+        color=acol,
         zorder=100,
-        fontweight="semibold",
         ha="center",
         va="center",
-        fontsize=4 + 4 * scale,
+        fontsize=10 * scale,
+        fontfamily="verdana",
+        fontweight="bold",
         transform=transform,
-    )
-    t.set_bbox(
-        dict(
-            facecolor=acol,
-            alpha=1,
-            edgecolor=black_or_white,
-            boxstyle="round,pad=0.2,rounding_size=0.2",  # adjust rounding_size to control corner radius
-        )
+        bbox=dict(
+            facecolor=black_or_white,
+            edgecolor="none",
+            alpha=0.6 if black_or_white == "#000000" else 0.8,
+            boxstyle="round4,pad=0.2",  # pad and rounding chosen to approximate square
+        ),
     )
 
 

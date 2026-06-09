@@ -724,23 +724,11 @@ class Aggregation:
             if time_window_mask is not None:
                 data = data.where(time_window_mask)
 
-            series = self.td._aggregate_spatial(data, aggregation, percentile)
+            series = self.td._finalize_timeseries(
+                data, aggregation, percentile, normalize
+            )
             if not np.isfinite(np.asarray(series.values, dtype=float)).any():
                 continue
-            if normalize:
-                if normalize == "max":
-                    series = self.td._normalize_timeseries(
-                        series, float(series.max()), normalize
-                    )
-                elif normalize == "max_each":
-                    norm_val = (
-                        series.max(dim=self.td.time_dim)
-                        if "cell_xy" in series.dims
-                        else float(series.max())
-                    )
-                    series = self.td._normalize_timeseries(series, norm_val, normalize)
-                else:
-                    raise ValueError(f"Unknown normalization method: {normalize}")
 
             series = series.copy()
             series.name = f"{cluster_var}_consensus_cluster_{consensus_cluster_id}"

@@ -1330,6 +1330,45 @@ class TOAD:
         else:
             raise ValueError(f"Unknown aggregation method: {method}")
 
+    def _finalize_timeseries(
+        self,
+        data: xr.DataArray,
+        aggregation: str,
+        percentile: Optional[float],
+        normalize: Optional[str],
+    ) -> xr.DataArray:
+        """Aggregate spatially, normalising per-cell trajectories first when needed.
+
+        For ``normalize`` with statistical aggregations (median, min, max, etc.),
+        normalisation must happen on raw cell trajectories before aggregation so that
+        band plots (min/max, percentiles) share a consistent scale with the median.
+        """
+        if normalize and aggregation != "raw":
+            raw = self._aggregate_spatial(data, "raw", percentile)
+            if normalize == "max":
+                norm_val = float(raw.max())
+            elif normalize == "max_each":
+                norm_val = raw.max(dim=self.time_dim)
+            else:
+                raise ValueError(f"Unknown normalization method: {normalize}")
+            raw = self._normalize_timeseries(raw, norm_val, normalize)
+            return self._aggregate_spatial(raw, aggregation, percentile)
+
+        data = self._aggregate_spatial(data, aggregation, percentile)
+        if normalize:
+            if normalize == "max":
+                data = self._normalize_timeseries(data, float(data.max()), normalize)
+            elif normalize == "max_each":
+                norm_val = (
+                    data.max(dim=self.time_dim)
+                    if "cell_xy" in data.dims
+                    else float(data.max())
+                )
+                data = self._normalize_timeseries(data, norm_val, normalize)
+            else:
+                raise ValueError(f"Unknown normalization method: {normalize}")
+        return data
+
     def _normalize_timeseries(
         self,
         data: xr.DataArray,
@@ -1455,22 +1494,8 @@ class TOAD:
                     xr.DataArray(mask_in_range, dims=self.time_dim, name="time_mask")
                 )
 
-        # First aggregate spatially
-        data = self._aggregate_spatial(data, aggregation, percentile)
-
-        # Normalise
-        if normalize:
-            if normalize == "max":
-                data = self._normalize_timeseries(data, float(data.max()), normalize)
-            elif normalize == "max_each":
-                norm_val = (
-                    data.max(dim=self.time_dim)
-                    if "cell_xy" in data.dims
-                    else float(data.max())
-                )
-                data = self._normalize_timeseries(data, norm_val, normalize)
-            else:
-                raise ValueError(f"Unknown normalization method: {normalize}")
+        # Aggregate (and normalise) spatially
+        data = self._finalize_timeseries(data, aggregation, percentile, normalize)
 
         return data
 

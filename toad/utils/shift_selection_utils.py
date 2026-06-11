@@ -11,7 +11,7 @@ import xarray as xr
 from numba import njit
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def _peaks_local_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
     """Finds local peaks in segments of a time series where values exceed a threshold.
 
@@ -83,7 +83,7 @@ def _peaks_local_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
     return idxs[:k], sgns[:k]
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def _peak_global_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
     """Finds the global peak in a time series using middle-of-plateau tie rule.
 
@@ -139,7 +139,7 @@ def _peak_global_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
     return np.int64(mid), np.int8(-1 if np.signbit(ts[mid]) else 1)
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def _compute_local_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
     """Computes local peak mask for time series data.
 
@@ -165,7 +165,7 @@ def _compute_local_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
             out_TP[idxs[m], p] = sgns[m]
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def _compute_global_mask_TP(dts_TP: np.ndarray, thr: float, out_TP: np.ndarray):
     """Computes global peak mask for time series data.
 

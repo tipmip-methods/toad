@@ -2671,6 +2671,7 @@ class Plotter:
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "turbo",
         shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+        shift_direction: Literal["both", "positive", "negative"] | str = "both",
         **kwargs: Any,
     ):
         """Plot a map showing the time at which the maximal shift occurs for a given variable.
@@ -2689,6 +2690,8 @@ class Plotter:
                 recognized by matplotlib, or an actual Colormap object. Defaults to 'turbo'.
             shift_threshold: Threshold value for shift magnitude above which a transition
                 is detected. This value is passed to `compute_transition_time`. Defaults to 0.5.
+            shift_direction: Sign of shifts to map (``"both"``, ``"positive"``, or ``"negative"``).
+                Passed to :meth:`TimeStats.compute_transition_time`. Defaults to ``"both"``.
 
         Returns:
             Tuple[FigureBase | None, matplotlib.axes.Axes]:
@@ -2707,7 +2710,9 @@ class Plotter:
             fig = None
 
         transition_time = self.td.stats(var).time.compute_transition_time(
-            cluster_ids=cluster_ids, shift_threshold=shift_threshold
+            cluster_ids=cluster_ids,
+            shift_threshold=shift_threshold,
+            shift_direction=shift_direction,
         )
 
         # Prepare plot parameters for different grid types

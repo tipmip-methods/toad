@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Union
+from typing import Literal, Union
 
 import cftime
 import numpy as np
@@ -14,6 +14,14 @@ from toad.utils import (
 )
 
 logger = logging.getLogger("TOAD")
+
+
+def _global_peak_time_index(ts: np.ndarray, threshold: float) -> np.int64:
+    """Time index of the global peak shift in one grid-cell series (middle-of-plateau rule)."""
+    from toad.utils.shift_selection_utils import _peak_global_for_ts
+
+    idx, _ = _peak_global_for_ts(np.asarray(ts, dtype=np.float64), float(threshold))
+    return np.int64(idx)
 
 
 class TimeStats:
@@ -490,12 +498,12 @@ class TimeStats:
         self,
         cluster_ids: int | list[int] | range | None = None,
         shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
+        shift_direction: Literal["both", "positive", "negative"] | str = "both",
     ) -> xr.DataArray:
         """Computes the transition time for each grid cell.
 
         This method identifies the time point of maximum rate of change (peak shift) for each
-        spatial location in the data. It uses the absolute value of shifts to detect both
-        positive and negative transitions.
+        spatial location in the data.
 
         Args:
             cluster_ids: Optional integer or list of integers specifying which cluster IDs to analyze.
@@ -504,6 +512,9 @@ class TimeStats:
             shift_threshold: Optional float specifying the minimum absolute shift value that should
                 be considered a valid transition. Defaults to 0.5. Grid cells with maximum shift
                 values below this threshold will be marked as having no transition (NaN).
+            shift_direction: Sign of shifts to retain when locating the global peak per grid cell.
+                Options are ``"both"``, ``"positive"``, and ``"negative"`` (same convention as
+                :func:`toad.clustering.compute_clusters`). Defaults to ``"both"``.
 
         Returns:
             xarray DataArray containing the transition time for each grid cell. Grid cells
@@ -511,14 +522,18 @@ class TimeStats:
             spatial dimensions as the input shifts data.
 
         Note:
-            The transition time is determined by finding the time index where the absolute
-            value of the shifts reaches its maximum for each grid cell. This corresponds to
-            the point of most rapid change in the underlying data.
+            Shifts are restricted to the requested sign before locating the global peak per
+            grid cell via :func:`toad.utils.shift_selection_utils._peak_global_for_ts`
+            (middle of any maximum-|shift| plateau), so e.g. ``shift_direction="negative"``
+            returns the timing of the largest negative shift.
 
-            For grid cells where the maximum absolute shift value is below shift_threshold,
-            or where no clear transition is detected, NaN values will be returned.
+            Grid cells with no peak above ``shift_threshold`` in the requested direction
+            return NaN.
         """
-        from toad.clustering import _compute_dts_peak_sign_mask
+        if shift_direction not in ("both", "positive", "negative"):
+            raise ValueError(
+                'shift_direction must be "both", "positive", or "negative"'
+            )
 
         # If user has specified a cluster variable, we need to get the shifts variable from attrs
         shifts = self.td.get_shifts(self.var)
@@ -532,28 +547,26 @@ class TimeStats:
             shifts = shifts.where(shifts[self.td.time_dim] >= start, 0.0)
             shifts = shifts.where(shifts[self.td.time_dim] <= end, 0.0)
 
-        # TODO could this be made faster by replacing with argmax(shifts)?
-        max_dts_mask = _compute_dts_peak_sign_mask(
-            shifts,
-            self.td.time_dim,
-            shift_selection="global",  # use global to largest shift
-            shift_threshold=shift_threshold,
-        )
+        if shift_direction == "positive":
+            shifts = shifts.where(shifts > 0)
+        elif shift_direction == "negative":
+            shifts = shifts.where(shifts < 0)
 
-        max_dts_mask = xr.apply_ufunc(np.abs, max_dts_mask)
-
-        # Reductions use the named time dimension (not axis index), so (y, x, time) and similar orders work.
         time_dim = self.td.time_dim
-        time_indices = max_dts_mask.argmax(dim=time_dim)
-        has_peak = max_dts_mask.sum(dim=time_dim) > 0
+        time_indices = xr.apply_ufunc(
+            _global_peak_time_index,
+            shifts,
+            kwargs={"threshold": shift_threshold},
+            input_core_dims=[[time_dim]],
+            vectorize=True,
+            output_dtypes=[np.int64],
+        )
 
         time_coords = self.td.numeric_time_values
 
-        time_indices = xr.where(has_peak, time_indices, -1)
-
         idx_np = time_indices.values.astype(np.int64, copy=False)
         out_np = np.full(idx_np.shape, np.nan, dtype=float)
-        valid = idx_np >= 0
+        valid = idx_np >= 0  # _peak_global_for_ts returns -1 when below threshold
         out_np[valid] = time_coords[idx_np[valid]]
 
         time_values = xr.DataArray(

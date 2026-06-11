@@ -356,7 +356,9 @@ class TOAD:
     def compute_clusters(
         self,
         var: str | None = None,
-        method: ClusterMixin | type = sklearn.cluster.HDBSCAN(),
+        method: ClusterMixin | type = sklearn.cluster.HDBSCAN(
+            allow_single_cluster=True
+        ),
         shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
         shift_direction: Literal["both", "positive", "negative"] | str = "both",
         shift_selection: Literal["local", "global", "all"] | str = "local",

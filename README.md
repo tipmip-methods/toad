@@ -80,8 +80,13 @@ For more details, check out the tutorials.
 
 - [Basics](https://github.com/tipmip-methods/toad/blob/main/tutorials/basics.ipynb): Learn the core concepts and workflow
 - [Visualization](https://github.com/tipmip-methods/toad/blob/main/tutorials/visualisation_examples.ipynb): Explore the plotting capabilities
-- [Custom Clustering](https://github.com/tipmip-methods/toad/blob/main/tutorials/clustering_methods.ipynb): Implement your own clustering methods
-- [Custom Shift Detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/shift_detection_methods.ipynb): Create new shift detection algorithms
+- [Aggregation](https://github.com/tipmip-methods/toad/blob/main/tutorials/consensus.ipynb): Explore how to identify regions of abrupt shifts that are consistent across models/members/variables/methods. 
+- [Custom clustering](https://github.com/tipmip-methods/toad/blob/main/tutorials/clustering_methods.ipynb): Implement new clustering methods
+- [Custom event detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/shift_detection_methods.ipynb): Implement new event detection algorithms
+
+## Documentation
+
+Read the [documentation](https://toad-docs.pages.dev), which includes a short video introduction!
 
 ## About
 

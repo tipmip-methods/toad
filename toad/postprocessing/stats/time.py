@@ -562,20 +562,11 @@ class TimeStats:
             output_dtypes=[np.int64],
         )
 
-        max_dts_mask = np.abs(max_dts_mask)
-
-        # Reductions use the named time dimension (not axis index), so (y, x, time) and similar orders work.
-        time_dim = self.td.time_dim
-        time_indices = max_dts_mask.argmax(dim=time_dim)
-        has_peak = max_dts_mask.sum(dim=time_dim) > 0
-
         time_coords = self.td.numeric_time_values
-
-        time_indices = xr.where(has_peak, time_indices, -1)
 
         idx_np = time_indices.values.astype(np.int64, copy=False)
         out_np = np.full(idx_np.shape, np.nan, dtype=float)
-        valid = idx_np >= 0
+        valid = idx_np >= 0  # _peak_global_for_ts returns -1 when below threshold
         out_np[valid] = time_coords[idx_np[valid]]
 
         time_values = xr.DataArray(

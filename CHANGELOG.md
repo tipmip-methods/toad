@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Planned as **1.0.8**:
+## [1.0.8] - 2026-06-22
 
 ### Changed
 - **`compute_consensus` redesigned** — spacetime member-support consensus on the native grid; requires `min_consensus`, `temporal_tolerance`, and `spatial_tolerance`. Replaces the old edge-vote method; results will differ. See `tutorials/consensus.ipynb`.
@@ -16,6 +16,7 @@ Planned as **1.0.8**:
 - Clustering and transition times work with **time-last** dimension order (e.g. `y`, `x`, `time`).
 
 ### Added
+- **`SpaceTimeDBSCAN`** — built-in clusterer with separate spatial and temporal neighbourhood sizes (`spatial_eps`, `temporal_eps`).
 - Consensus **rate** field (`{consensus_var}_rate`), **`stitch_meridian`**, **`cluster_occurrence_rate()`**, expanded summary/plots, and consensus tutorial + docs.
 - **`TOAD(..., auto_clean=True)`** — optional CMIP-style cleanup on load (off by default).
 - **`cluster_summary()`** on `TOAD` and `Stats` — per-cluster overview table (time span, size, footprint, centre; optional IQR, shift amplitudes, pooled transition times, and clustering metadata). Analogous to `consensus_summary` for standard cluster variables.
@@ -26,6 +27,8 @@ Planned as **1.0.8**:
 
 ### Fixed
 - Dimension-order bugs in clustering and transition times; HealPix regridder out-of-bounds error.
+- Explicit **`astropy` dependency** for HealPix lon/lat unit conversion (CI deptry).
+- HDBSCAN **`allow_single_cluster=True` by default** when sklearn supports it.
 
 ## [1.0.7] - 2026-03-26
 
@@ -115,7 +118,8 @@ Planned as **1.0.8**:
 ### Added
 - First public release of the TOAD package
 
-[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/tipmip-methods/toad/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/tipmip-methods/toad/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/tipmip-methods/toad/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/tipmip-methods/toad/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/tipmip-methods/toad/compare/v1.0.4...v1.0.5

@@ -4690,7 +4690,6 @@ def _cluster_annotate(
         ha="center",
         va="center",
         fontsize=10 * scale,
-        fontfamily="verdana",
         fontweight="bold",
         transform=transform,
         bbox=dict(

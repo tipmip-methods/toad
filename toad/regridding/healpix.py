@@ -49,6 +49,17 @@ class HealPixRegridder(BaseRegridder):
         lon_deg = float(np.mod(lon.to_value(u.deg), 360.0))
         return lat_deg, lon_deg
 
+    def pixels_to_latlon(self, pixels: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Convert HEALPix pixel indices to (lat, lon) in degrees."""
+        lon, lat = healpix_to_lonlat(
+            np.asarray(pixels, dtype=np.int64),
+            self.nside,
+            order="ring",
+        )
+        return np.asarray(lat.to_value(u.deg)), np.mod(
+            np.asarray(lon.to_value(u.deg)), 360.0
+        )
+
     def regrid(
         self,
         coords: np.ndarray,

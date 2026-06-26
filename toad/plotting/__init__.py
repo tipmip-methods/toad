@@ -1114,6 +1114,65 @@ class Plotter:
             raise ValueError("ax should be set when subplots=False")
         return fig, ax
 
+    def consensus_labels_map(
+        self,
+        consensus_var: str | None = None,
+        *,
+        ax: Optional[Axes] = None,
+        map_style: Optional[Union[MapStyle, dict]] = None,
+        cmap: str = "tab10",
+        s: float = 10,
+        vmin: float | None = None,
+        vmax: float | None = None,
+        show_noise: bool = False,
+        add_colorbar: bool = True,
+        cluster_ids: Optional[Sequence[int]] = None,
+        colorbar_label: str = "Cluster ID",
+        **kwargs: Any,
+    ) -> Tuple[FigureBase | None, Axes]:
+        """Plot time-collapsed consensus cluster labels on a map.
+
+        Unlike :meth:`consensus_map`, which draws per-cluster footprints with
+        ``(labels == id).any(time)``, this method collapses time with the mode
+        of cluster ids at each spatial location (same display as
+        :meth:`toad.MMA.plot_consensus_clusters`). Supports native grids and
+        HealPix ``(time, hp_pixel)`` consensus fields.
+        """
+        from toad.plotting.consensus_maps import plot_collapsed_consensus_labels_map
+
+        consensus_var = self.td._resolve_consensus_var(consensus_var)
+        da = self.td.data[consensus_var]
+        time_dim = self.td.time_dim
+        if time_dim not in da.dims:
+            raise ValueError(
+                f"Consensus variable {consensus_var!r} has no time dimension {time_dim!r}."
+            )
+
+        nside = self.td.data.attrs.get("nside") or da.attrs.get("nside")
+        if nside is not None:
+            nside = int(nside)
+
+        fig, plot_ax = plot_collapsed_consensus_labels_map(
+            da,
+            self.td.data,
+            time_dim=time_dim,
+            nside=nside,
+            ax=ax,
+            map_style=map_style,
+            cmap=cmap,
+            s=s,
+            vmin=vmin,
+            vmax=vmax,
+            show_noise=show_noise,
+            add_colorbar=add_colorbar,
+            cluster_ids=cluster_ids,
+            colorbar_label=colorbar_label,
+            **kwargs,
+        )
+        if ax is not None:
+            return None, plot_ax
+        return fig, plot_ax
+
     def consensus_rate_map(
         self,
         consensus_var: str | None = None,
@@ -1339,17 +1398,21 @@ class Plotter:
         total_color: str,
         pad_empty_for_violin: bool = False,
         source_input_cluster_var: str | None = None,
+        shift_time_distributions: dict[int, np.ndarray] | None = None,
     ) -> Tuple[str, list[np.ndarray], list[str], list[str]]:
         """Shared transition-time samples per consensus cluster (and optional pooled groups).
 
         Used by :meth:`consensus_shift_times_violins`.
         """
         consensus_var = self.td._resolve_consensus_var(consensus_var)
-        da = self.td.data[consensus_var]
-        dists = self.td.aggregate.consensus_shift_time_distributions(
-            da,
-            source_input_cluster_var=source_input_cluster_var,
-        )
+        if shift_time_distributions is not None:
+            dists = shift_time_distributions
+        else:
+            da = self.td.data[consensus_var]
+            dists = self.td.aggregate.consensus_shift_time_distributions(
+                da,
+                source_input_cluster_var=source_input_cluster_var,
+            )
         dataset, xticklabels, colors = self._distributions_to_violin_tuples(
             dists,
             cluster_ids,
@@ -1577,6 +1640,7 @@ class Plotter:
         jitter_half_span: Optional[float] = None,
         seed: Optional[int] = None,
         tight_layout: bool = True,
+        shift_time_distributions: dict[int, np.ndarray] | None = None,
         **kwargs: Any,
     ) -> Tuple[FigureBase | None, Axes]:
         """Transition-time samples per consensus cluster: half-violin + scatter or full violins.
@@ -1637,6 +1701,7 @@ class Plotter:
             total_color=total_color,
             pad_empty_for_violin=True,
             source_input_cluster_var=source_input_cluster_var,
+            shift_time_distributions=shift_time_distributions,
         )
 
         return self._plot_transition_time_violin_axes(
@@ -2118,147 +2183,32 @@ class Plotter:
             ``(figure, map_axes, shift_axes)``. The map axes may be a cartopy ``GeoAxes``; the third
             element is the right-hand (medians or violins) axes.
         """
-        if kind not in ("medians", "violins"):
-            raise ValueError(
-                f"consensus_overview: unknown kind {kind!r}; expected 'medians' or 'violins'."
-            )
+        from toad.plotting.consensus_overview import plot_consensus_overview
 
-        consensus_var_resolved = self.td._resolve_consensus_var(consensus_var)
-        da = self.td.data[consensus_var_resolved]
-        if kind == "medians":
-            dist_ds, _ = self.td.aggregate.consensus_shift_time_distribution(
-                da,
-            )
-            if (
-                len(dist_ds.data_vars) == 0
-                or "spatial_median_transition_time" not in dist_ds
-            ):
-                raise ValueError(
-                    "No per-model spatial median shift times available; check consensus labels "
-                    "and input cluster variables."
-                )
-            sm = dist_ds["spatial_median_transition_time"]
-            ids_all = np.asarray(
-                sm.coords["consensus_cluster_id"].values, dtype=np.int64
-            )
-        else:
-            dists = self.td.aggregate.consensus_shift_time_distributions(
-                da,
-            )
-            if not dists:
-                raise ValueError(
-                    "No transition-time samples for violin plot; check consensus labels "
-                    "and input cluster variables."
-                )
-            ids_all = np.array(sorted(dists.keys()), dtype=np.int64)
-
-        if cluster_ids is not None:
-            if isinstance(cluster_ids, int):
-                wanted = {int(cluster_ids)}
-            else:
-                wanted = {int(x) for x in cluster_ids}
-            plot_ids = np.array(
-                [i for i in ids_all if int(i) in wanted], dtype=np.int64
-            )
-        else:
-            plot_ids = ids_all.copy()
-        if plot_ids.size == 0:
-            raise ValueError("No consensus cluster ids left after filtering.")
-        plot_ids.sort()
-
-        _figsize = figsize if figsize is not None else (12.0, 5.2)
-        config = _normalize_map_style(map_style)
-        lat_name, lon_name = detect_latlon_names(self.td.data)
-        has_latlon = lat_name is not None and lon_name is not None
-        if config.projection is None:
-            projection_obj = get_projection("plate_carree") if has_latlon else None
-        else:
-            projection_obj = get_projection(config.projection)
-        if projection_obj is None:
-            raise ValueError(
-                "consensus_overview needs a geographic map on the "
-                "left: ensure the dataset has latitude/longitude coordinates, or pass "
-                "map_style with a projection (see :meth:`map`)."
-            )
-
-        fig = plt.figure(figsize=_figsize)
-        gs = fig.add_gridspec(1, 2, width_ratios=list(width_ratios))
-        ax_map = cast(GeoAxes, fig.add_subplot(gs[0, 0], projection=projection_obj))
-        ax_right = fig.add_subplot(gs[0, 1])
-
-        _add_map_features(ax_map, config)
-        if config.extent is None:
-            if ax_map.projection == ccrs.SouthPolarStereo():
-                ax_map.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
-            elif ax_map.projection == ccrs.NorthPolarStereo():
-                ax_map.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
-        else:
-            ax_map.set_extent(config.extent, crs=ccrs.PlateCarree())
-        ax_map.set_frame_on(config.map_frame)
-
-        map_ids = [int(x) for x in plot_ids.tolist()]
-        map_out = self.consensus_map(
-            consensus_var,
-            cluster_ids=map_ids,
-            ax=ax_map,
+        return plot_consensus_overview(
+            self,
+            consensus_var=consensus_var,
+            cluster_ids=cluster_ids,
+            kind=kind,
+            spread=spread,
+            figsize=figsize,
+            width_ratios=width_ratios,
+            wspace=wspace,
             cmap=cmap,
             colorbar_shrink=colorbar_shrink,
             colorbar_pad=colorbar_pad,
             colorbar_aspect=colorbar_aspect,
             colorbar_label=colorbar_label,
             map_style=map_style,
+            show_legend=show_legend,
+            ylabel=ylabel,
+            seed=seed,
+            show_sum=show_sum,
+            show_total=show_total,
+            total_color=total_color,
+            bw_method=bw_method,
+            **kwargs,
         )
-        if map_out[1] is None:
-            plt.close(fig)
-            raise ValueError(
-                "consensus_map produced no axes; check consensus cluster ids against the dataset."
-            )
-
-        if kind == "medians":
-            median_kw = dict(kwargs)
-            median_kw.pop("ax", None)
-            median_kw.pop("figsize", None)
-            if "summary_cluster_cmap" not in median_kw:
-                median_kw["summary_cluster_cmap"] = cmap
-
-            self.consensus_shift_times_medians(
-                consensus_var=consensus_var,
-                cluster_ids=cluster_ids,
-                spread=spread,
-                ax=ax_right,
-                show_legend=show_legend,
-                ylabel=ylabel,
-                seed=seed,
-                tight_layout=False,
-                **median_kw,
-            )
-        else:
-            violin_kw = dict(kwargs)
-            violin_kw.pop("ax", None)
-            violin_kw.pop("figsize", None)
-            for _k in ("show_sum", "show_total", "total_color", "bw_method"):
-                violin_kw.pop(_k, None)
-            violin_cmap = violin_kw.pop("cmap", cmap)
-            self.consensus_shift_times_violins(
-                consensus_var=consensus_var,
-                cluster_ids=cluster_ids,
-                ax=ax_right,
-                cmap=violin_cmap,
-                show_legend=show_legend,
-                ylabel=ylabel,
-                seed=seed,
-                show_sum=show_sum,
-                show_total=show_total,
-                total_color=total_color,
-                bw_method=bw_method,
-                tight_layout=False,
-                **violin_kw,
-            )
-
-        fig.subplots_adjust(wspace=wspace)
-        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94 if show_legend else 1.0))
-
-        return fig, ax_map, ax_right
 
     def _plot_consensus_raw_shift_indicators(
         self,
@@ -2630,7 +2580,7 @@ class Plotter:
             "vmin": -1,
             "cmap": cmap,
             "cbar_kwargs": {
-                "label": "Maximum shift magnitude",
+                "label": "Max detection signal",
             },
             **kwargs,
         }
@@ -2657,7 +2607,7 @@ class Plotter:
         else:
             shifts_max.plot(**plot_params)
 
-        ax.set_title(f"Maximum shift magnitude for {var}")
+        ax.set_title(f"Max detection signal for {var}")
 
         return fig, ax
 
@@ -2720,6 +2670,7 @@ class Plotter:
             "ax": ax,
             "add_colorbar": True,
             "cmap": cmap,
+            "cbar_kwargs": {"label": "Time of max detection signal"},
             **kwargs,
         }
 
@@ -2732,7 +2683,7 @@ class Plotter:
         else:
             transition_time.plot(**plot_params)
 
-        ax.set_title(f"Time of maximum shift for {var}")
+        ax.set_title(f"Time of max detection signal for {var}")
 
         return fig, ax
 

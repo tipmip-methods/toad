@@ -77,6 +77,8 @@ def compute_clusters(
     output_label: str | None = None,
     overwrite: bool = False,
     sort_by_size: bool = True,
+    export_for_mma: str | None = None,
+    mma_grid: Literal["healpix", "native"] = "healpix",
     # optimization params
     optimize: bool = False,
     optimize_params: dict = default_opt_params,
@@ -114,6 +116,9 @@ def compute_clusters(
         output_label_suffix: A suffix to add to the output label. Defaults to "".
         overwrite: If True, overwrite existing variable of same name. If False, same name is used with an added number. Defaults to False.
         sort_by_size: Whether to reorder clusters by size. Defaults to True.
+        export_for_mma: If set to a file path, exports cluster labels for MMA (multi-model
+            aggregation). When regridding is used, HealPix labels are extracted from df_healpix.
+        mma_grid: Grid format for MMA export: "healpix" or "native". Defaults to "healpix".
         optimize: Whether to optimize the clustering parameters. Defaults to False.
         optimize_params: Parameters for the optimization. Defaults to default_opt_params.
         optimize_objective: The objective function to optimize. Defaults to combined_spatial_nonlinearity. Can be one of:
@@ -211,6 +216,10 @@ def compute_clusters(
     # ==================== optimization ====================
     # if optimize is True, optimize the parameters for clustering.
     if optimize:
+        if export_for_mma:
+            raise ValueError(
+                "Optimization is not yet supported when exporting for MMA."
+            )
         return _optimize_clusters(
             td=td,
             var=var,
@@ -464,8 +473,133 @@ def compute_clusters(
 
     logger.info(_format_cluster_summary(new_output_label, cluster_labels, n_pts))
 
+    if export_for_mma:
+        _export_mma_cluster_labels(
+            path=export_for_mma,
+            mma_grid=mma_grid,
+            td=td,
+            clusters=clusters,
+            regridder=regridder,
+            source_variable=new_output_label,
+        )
+
     # Merge the cluster labels back into the original data
     return xr.merge([td.data, clusters], combine_attrs="override", compat="override")
+
+
+def _export_mma_cluster_labels(
+    path: str,
+    mma_grid: Literal["healpix", "native"],
+    td: "TOAD",
+    clusters: xr.DataArray,
+    regridder: BaseRegridder | None,
+    source_variable: str,
+) -> None:
+    """Export cluster labels for MMA (multi-model aggregation)."""
+    spatial_dims = td.space_dims
+    time_dim = td.time_dim
+
+    if mma_grid == "healpix":
+        if not (
+            isinstance(regridder, HealPixRegridder)
+            and regridder.df_healpix is not None
+            and len(regridder.df_healpix) > 0
+            and "cluster" in regridder.df_healpix.columns
+        ):
+            raise ValueError(
+                "mma_grid='healpix' requires HealPix regridding. Pass regridder=HealPixRegridder(nside=...) "
+                "to compute_clusters and ensure the grid has lat/lon coordinates."
+            )
+        df = regridder.df_healpix
+        nside = regridder.nside if regridder.nside is not None else 32
+        npix = 12 * nside**2
+        time_vals = td.data[time_dim].values
+        n_time = len(time_vals)
+        time_to_idx = {t: i for i, t in enumerate(time_vals)}
+        cluster_healpix = np.full((n_time, npix), np.nan, dtype=np.float32)
+        for _, row in df.iterrows():
+            t_idx = time_to_idx.get(row["time"])
+            if t_idx is None:
+                continue
+            hp_idx = int(row["hp_pix"])
+            if 0 <= hp_idx < npix:
+                cluster_healpix[t_idx, hp_idx] = np.float32(row["cluster"])
+
+        our_dims = {time_dim, *spatial_dims}
+        all_coords = {
+            k: v for k, v in td.data.coords.items() if set(v.dims).issubset(our_dims)
+        }
+        latlon_candidates = {
+            "lat",
+            "latitude",
+            "lon",
+            "longitude",
+            "nav_lat",
+            "nav_lon",
+        }
+        for k in latlon_candidates:
+            if (
+                k in td.data
+                and k not in all_coords
+                and set(td.data[k].dims).issubset(our_dims)
+            ):
+                all_coords[k] = td.data[k]
+        out = xr.Dataset(
+            {
+                "cluster": (
+                    (time_dim, "hp_pixel"),
+                    cluster_healpix,
+                    {
+                        "description": "Cluster variable (time, hp_pixel). For consensus and shift time extraction.",
+                        "source_variable": source_variable,
+                        "format": "healpix",
+                        "nside": nside,
+                    },
+                ),
+            },
+            coords={**all_coords, "hp_pixel": np.arange(npix)},
+            attrs={
+                "format": "healpix",
+                "nside": nside,
+                "Conventions": "TOAD_cluster_labels_v1",
+            },
+        )
+    else:
+        our_dims = {time_dim, *spatial_dims}
+        all_coords = {
+            k: v for k, v in td.data.coords.items() if set(v.dims).issubset(our_dims)
+        }
+        latlon_candidates = {
+            "lat",
+            "latitude",
+            "lon",
+            "longitude",
+            "nav_lat",
+            "nav_lon",
+        }
+        for k in latlon_candidates:
+            if (
+                k in td.data
+                and k not in all_coords
+                and set(td.data[k].dims).issubset(our_dims)
+            ):
+                all_coords[k] = td.data[k]
+        out = xr.Dataset(
+            {
+                "cluster": (
+                    clusters.dims,
+                    clusters.values.astype(np.float32),
+                    {
+                        "description": "Cluster variable in original dims for shift time extraction",
+                        "source_variable": source_variable,
+                    },
+                ),
+            },
+            coords=all_coords,
+            attrs={"format": "native", "Conventions": "TOAD_cluster_labels_v1"},
+        )
+    out.to_netcdf(path)
+    logger.info(f"Exported cluster labels for MMA to {path} (mma_grid={mma_grid})")
 
 
 def _format_cluster_summary(

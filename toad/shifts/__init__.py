@@ -28,7 +28,7 @@ from .methods.base import ShiftsMethod
 # - ASDETECT: Implementation of the [Boulton+Lenton2019]_ algorithm for detecting abrupt shifts
 
 # Expose all methods here
-__all__ = ["ASDETECT", "compute_shifts", "ShiftsMethod"]
+__all__ = ["ASDETECT", "EDGE", "compute_shifts", "ShiftsMethod"]
 
 logger = logging.getLogger("TOAD")
 

@@ -18,6 +18,27 @@ from toad.postprocessing.member_support_consensus import min_consensus_members
 
 
 @dataclass(frozen=True)
+class HealpixConsensusSupport:
+    """Precomputed HEALPix member-support votes for repeated thresholding.
+
+    Returned by :meth:`~toad.mma.MMA.build_consensus` on HEALPix exports and
+    consumed by :meth:`~toad.mma.MMA.apply_consensus_threshold`.
+    """
+
+    cluster_vars: tuple[str, ...]
+    native_union: np.ndarray
+    member_vote_count: np.ndarray
+    context: HealpixSpacetimeContext
+    temporal_tolerance: int
+    spatial_tolerance: int
+    nside: int
+
+    @property
+    def n_members(self) -> int:
+        return len(self.cluster_vars)
+
+
+@dataclass(frozen=True)
 class HealpixSpacetimeContext:
     """Fixed HEALPix spacetime layout for one member-support consensus run."""
 
@@ -330,19 +351,17 @@ def _filter_min_cluster_area(
     )
 
 
-def run_healpix_member_support_consensus(
+def build_healpix_consensus_support(
     td: Any,
     *,
     cluster_vars: list[str],
-    min_consensus: float,
     temporal_tolerance: int,
     spatial_tolerance: int,
     nside: int,
     k_neighbors: int = 8,
-    min_cluster_area: int | None = 2,
     show_progress: bool = True,
-) -> xr.Dataset:
-    """Run member-support consensus on HEALPix cluster label fields."""
+) -> HealpixConsensusSupport:
+    """Precompute dilated member-support votes on a HEALPix cluster grid."""
     if temporal_tolerance < 0:
         raise ValueError(
             f"`temporal_tolerance` must be >= 0, got {temporal_tolerance}."
@@ -380,7 +399,6 @@ def run_healpix_member_support_consensus(
         spatial_rows=spatial_rows,
         spatial_cols=spatial_cols,
     )
-
     native_union, member_vote_count = _accumulate_member_support_healpix(
         td,
         cluster_vars=cluster_vars,
@@ -389,10 +407,34 @@ def run_healpix_member_support_consensus(
         show_progress=show_progress,
         context=context,
     )
+    return HealpixConsensusSupport(
+        cluster_vars=tuple(cluster_vars),
+        native_union=native_union,
+        member_vote_count=member_vote_count,
+        context=context,
+        temporal_tolerance=temporal_tolerance,
+        spatial_tolerance=spatial_tolerance,
+        nside=nside,
+    )
 
+
+def consensus_dataset_from_healpix_support(
+    td: Any,
+    support: HealpixConsensusSupport,
+    *,
+    min_consensus: float,
+    min_cluster_area: int | None = 2,
+) -> xr.Dataset:
+    """Build interim HEALPix consensus labels and rate from precomputed votes."""
+    cluster_vars = list(support.cluster_vars)
+    context = support.context
+    time_dim = context.time_dim
+    pixel_dim = context.pixel_dim
+    T, npix = context.T, context.npix
     n_members = len(cluster_vars)
-    n_st = context.T * context.npix
-    if not np.any(native_union):
+    n_st = T * npix
+
+    if not np.any(support.native_union):
         da_clusters = xr.DataArray(
             np.full((T, npix), -1, dtype=np.int32),
             coords={time_dim: context.time_coord, pixel_dim: np.arange(npix)},
@@ -405,28 +447,28 @@ def run_healpix_member_support_consensus(
             dims=[time_dim, pixel_dim],
             name="rate",
         )
-        ds = _mark_no_shift_nan(
+        return _mark_no_shift_nan(
             xr.Dataset({"clusters": da_clusters, "rate": da_rate}),
             td,
             cluster_vars,
             context,
         )
-        return ds
 
     min_votes = min_consensus_members(n_members, min_consensus)
-    keep = native_union & (member_vote_count >= min_votes)
+    keep = support.native_union & (support.member_vote_count >= min_votes)
     rate_flat = np.zeros(n_st, dtype=np.float32)
-    if np.any(native_union):
-        rate_flat[native_union] = (
-            member_vote_count[native_union].astype(np.float32) / n_members
+    if np.any(support.native_union):
+        rate_flat[support.native_union] = (
+            support.member_vote_count[support.native_union].astype(np.float32)
+            / n_members
         )
 
     if np.any(keep):
         labels_flat = _label_retained_voxels(
             keep,
             context=context,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
+            temporal_tolerance=support.temporal_tolerance,
+            spatial_tolerance=support.spatial_tolerance,
         )
         labels_flat = sorted_cluster_labels(labels_flat)
     else:
@@ -459,3 +501,36 @@ def run_healpix_member_support_consensus(
         )
         ds = xr.Dataset({"clusters": da_c, "rate": da_r})
     return ds
+
+
+def run_healpix_member_support_consensus(
+    td: Any,
+    *,
+    cluster_vars: list[str],
+    min_consensus: float,
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+    nside: int,
+    k_neighbors: int = 8,
+    min_cluster_area: int | None = 2,
+    show_progress: bool = True,
+) -> xr.Dataset:
+    """Run member-support consensus on HEALPix cluster label fields."""
+    if not (0.0 <= min_consensus <= 1.0):
+        raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
+
+    support = build_healpix_consensus_support(
+        td,
+        cluster_vars=cluster_vars,
+        temporal_tolerance=temporal_tolerance,
+        spatial_tolerance=spatial_tolerance,
+        nside=nside,
+        k_neighbors=k_neighbors,
+        show_progress=show_progress,
+    )
+    return consensus_dataset_from_healpix_support(
+        td,
+        support,
+        min_consensus=min_consensus,
+        min_cluster_area=min_cluster_area,
+    )

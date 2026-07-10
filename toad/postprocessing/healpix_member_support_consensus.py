@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,21 +10,11 @@ import numpy as np
 import xarray as xr
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
-from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 
 from toad.clustering import sorted_cluster_labels
+from toad.healpix import build_ring1_spatial_edges
 from toad.postprocessing.member_support_consensus import min_consensus_members
-from toad.regridding.healpix import HealPixRegridder
-
-
-def _latlon_to_unit_xyz(lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
-    lat = np.deg2rad(lat_deg)
-    lon = np.deg2rad(lon_deg)
-    x = np.cos(lat) * np.cos(lon)
-    y = np.cos(lat) * np.sin(lon)
-    z = np.sin(lat)
-    return np.stack([x, y, z], axis=-1)
 
 
 @dataclass(frozen=True)
@@ -45,19 +36,14 @@ def build_healpix_spatial_edges(
     *,
     k_neighbors: int = 8,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Undirected KNN edges on the full HEALPix pixel set."""
-    regridder = HealPixRegridder(nside=nside)
-    npix = 12 * nside**2
-    lats, lons = regridder.pixels_to_latlon(np.arange(npix))
-    xyz = _latlon_to_unit_xyz(lats, lons)
-    nn = NearestNeighbors(n_neighbors=min(k_neighbors + 1, npix))
-    nn.fit(xyz)
-    _, nbrs = nn.kneighbors(xyz)
-    flat_idx = np.arange(npix, dtype=np.int64)
-    rows = np.repeat(flat_idx, nbrs.shape[1] - 1)
-    cols = nbrs[:, 1:].ravel()
-    mask = rows < cols
-    return rows[mask], cols[mask]
+    """Undirected ring-1 edges on the full HEALPix pixel set."""
+    if k_neighbors != 8:
+        warnings.warn(
+            "k_neighbors is deprecated and ignored; HEALPix ring-1 neighbours are used.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return build_ring1_spatial_edges(nside)
 
 
 def _spatial_neighbourhoods_for_tolerance(
@@ -68,7 +54,7 @@ def _spatial_neighbourhoods_for_tolerance(
     spatial_cols: np.ndarray,
     spatial_tolerance: int,
 ) -> dict[int, np.ndarray]:
-    """All HEALPix pixels within ``spatial_tolerance`` hops on the KNN graph."""
+    """All HEALPix pixels within ``spatial_tolerance`` hops on the ring-1 graph."""
     unique_s = np.unique(np.asarray(spatial_indices, dtype=np.int64))
     adjacency: list[list[int]] = [[] for _ in range(npix)]
     for u, v in zip(spatial_rows.tolist(), spatial_cols.tolist()):

@@ -53,8 +53,7 @@ dependencies = [
     "cartopy",
     "pandas",
     "numba",
-    "astropy",          # units for HEALPix lon/lat conversion in healpix.py
-    "astropy-healpix", # used for HEALPix regridding and consensus neighbourhood lookup
+    "healpix-geo",
     "optuna",
     "cftime",
     "joblib",
@@ -102,8 +101,7 @@ cartopy = "cartopy"
 pandas = "pandas"
 scikit-learn = "sklearn"
 numba = "numba"
-astropy = "astropy"
-astropy-healpix = "astropy_healpix"
+healpix-geo = "healpix_geo"
 optuna = "optuna"
 cftime = "cftime"
 joblib = "joblib"

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- HEALPix backend switched from **astropy-healpix** to **healpix-geo** (ring scheme unchanged; saved `hp_pixel` indices compatible).
+- HEALPix consensus spatial dilation now uses true ring-1 neighbours instead of KNN on pixel centres; results may differ slightly.
+- HEALPix consensus maps render filled cell **polygons** instead of centre scatter points.
+
+### Removed
+- **astropy** and **astropy-healpix** dependencies.
+
 ## [1.0.8] - 2026-06-22
 
 ### Changed

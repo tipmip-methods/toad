@@ -866,7 +866,7 @@ class MMA:
                 and connectivity.
             min_cluster_area: Minimum distinct spatial footprint for a consensus cluster.
                 Use ``None`` to disable.
-            k_neighbors: K for the HEALPix spatial graph (HealPix format only).
+            k_neighbors: Deprecated; ignored. HEALPix consensus uses ring-1 neighbours.
             show_progress: Whether to show a progress bar.
 
         Returns:
@@ -1253,6 +1253,8 @@ class MMA:
         show_noise: bool = False,
         add_colorbar: bool = True,
         cluster_ids: Optional[Sequence[int]] = None,
+        edge_step: int = 1,
+        add_labels: bool | None = None,
         **kwargs: Any,
     ) -> Tuple[Figure, Axes]:
         """Plot consensus clusters on a map.
@@ -1263,13 +1265,16 @@ class MMA:
                 ``{"projection": ccrs.Orthographic(-40, 15), "continent_shading": True}``
                 or ``{"projection": "mollweide"}``. Used only when ax is None.
             cmap: Colormap for clusters. Defaults to "tab10".
-            s: Scatter point size. Defaults to 10.
+            s: Deprecated; kept for API compatibility (HealPix maps use polygons).
             vmin: Lower bound for colour scale. Defaults to -0.5.
             vmax: Upper bound for colour scale. Defaults to 9.5.
             show_noise: If True, plot noise pixels (-1) as grey. Defaults to False.
             add_colorbar: Whether to add a colourbar. Defaults to True.
             cluster_ids: Optional sequence of cluster IDs to plot. If specified, only these clusters will be shown.
-            **kwargs: Passed through to ``ax.scatter``.
+            edge_step: HEALPix polygon edge resolution (1 = cell corners).
+            add_labels: If True, annotate cluster ids at median pixel centres. Defaults
+                to ``map_style.add_labels`` (True).
+            **kwargs: Passed through to the HEALPix polygon collection.
 
         Returns:
             Tuple of (figure, axes).
@@ -1291,6 +1296,8 @@ class MMA:
             show_noise=show_noise,
             add_colorbar=add_colorbar,
             cluster_ids=cluster_ids,
+            edge_step=edge_step,
+            add_labels=add_labels,
             **kwargs,
         )
 

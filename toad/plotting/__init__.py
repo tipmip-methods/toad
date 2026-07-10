@@ -1128,6 +1128,8 @@ class Plotter:
         add_colorbar: bool = True,
         cluster_ids: Optional[Sequence[int]] = None,
         colorbar_label: str = "Cluster ID",
+        edge_step: int = 1,
+        add_labels: bool | None = None,
         **kwargs: Any,
     ) -> Tuple[FigureBase | None, Axes]:
         """Plot time-collapsed consensus cluster labels on a map.
@@ -1136,7 +1138,9 @@ class Plotter:
         ``(labels == id).any(time)``, this method collapses time with the mode
         of cluster ids at each spatial location (same display as
         :meth:`toad.MMA.plot_consensus_clusters`). Supports native grids and
-        HealPix ``(time, hp_pixel)`` consensus fields.
+        HealPix ``(time, hp_pixel)`` consensus fields (HealPix cells are drawn
+        as filled polygons). Cluster id labels follow ``map_style.add_labels``
+        (default True), same as :meth:`cluster_map`.
         """
         from toad.plotting.consensus_maps import plot_collapsed_consensus_labels_map
 
@@ -1167,6 +1171,8 @@ class Plotter:
             add_colorbar=add_colorbar,
             cluster_ids=cluster_ids,
             colorbar_label=colorbar_label,
+            edge_step=edge_step,
+            add_labels=add_labels,
             **kwargs,
         )
         if ax is not None:

@@ -137,6 +137,8 @@ def plot_consensus_overview(
             ax_map.set_extent([-180, 180, -90, -65], crs=ccrs.PlateCarree())
         elif ax_map.projection == ccrs.NorthPolarStereo():
             ax_map.set_extent([-180, 180, 65, 90], crs=ccrs.PlateCarree())
+        else:
+            ax_map.set_global()
     else:
         ax_map.set_extent(config.extent, crs=ccrs.PlateCarree())
     ax_map.set_frame_on(config.map_frame)

@@ -9,10 +9,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from cartopy.mpl.geoaxes import GeoAxes
+from matplotlib import colors as mcolors
 from matplotlib.axes import Axes
+from matplotlib.collections import PolyCollection
 from matplotlib.figure import Figure
 
-from toad.regridding.healpix import HealPixRegridder
+from toad.healpix import HealpixGrid, ipix_to_lonlat, ipix_vertices, polygon_paths
 from toad.utils import detect_latlon_names
 from toad.utils.consensus_view import (
     collapse_consensus_for_map,
@@ -56,53 +58,226 @@ def prepare_consensus_map_axes(
     return fig, ax, config, proj
 
 
-def plot_healpix_cluster_labels_map(
-    ax: Axes,
-    lats: np.ndarray,
-    lons: np.ndarray,
+def _healpix_label_masks(
     clusters_map: np.ndarray,
     *,
+    show_noise: bool,
+    cluster_ids: Sequence[int] | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return boolean masks for cluster and noise pixels on a 1D hp_pixel map."""
+    finite = np.isfinite(clusters_map)
+    cluster_mask = finite & (clusters_map >= 0)
+    if cluster_ids is not None:
+        cluster_mask &= np.isin(clusters_map, list(cluster_ids))
+    noise_mask = (
+        finite & (clusters_map == -1)
+        if show_noise
+        else np.zeros_like(cluster_mask, dtype=bool)
+    )
+    return cluster_mask, noise_mask
+
+
+def _ensure_geoaxes_view(ax: Axes) -> None:
+    """PolyCollection does not set Cartopy limits; open unset axes before drawing."""
+    if not isinstance(ax, GeoAxes):
+        return
+    x0, x1 = ax.get_xlim()
+    if x1 - x0 <= 1.5:
+        ax.set_global()
+
+
+def _add_healpix_polygon_layer(
+    ax: Axes,
+    ipix: np.ndarray,
+    values: np.ndarray | None,
+    *,
+    grid: HealpixGrid,
+    edge_step: int,
+    facecolor: str | None = None,
     cmap: str = "tab10",
-    s: float = 10,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    zorder: int = 3,
+    **kwargs: Any,
+) -> PolyCollection:
+    """Add one PolyCollection layer for a subset of HEALPix pixels."""
+    if ipix.size == 0:
+        empty = PolyCollection([], transform=ccrs.PlateCarree())
+        ax.add_collection(empty)
+        return empty
+
+    lons, lats = ipix_vertices(ipix, grid, step=edge_step)
+    paths = polygon_paths(lons, lats)
+    collection_kwargs: dict[str, Any] = {
+        "transform": ccrs.PlateCarree(),
+        "zorder": zorder,
+        "linewidths": 0.0,
+        "edgecolors": "none",
+    }
+    collection_kwargs.update(kwargs)
+
+    if facecolor is not None:
+        collection = PolyCollection(
+            paths,
+            facecolors=facecolor,
+            **collection_kwargs,
+        )
+    else:
+        norm: mcolors.Normalize | None
+        if vmin is not None or vmax is not None:
+            norm = mcolors.Normalize(
+                vmin=-0.5 if vmin is None else vmin,
+                vmax=9.5 if vmax is None else vmax,
+            )
+        else:
+            norm = None
+        collection = PolyCollection(
+            paths,
+            array=np.asarray(values, dtype=np.float64),
+            cmap=cmap,
+            norm=norm,
+            **collection_kwargs,
+        )
+    ax.add_collection(collection)
+    return collection
+
+
+def _healpix_cluster_centroids(
+    clusters_map: np.ndarray,
+    ipix: np.ndarray,
+    grid: HealpixGrid,
+) -> dict[int, tuple[float, float]]:
+    """Median pixel-centre (lon, lat) per cluster id on a collapsed HEALPix map."""
+    lats, lons = ipix_to_lonlat(ipix, grid, lon_convention="180")
+    labels = clusters_map[ipix].astype(np.int64, copy=False)
+    positions: dict[int, tuple[float, float]] = {}
+    for cluster_id in np.unique(labels):
+        mask = labels == cluster_id
+        positions[int(cluster_id)] = (
+            float(np.median(lons[mask])),
+            float(np.median(lats[mask])),
+        )
+    return positions
+
+
+def _cluster_color_for_id(
+    cluster_id: int,
+    *,
+    cmap: str,
+    vmin: float | None,
+    vmax: float | None,
+    cluster_ids: np.ndarray,
+) -> Any:
+    """Match polygon fill colour for one discrete cluster id."""
+    ids = np.asarray(cluster_ids, dtype=np.float64)
+    vmin_use = float(ids.min()) - 0.5 if vmin is None else float(vmin)
+    vmax_use = float(ids.max()) + 0.5 if vmax is None else float(vmax)
+    norm = mcolors.Normalize(vmin=vmin_use, vmax=vmax_use)
+    return plt.get_cmap(cmap)(norm(float(cluster_id)))
+
+
+def _annotate_healpix_cluster_labels(
+    ax: Axes,
+    clusters_map: np.ndarray,
+    ipix: np.ndarray,
+    *,
+    grid: HealpixGrid,
+    cmap: str,
+    vmin: float | None,
+    vmax: float | None,
+) -> None:
+    """Place cluster-id labels at median pixel centres (same style as cluster_map)."""
+    from toad.plotting import _cluster_annotate
+
+    if ipix.size == 0:
+        return
+    centroids = _healpix_cluster_centroids(clusters_map, ipix, grid)
+    label_ids = np.sort(np.unique(clusters_map[ipix].astype(np.int64)))
+    for cluster_id in label_ids.tolist():
+        lon, lat = centroids[int(cluster_id)]
+        if not np.isfinite(lon) or not np.isfinite(lat):
+            continue
+        cluster_color = _cluster_color_for_id(
+            int(cluster_id),
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            cluster_ids=label_ids,
+        )
+        _cluster_annotate(
+            ax,
+            lon,
+            lat,
+            int(cluster_id),
+            cluster_color,
+            transform=ccrs.PlateCarree(),
+        )
+
+
+def plot_healpix_cluster_labels_map(
+    ax: Axes,
+    clusters_map: np.ndarray,
+    *,
+    nside: int,
+    cmap: str = "tab10",
     vmin: float | None = None,
     vmax: float | None = None,
     show_noise: bool = False,
     add_colorbar: bool = True,
     cluster_ids: Sequence[int] | None = None,
     colorbar_label: str = "Cluster ID",
+    edge_step: int = 1,
+    add_labels: bool = True,
     **kwargs: Any,
-) -> Any:
-    """Scatter-plot time-collapsed consensus labels on a HealPix grid."""
-    cluster_mask = (clusters_map >= 0) & np.isfinite(clusters_map)
-    if cluster_ids is not None:
-        cluster_mask &= np.isin(clusters_map, list(cluster_ids))
-    noise_mask = clusters_map == -1
+) -> PolyCollection:
+    """Plot time-collapsed consensus labels as HEALPix cell polygons."""
+    grid = HealpixGrid(nside=nside)
+    cluster_mask, noise_mask = _healpix_label_masks(
+        clusters_map,
+        show_noise=show_noise,
+        cluster_ids=cluster_ids,
+    )
 
-    if show_noise:
-        ax.scatter(
-            lons[noise_mask],
-            lats[noise_mask],
-            c="lightgray",
-            s=s,
-            transform=ccrs.PlateCarree(),
+    if np.any(noise_mask):
+        _add_healpix_polygon_layer(
+            ax,
+            np.flatnonzero(noise_mask),
+            values=None,
+            grid=grid,
+            edge_step=edge_step,
+            facecolor="lightgray",
             zorder=0,
             **kwargs,
         )
 
-    sc = ax.scatter(
-        lons[cluster_mask],
-        lats[cluster_mask],
-        c=clusters_map[cluster_mask],
-        s=s,
+    ipix = np.flatnonzero(cluster_mask)
+    collection = _add_healpix_polygon_layer(
+        ax,
+        ipix,
+        clusters_map[ipix],
+        grid=grid,
+        edge_step=edge_step,
         cmap=cmap,
         vmin=vmin,
         vmax=vmax,
-        transform=ccrs.PlateCarree(),
+        zorder=3,
         **kwargs,
     )
-    if add_colorbar:
-        plt.colorbar(sc, ax=ax, label=colorbar_label)
-    return sc
+
+    if add_colorbar and ipix.size > 0:
+        plt.colorbar(collection, ax=ax, label=colorbar_label)
+    _ensure_geoaxes_view(ax)
+    if add_labels and ipix.size > 0:
+        _annotate_healpix_cluster_labels(
+            ax,
+            clusters_map,
+            ipix,
+            grid=grid,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+    return collection
 
 
 def plot_native_cluster_labels_map(
@@ -172,11 +347,16 @@ def plot_collapsed_consensus_labels_map(
     add_colorbar: bool = True,
     cluster_ids: Sequence[int] | None = None,
     colorbar_label: str = "Cluster ID",
+    edge_step: int = 1,
+    add_labels: bool | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot a time-collapsed consensus label field (HealPix or native grid)."""
+    _ = s  # kept for API compatibility; HEALPix maps use filled polygons.
     clusters_map = collapse_consensus_for_map(clusters_da, time_dim=time_dim)
-    fig, ax, _config, proj = prepare_consensus_map_axes(ax, map_style)
+    fig, ax, config, proj = prepare_consensus_map_axes(ax, map_style)
+    if add_labels is None:
+        add_labels = config.add_labels
 
     if "hp_pixel" in clusters_da.dims:
         npix = int(clusters_da.sizes["hp_pixel"])
@@ -184,21 +364,21 @@ def plot_collapsed_consensus_labels_map(
         merged_attrs.update(dataset.attrs)
         merged_attrs.update(clusters_da.attrs)
         resolved_nside = resolve_healpix_nside(npix, nside=nside, attrs=merged_attrs)
-        regridder = HealPixRegridder(nside=resolved_nside)
-        lats, lons = regridder.pixels_to_latlon(np.arange(npix))
+        if clusters_map.shape != (npix,):
+            clusters_map = np.asarray(clusters_map).reshape(-1)
         plot_healpix_cluster_labels_map(
             ax,
-            lats,
-            lons,
             clusters_map,
+            nside=resolved_nside,
             cmap=cmap,
-            s=s,
             vmin=vmin,
             vmax=vmax,
             show_noise=show_noise,
             add_colorbar=add_colorbar,
             cluster_ids=cluster_ids,
             colorbar_label=colorbar_label,
+            edge_step=edge_step,
+            add_labels=add_labels,
             **kwargs,
         )
         return fig, ax

@@ -1,11 +1,10 @@
 import logging
 from typing import Optional
 
-import astropy.units as u
 import numpy as np
 import pandas as pd
-from astropy_healpix import healpix_to_lonlat, lonlat_to_healpix
 
+from toad.healpix import HealpixGrid, ipix_to_lonlat, lonlat_to_ipix
 from toad.regridding.base import BaseRegridder
 
 logger = logging.getLogger("TOAD")
@@ -32,33 +31,23 @@ class HealPixRegridder(BaseRegridder):
             raise ValueError(f"nside must be a power of 2, got {nside}")
         self.nside = nside
 
+    def _grid(self) -> HealpixGrid:
+        if self.nside is None:
+            raise ValueError("nside must be set before HEALPix conversion.")
+        return HealpixGrid(nside=int(self.nside))
+
     def latlon_to_healpix(self, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
         """Convert arrays of latitude and longitude to HEALPix pixel indices."""
-        hp_pix = lonlat_to_healpix(
-            np.asarray(lons, dtype=np.float64) * u.deg,
-            np.asarray(lats, dtype=np.float64) * u.deg,
-            self.nside,
-            order="ring",
-        )
-        return np.asarray(hp_pix, dtype=np.int64)
+        return lonlat_to_ipix(lons, lats, self._grid())
 
     def healpix_to_latlon(self, pix: int) -> tuple:
         """Convert a HEALPix pixel index back to its center latitude and longitude."""
-        lon, lat = healpix_to_lonlat(pix, self.nside, order="ring")
-        lat_deg = float(lat.to_value(u.deg))
-        lon_deg = float(np.mod(lon.to_value(u.deg), 360.0))
-        return lat_deg, lon_deg
+        lats, lons = ipix_to_lonlat(np.array([pix], dtype=np.int64), self._grid())
+        return float(lats[0]), float(lons[0])
 
     def pixels_to_latlon(self, pixels: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Convert HEALPix pixel indices to (lat, lon) in degrees."""
-        lon, lat = healpix_to_lonlat(
-            np.asarray(pixels, dtype=np.int64),
-            self.nside,
-            order="ring",
-        )
-        return np.asarray(lat.to_value(u.deg)), np.mod(
-            np.asarray(lon.to_value(u.deg)), 360.0
-        )
+        return ipix_to_lonlat(np.asarray(pixels, dtype=np.int64), self._grid())
 
     def regrid(
         self,

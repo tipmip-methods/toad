@@ -20,6 +20,7 @@ from toad.clustering.optimizing import (
     default_opt_params,
 )
 from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
+from toad.postprocessing.member_support_consensus import ConsensusSupport
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     DEFAULT_SHIFT_THRESHOLD,
@@ -483,7 +484,8 @@ class TOAD:
         """Combine multiple clustering results into one per-voxel member-support consensus.
 
         This delegates to :meth:`toad.postprocessing.Aggregation.compute_consensus`; see that
-        docstring for parameters and algorithm details.
+        docstring for parameters and algorithm details. Internally runs
+        :meth:`build_consensus` then :meth:`apply_consensus_threshold`.
 
         Args:
             cluster_vars: Input clustering variables to merge. Defaults to all ``td.cluster_vars``.
@@ -518,6 +520,50 @@ class TOAD:
             output_label=output_label,
             overwrite=overwrite,
             min_cluster_area=min_cluster_area,
+        )
+
+    def build_consensus(
+        self,
+        cluster_vars: list[str] | None = None,
+        *,
+        temporal_tolerance: int,
+        spatial_tolerance: int,
+        stitch_meridian: bool | Literal["auto"] = "auto",
+        show_progress: bool = True,
+    ) -> ConsensusSupport:
+        """Precompute member-support votes for repeated consensus thresholding.
+
+        See :meth:`toad.postprocessing.Aggregation.build_consensus`.
+        """
+        return self.aggregate.build_consensus(
+            cluster_vars=cluster_vars,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            stitch_meridian=stitch_meridian,
+            show_progress=show_progress,
+        )
+
+    def apply_consensus_threshold(
+        self,
+        support: ConsensusSupport,
+        *,
+        min_consensus: float,
+        min_cluster_area: int | None = 2,
+        output_label_suffix: str = "",
+        output_label: str | None = None,
+        overwrite: bool = False,
+    ) -> None:
+        """Apply a consensus threshold to precomputed member-support votes.
+
+        See :meth:`toad.postprocessing.Aggregation.apply_consensus_threshold`.
+        """
+        self.aggregate.apply_consensus_threshold(
+            support,
+            min_consensus=min_consensus,
+            min_cluster_area=min_cluster_area,
+            output_label_suffix=output_label_suffix,
+            output_label=output_label,
+            overwrite=overwrite,
         )
 
     # # ======================================================================

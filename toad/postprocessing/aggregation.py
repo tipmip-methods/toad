@@ -8,10 +8,10 @@ import xarray as xr
 from toad._version import __version__
 from toad.clustering import sorted_cluster_labels
 from toad.postprocessing.member_support_consensus import (
+    ConsensusSupport,
     _accumulate_member_support,
     _build_grid_context,
-    _build_member_support_dataset,
-    _empty_result,
+    consensus_dataset_from_support,
     min_consensus_members,
 )
 from toad.utils import _attrs, get_unique_variable_name
@@ -27,6 +27,61 @@ from toad.utils.cluster_consensus_utils import (
 )
 
 logger = logging.getLogger("TOAD")
+
+
+def _validate_consensus_tolerances(
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+) -> None:
+    if temporal_tolerance < 0:
+        raise ValueError(
+            f"`temporal_tolerance` must be >= 0, got {temporal_tolerance}."
+        )
+    if spatial_tolerance < 0:
+        raise ValueError(f"`spatial_tolerance` must be >= 0, got {spatial_tolerance}.")
+
+
+def _validate_consensus_threshold_params(
+    min_consensus: float,
+    min_cluster_area: int | None,
+) -> None:
+    if not (0.0 <= min_consensus <= 1.0):
+        raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
+    if min_cluster_area is not None and min_cluster_area < 0:
+        raise ValueError(
+            f"`min_cluster_area` must be >= 0 or None, got {min_cluster_area}."
+        )
+
+
+def _resolve_consensus_cluster_vars(
+    td: Any,
+    cluster_vars: List[str] | None,
+) -> list[str]:
+    if cluster_vars is None:
+        cluster_vars = list(td.cluster_vars)
+    if len(cluster_vars) == 0:
+        raise ValueError("No cluster variables provided/found.")
+    return cluster_vars
+
+
+def _resolve_consensus_output_label(
+    td: Any,
+    *,
+    output_label: str | None,
+    output_label_suffix: str,
+    overwrite: bool,
+) -> str:
+    new_output_label = (
+        output_label if output_label else f"cluster_consensus{output_label_suffix}"
+    )
+    if not overwrite:
+        return get_unique_variable_name(new_output_label, td.data, logger)
+    if new_output_label in td.data:
+        td.data = td.data.drop_vars(new_output_label)
+    rate_drop = f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}"
+    if rate_drop in td.data:
+        td.data = td.data.drop_vars(rate_drop)
+    return new_output_label
 
 
 def _format_consensus_summary(output_label: str, labels: np.ndarray) -> str:
@@ -247,6 +302,131 @@ class Aggregation:
         )
         return cluster_normalized
 
+    def build_consensus(
+        self,
+        cluster_vars: List[str] | None = None,
+        *,
+        temporal_tolerance: int,
+        spatial_tolerance: int,
+        stitch_meridian: StitchMeridianSetting = "auto",
+        show_progress: bool = True,
+    ) -> ConsensusSupport:
+        """Precompute member-support votes for repeated consensus thresholding.
+
+        Run this once per choice of input cluster maps and tolerance settings. Then call
+        :meth:`apply_consensus_threshold` for each ``min_consensus`` (and optionally
+        ``min_cluster_area``) without re-looping over inputs or re-dilating masks.
+
+        Args:
+            cluster_vars: Input clustering variables to include. If None, uses all
+                ``self.td.cluster_vars``.
+            temporal_tolerance: Time-step radius for support dilation and cluster connectivity.
+            spatial_tolerance: Grid-cell radius in ``y/x`` for support dilation and connectivity.
+            stitch_meridian: ``False``, ``True``, or ``\"auto\"`` (default).
+            show_progress: Show a progress bar while processing inputs.
+
+        Returns:
+            A :class:`~toad.postprocessing.member_support_consensus.ConsensusSupport`
+            object to pass to :meth:`apply_consensus_threshold`.
+
+        See Also:
+            :meth:`apply_consensus_threshold`, :meth:`compute_consensus`.
+        """
+        cluster_vars = _resolve_consensus_cluster_vars(self.td, cluster_vars)
+        _validate_consensus_tolerances(temporal_tolerance, spatial_tolerance)
+
+        spatial_dims = tuple(self.td.space_dims)
+        stitch_meridian_resolved = resolve_stitch_meridian(
+            stitch_meridian,
+            dataset=self.td.data,
+            spatial_dims=spatial_dims,
+        )
+        if stitch_meridian == "auto" and stitch_meridian_resolved:
+            self.td.logger.info(
+                "Meridian seam stitching enabled automatically (global longitude grid)."
+            )
+
+        sample = self.td.data[cluster_vars[0]]
+        context = _build_grid_context(
+            sample,
+            spatial_dims=spatial_dims,
+            time_dim=self.td.time_dim,
+            stitch_meridian=stitch_meridian_resolved,
+        )
+        native_union, member_vote_count = _accumulate_member_support(
+            self.td,
+            cluster_vars=cluster_vars,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            show_progress=show_progress,
+            context=context,
+        )
+        return ConsensusSupport(
+            cluster_vars=tuple(cluster_vars),
+            native_union=native_union,
+            member_vote_count=member_vote_count,
+            context=context,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            stitch_meridian=stitch_meridian,
+            stitch_meridian_resolved=stitch_meridian_resolved,
+        )
+
+    def apply_consensus_threshold(
+        self,
+        support: ConsensusSupport,
+        *,
+        min_consensus: float,
+        min_cluster_area: int | None = 2,
+        output_label_suffix: str = "",
+        output_label: str | None = None,
+        overwrite: bool = False,
+    ) -> None:
+        """Apply a consensus threshold to precomputed member-support votes.
+
+        Thresholds retained voxels, groups them into consensus clusters, optionally
+        filters by spatial footprint, and merges label + rate variables into
+        ``self.td.data``.
+
+        Args:
+            support: Precomputed votes from :meth:`build_consensus`.
+            min_consensus: Fraction in ``[0, 1]`` of inputs required per retained voxel.
+            min_cluster_area: Drop clusters below this spatial footprint; ``None`` disables.
+            output_label_suffix: Suffix for the default ``cluster_consensus`` name.
+            output_label: Explicit consensus labels variable name.
+            overwrite: Replace existing variables with the same names.
+
+        See Also:
+            :meth:`build_consensus`, :meth:`compute_consensus`.
+        """
+        _validate_consensus_threshold_params(min_consensus, min_cluster_area)
+        cluster_vars = list(support.cluster_vars)
+        new_output_label = _resolve_consensus_output_label(
+            self.td,
+            output_label=output_label,
+            output_label_suffix=output_label_suffix,
+            overwrite=overwrite,
+        )
+        ds_out = consensus_dataset_from_support(
+            self.td,
+            support,
+            min_consensus=min_consensus,
+        )
+        lab = _finalize_consensus_variables(
+            self.td,
+            ds_out=ds_out,
+            new_output_label=new_output_label,
+            cluster_vars=cluster_vars,
+            min_consensus=min_consensus,
+            temporal_tolerance=support.temporal_tolerance,
+            spatial_tolerance=support.spatial_tolerance,
+            stitch_meridian=support.stitch_meridian,
+            stitch_meridian_resolved=support.stitch_meridian_resolved,
+            min_cluster_area=min_cluster_area,
+            time_dim=self.td.time_dim,
+        )
+        logger.info(_format_consensus_summary(new_output_label, lab))
+
     def compute_consensus(
         self,
         cluster_vars: List[str] | None = None,
@@ -327,6 +507,8 @@ class Aggregation:
         See Also:
             :doc:`consensus_clustering` for a longer guide and :doc:`Consensus tutorial
             <tutorials/consensus>` for a worked example.
+            :meth:`build_consensus` and :meth:`apply_consensus_threshold` when sweeping
+            ``min_consensus``.
 
         Example:
             >>> td.compute_consensus(
@@ -344,100 +526,25 @@ class Aggregation:
             ``min_consensus`` is outside ``[0, 1]``, or ``min_cluster_area`` is invalid.
 
         """
-        # --- inputs and parameters ---
-        if cluster_vars is None:
-            cluster_vars = list(self.td.cluster_vars)
-        if len(cluster_vars) == 0:
-            raise ValueError("No cluster variables provided/found.")
+        cluster_vars = _resolve_consensus_cluster_vars(self.td, cluster_vars)
+        _validate_consensus_tolerances(temporal_tolerance, spatial_tolerance)
+        _validate_consensus_threshold_params(min_consensus, min_cluster_area)
 
-        if temporal_tolerance < 0:
-            raise ValueError(
-                f"`temporal_tolerance` must be >= 0, got {temporal_tolerance}."
-            )
-        if spatial_tolerance < 0:
-            raise ValueError(
-                f"`spatial_tolerance` must be >= 0, got {spatial_tolerance}."
-            )
-        if not (0.0 <= min_consensus <= 1.0):
-            raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
-        if min_cluster_area is not None and min_cluster_area < 0:
-            raise ValueError(
-                f"`min_cluster_area` must be >= 0 or None, got {min_cluster_area}."
-            )
-
-        # --- grid layout (meridian stitching for labelling / dilation on global lon grids) ---
-        spatial_dims = tuple(self.td.space_dims)
-        stitch_meridian_resolved = resolve_stitch_meridian(
-            stitch_meridian,
-            dataset=self.td.data,
-            spatial_dims=spatial_dims,
-        )
-        if stitch_meridian == "auto" and stitch_meridian_resolved:
-            self.td.logger.info(
-                "Meridian seam stitching enabled automatically (global longitude grid)."
-            )
-
-        # --- output variable names ---
-        new_output_label = (
-            output_label if output_label else f"cluster_consensus{output_label_suffix}"
-        )
-        if not overwrite:
-            new_output_label = get_unique_variable_name(
-                new_output_label, self.td.data, logger
-            )
-        else:
-            if new_output_label in self.td.data:
-                self.td.data = self.td.data.drop_vars(new_output_label)
-            rate_drop = f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}"
-            if rate_drop in self.td.data:
-                self.td.data = self.td.data.drop_vars(rate_drop)
-
-        # --- member-support solver: dilated votes → threshold → connected components ---
-        sample = self.td.data[cluster_vars[0]]
-        context = _build_grid_context(
-            sample,
-            spatial_dims=spatial_dims,
-            time_dim=self.td.time_dim,
-            stitch_meridian=stitch_meridian_resolved,
-        )
-        native_union, member_vote_count = _accumulate_member_support(
-            self.td,
+        support = self.build_consensus(
             cluster_vars=cluster_vars,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-            context=context,
-        )
-        if not np.any(native_union):
-            ds_out = _empty_result(self.td, cluster_vars, context)
-        else:
-            ds_out = _build_member_support_dataset(
-                self.td,
-                cluster_vars=cluster_vars,
-                min_consensus=min_consensus,
-                temporal_tolerance=temporal_tolerance,
-                spatial_tolerance=spatial_tolerance,
-                context=context,
-                native_union=native_union,
-                member_vote_count=member_vote_count,
-            )
-
-        # --- optional size filter, TOAD attrs, merge into td.data ---
-        lab = _finalize_consensus_variables(
-            self.td,
-            ds_out=ds_out,
-            new_output_label=new_output_label,
-            cluster_vars=cluster_vars,
-            min_consensus=min_consensus,
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,
             stitch_meridian=stitch_meridian,
-            stitch_meridian_resolved=stitch_meridian_resolved,
-            min_cluster_area=min_cluster_area,
-            time_dim=self.td.time_dim,
+            show_progress=show_progress,
         )
-
-        logger.info(_format_consensus_summary(new_output_label, lab))
+        self.apply_consensus_threshold(
+            support,
+            min_consensus=min_consensus,
+            min_cluster_area=min_cluster_area,
+            output_label_suffix=output_label_suffix,
+            output_label=output_label,
+            overwrite=overwrite,
+        )
 
     def consensus_summary(self, consensus_var: str | None = None) -> pd.DataFrame:
         """Rebuild the per-cluster summary table from stored consensus label and rate arrays.

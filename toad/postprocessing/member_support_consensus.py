@@ -6,7 +6,9 @@ Pipeline (read top to bottom in this module):
 2. :func:`_build_member_support_dataset` — threshold, label, assemble xarray output
 3. Connectivity helpers — group retained voxels into consensus cluster ids
 
-:meth:`~toad.postprocessing.aggregation.Aggregation.compute_consensus` orchestrates
+:meth:`~toad.postprocessing.aggregation.Aggregation.build_consensus`,
+:meth:`~toad.postprocessing.aggregation.Aggregation.apply_consensus_threshold`, and
+:meth:`~toad.postprocessing.aggregation.Aggregation.compute_consensus` orchestrate
 these steps (grid context, empty result, finalize attrs on ``td.data``).
 
 Native **8-neighbour** grid edges (:func:`native_spatial_edges`) are **not** left over
@@ -19,7 +21,7 @@ labelling uses ``scipy.ndimage.label`` or a KD-tree Chebyshev graph.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -31,6 +33,8 @@ from tqdm import tqdm
 
 from toad.clustering import sorted_cluster_labels
 
+StitchMeridianSetting = bool | Literal["auto"]
+
 
 def min_consensus_members(n_inputs: int, min_consensus: float) -> int:
     """Minimum distinct inputs required to retain a native event voxel."""
@@ -39,6 +43,31 @@ def min_consensus_members(n_inputs: int, min_consensus: float) -> int:
     if not (0.0 <= min_consensus <= 1.0):
         raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
     return max(1, int(np.ceil(float(min_consensus) * n_inputs)))
+
+
+@dataclass(frozen=True)
+class ConsensusSupport:
+    """Precomputed member-support votes for repeated consensus thresholding.
+
+    Returned by :meth:`~toad.postprocessing.aggregation.Aggregation.build_consensus`
+    and consumed by
+    :meth:`~toad.postprocessing.aggregation.Aggregation.apply_consensus_threshold`.
+    The vote arrays depend only on input cluster maps and tolerance settings, not on
+    ``min_consensus`` or ``min_cluster_area``.
+    """
+
+    cluster_vars: tuple[str, ...]
+    native_union: np.ndarray
+    member_vote_count: np.ndarray
+    context: SpacetimeGridContext
+    temporal_tolerance: int
+    spatial_tolerance: int
+    stitch_meridian: StitchMeridianSetting
+    stitch_meridian_resolved: bool
+
+    @property
+    def n_members(self) -> int:
+        return len(self.cluster_vars)
 
 
 @dataclass(frozen=True)
@@ -623,6 +652,28 @@ def _build_member_support_dataset(
         "Consensus ids are tolerance-aware connected components of retained voxels."
     )
     return ds
+
+
+def consensus_dataset_from_support(
+    td: Any,
+    support: ConsensusSupport,
+    *,
+    min_consensus: float,
+) -> xr.Dataset:
+    """Build interim consensus labels and rate from precomputed member-support votes."""
+    cluster_vars = list(support.cluster_vars)
+    if not np.any(support.native_union):
+        return _empty_result(td, cluster_vars, support.context)
+    return _build_member_support_dataset(
+        td,
+        cluster_vars=cluster_vars,
+        min_consensus=min_consensus,
+        temporal_tolerance=support.temporal_tolerance,
+        spatial_tolerance=support.spatial_tolerance,
+        context=support.context,
+        native_union=support.native_union,
+        member_vote_count=support.member_vote_count,
+    )
 
 
 # Backward-compatible alias (tests, external imports)

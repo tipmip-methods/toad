@@ -150,10 +150,10 @@ def compute_clusters(
         - Apply optional regridding to standardize coordinates
         - Scale coordinates using sklearn preprocessing
         - Scale time values by time_weight
-        - Calculate weights from shift magnitudes
+        - Calculate shift magnitudes at selected points (passed as ``y``; see TODO below)
     3. Clustering
         - Store clustering parameters as metadata
-        - Fit clustering model to coordinates using weights
+        - Fit clustering model to coordinates (built-in clusterers ignore ``y`` today)
         - Generate cluster labels for each point
     4. Postprocessing
         - Sort clusters by size if requested
@@ -322,6 +322,15 @@ def compute_clusters(
                 cols.append(vals_d[idx_by_dim[d]])
             coords = np.column_stack(cols)
 
+        # TODO(clustering-weights): Shift magnitudes are passed as ``y`` but built-in
+        # clusterers (HDBSCAN, sklearn DBSCAN, SpaceTimeDBSCAN) do not use them.
+        # Magnitudes only affect point selection upstream (shift_threshold / shift_selection).
+        # HealPix regridding averages magnitudes when binning duplicate pixels.
+        # Decide later whether to:
+        #   - stop passing ``y`` by default and document ``y`` as a custom-clusterer hook only;
+        #   - implement a weighted clusterer; or
+        #   - wire ``sample_weight`` where sklearn supports it.
+        # See tutorials/custom_clustering.ipynb for the intended custom ``y`` API.
         # take absolute value of shifts as weights (at selected points)
         vals_sh = np.asarray(sh.data)[idx]
         weights = np.abs(vals_sh)
@@ -380,9 +389,7 @@ def compute_clusters(
         # ==================== APPLY CLUSTERING METHOD ====================
         cluster_start = time_now()
         try:
-            cluster_labels = np.array(
-                method.fit_predict(X=coords, y=weights)
-            )  # todo: make passing weights optional
+            cluster_labels = np.array(method.fit_predict(X=coords, y=weights))
         except ValueError as e:
             if "min_samples" in str(e) and "must be at most" in str(e):
                 logger.warning(

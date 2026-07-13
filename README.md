@@ -84,6 +84,12 @@ For more details, check out the tutorials.
 - [Custom clustering](https://github.com/tipmip-methods/toad/blob/main/tutorials/clustering_methods.ipynb): Implement new clustering methods
 - [Custom event detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/shift_detection_methods.ipynb): Implement new event detection algorithms
 
+### Community additions
+
+Alternative detection methods contributed to TOAD. These are not part of the peer-reviewed TOAD methodology, but may be useful for comparison or follow-up work.
+
+- [EDGE shift detection](https://github.com/tipmip-methods/toad/blob/main/tutorials/edge_detection.ipynb): Alternative abrupt-shift detector based on Bathiany et al. (2020) and Terpstra et al. (2025); TOAD implementation by [Sjoerd Terpstra](https://github.com/TerpstraS). See the tutorial for usage notes
+
 ## Documentation
 
 Read the [documentation](https://toad-docs.pages.dev), which includes a short video introduction!

@@ -10,7 +10,7 @@ from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy import stats, ndimage
+from scipy import ndimage, stats
 
 from .base import ShiftsMethod
 
@@ -26,21 +26,27 @@ class EDGE(ShiftsMethod):
         2. Computing the gradient using the Sobel operator.
         3. Applying non-maximum suppression to thin the edges (i.e. keep only local maxima in the gradient)
         4. Applying thresholding to identify significantly high gradients.
-        5. Applying an abruptness threshold to keep only edges that are sufficiently abrupt
+        5. Computing abruptness at candidate edges (difference in segment means normalised by pooled std)
 
     Note: EDGE does not work with NaN values so it will return a detection time series of all zeros if the input time series contains NaN values.
-    Note: The algorithm works only on data with enough variability in be able to compute the
-        abruptness. With minimal variability/noise, this method will not be able to reliably detect
+    Note: The algorithm works only on data with enough variability to compute
+        abruptness. With minimal variability or noise, this method will not be able to reliably detect
         any abrupt shifts.
+
     Note: All parameters related to datalength assume they have time step unit.
+
+    Note: Unlike ASDETECT, EDGE abruptness scores are not normalised to [-1, 1]. Significance
+        filtering is deferred to :meth:`toad.TOAD.compute_clusters` via ``shift_threshold``.
+        For the common 4-sigma abruptness cut used in Bathiany et al. (2020), pass
+        ``shift_threshold=4`` when clustering EDGE shifts.
 
     Args:
         lmin: Minimum segment length for the abruptness measure. If None, defaults
             to 10% of the length of the time series. Recommended to manually set based
             on timescale of interest and data resolution (e.g. for annual data with 10-year
             timescale of abrupt shifts, set lmin=15).
-        lmax: Minimum segment length for the abruptness measure. The algorithm aims to use `lmax`,
-            but if available data is less it will uses between `lmax` and `lmin`. If None, defaults
+        lmax: Maximum segment length for the abruptness measure. The algorithm aims to use `lmax`,
+            but if available data is less it will use between `lmax` and `lmin`. If None, defaults
             to 20% of the length of the time series. Recommended to manually set based on timescale
             of interest and data resolution (e.g. for annual data with 10-year timescale of abrupt
             shifts, set lmax=30).
@@ -50,19 +56,14 @@ class EDGE(ShiftsMethod):
             10-year timescale of abrupt shift, set lcutoff=3).
         alpha: Parameter to control how much the difference in standard deviations between the two
             segments around the edge reduces the pooled standard deviation used to calculate
-            abruptness. A higher value increases the abrutness of edges in timeseries where
-            variability changes significantly after a shift. If None, defaults to 0.4.
+            abruptness. A higher value increases the abruptness of edges in timeseries where
+            variability changes significantly after a shift. Defaults to 0.4.
         smoothing_scale: Standard deviation for Gaussian kernel used to smooth the time series
             before calculating the gradient. Accepts an integer (sigma, in time steps), None to
             disable smoothing, the string "auto" to let the method choose a default (10% of the
             length of the time series). Recommended to manually set based on timescale of interest
             and data resolution (e.g. for annual data with 10-year timescale of abrupt shift,
             set smoothing_scale=10).
-        abruptness_threshold: Threshold for the abruptness value to consider an edge as a shift. If
-            None, defaults to 4. In approximate terms, an abruptness value of 4 corresponds to a
-            shift where the difference in means between the two segments around the edge is 4 times
-            larger than the pooled standard deviation of the two segments. Generally, a value
-            between 3 and 4 is acceptable.
         gradient_threshold: Threshold for gradient edge detection. Either a float (absolute threshold)
             or "relative" (uses gradient_threshold_multiplier × max(gradient)). Defaults to "relative".
         gradient_threshold_multiplier: Multiplier for max(gradient) when using relative thresholding.
@@ -79,7 +80,6 @@ class EDGE(ShiftsMethod):
         lcutoff: Optional[int] = None,
         alpha: float = 0.4,
         smoothing_scale: Optional[Union[int, str]] = "auto",
-        abruptness_threshold: float = 4,
         gradient_threshold: Optional[Union[float, str]] = "relative",
         gradient_threshold_multiplier: float = 0.5,
         ignore_nan_warnings: bool = False,
@@ -91,7 +91,6 @@ class EDGE(ShiftsMethod):
         self.lcutoff = lcutoff
         self.alpha = alpha
         self.smoothing_scale = smoothing_scale
-        self.abruptness_threshold = abruptness_threshold
         self.gradient_threshold = gradient_threshold
         self.gradient_threshold_multiplier = gradient_threshold_multiplier
         self.ignore_nan_warnings = ignore_nan_warnings
@@ -103,7 +102,7 @@ class EDGE(ShiftsMethod):
                 "Both lmin and lmax must be provided together, or both must be None."
             )
 
-        if alpha is not None and alpha < 0:
+        if alpha < 0:
             raise ValueError("alpha must be nonnegative")
         if (
             gradient_threshold is not None
@@ -125,13 +124,14 @@ class EDGE(ShiftsMethod):
 
         Args:
             values_1d: 1D array of values
-            times_1d: 1D array of times
+            times_1d: 1D array of times (accepted for API compatibility; abruptness uses
+                time-step indices, as in the reference 1D EDGE implementation)
 
         Returns:
-            A 1D array of the same length as `values_1d`, where each value represents the abrupt shift score for a grid cell at a specific time. The score ranges from -1 to 1:
-                - `1` indicates that all tested segment lengths detected a significant positive gradient (i.e. exceeding 3 MAD of the median gradient),
-                - `-1` indicates that all tested segment lengths detected a significant negative gradient.
-                - Values between -1 and 1 indicate the proportion of segment lengths detecting a significant gradient at that time point.
+            A 1D array of the same length as ``values_1d``. Non-zero values are signed abruptness
+            scores at candidate edges (0 elsewhere). Apply ``shift_threshold`` in
+            :meth:`toad.TOAD.compute_clusters` to filter significant shifts; use
+            ``shift_threshold=4`` for the usual 4-sigma abruptness cut.
         """
         n = len(values_1d)
 
@@ -147,19 +147,18 @@ class EDGE(ShiftsMethod):
             logging.getLogger("TOAD").debug(f"lcutoff={self.lcutoff}")
 
         # If None, no smoothing, if auto calculate default smoothing, if int, use that value.
-        if self.smoothing_scale == "auto":
-            self.smoothing_scale = int(0.1 * n)
-            logging.getLogger("TOAD").debug(
-                f"smoothing_scale={self.smoothing_scale} (auto)"
-            )
-        elif self.smoothing_scale is None:
+        smoothing_scale = self.smoothing_scale
+        if smoothing_scale == "auto":
+            smoothing_scale = int(0.1 * n)
+            logging.getLogger("TOAD").debug(f"smoothing_scale={smoothing_scale} (auto)")
+        elif smoothing_scale is None:
             logging.getLogger("TOAD").debug("no smoothing applied")
         else:
             try:
-                self.smoothing_scale = int(self.smoothing_scale)
+                smoothing_scale = int(smoothing_scale)
             except (TypeError, ValueError):
                 raise ValueError("smoothing_scale must be an int or 'auto' or None")
-            if self.smoothing_scale < 0:
+            if smoothing_scale < 0:
                 raise ValueError("smoothing_scale must be nonnegative")
 
         # Sanity check on parameter values
@@ -174,13 +173,11 @@ class EDGE(ShiftsMethod):
 
         return construct_detection_ts(
             values_1d=values_1d,
-            times_1d=times_1d,
             lmin=self.lmin,
             lmax=self.lmax,
             lcutoff=self.lcutoff,
             alpha=self.alpha,
-            smoothing_scale=self.smoothing_scale,
-            abruptness_threshold=self.abruptness_threshold,
+            smoothing_scale=smoothing_scale,
             gradient_threshold=self.gradient_threshold,
             gradient_threshold_multiplier=self.gradient_threshold_multiplier,
             ignore_nan_warnings=self.ignore_nan_warnings,
@@ -189,18 +186,18 @@ class EDGE(ShiftsMethod):
 
 # Helper functions =============================================================
 def sobel_edge_detection(
-    values_1d, smoothing_scale: Optional[int] = 10
+    values_1d: NDArray[np.float64],
+    smoothing_scale: Optional[int] = 10,
 ) -> NDArray[np.float64]:
-    """Perform sobel edge detection for a one dimensional timeseries.
-    This function does not perform the hysteresis thresholding.
+    """Perform Sobel edge detection for a one-dimensional time series.
 
     Args:
         values_1d: 1D array of values (e.g., temperature, pressure, etc.)
-        smoothing_scale: length of smoothing in gaussian filter. If None (or 0), no smoothing is
+        smoothing_scale: Length of smoothing in Gaussian filter. If None (or 0), no smoothing is
             applied.
 
     Returns:
-        gradient: 1D array of gradient of (smoothed) values_1d
+        Gradient of the (smoothed) ``values_1d``.
     """
 
     # Smooth using Gaussian kernel on the specified smoothing_scale
@@ -216,25 +213,23 @@ def sobel_edge_detection(
 
 def thin_and_threshold_edges(
     gradient: NDArray[np.float64],
-    threshold: Optional[Union[float, str]] = "auto",
+    threshold: Optional[Union[float, str]] = "relative",
     threshold_multiplier: float = 0.5,
 ) -> NDArray[np.float64]:
-    """Perform hysteresis thresholding on the gradient obtained from the sobel edge detection
-    for one dimensional timeseries.
+    """Apply non-maximum suppression and thresholding to a 1D gradient.
 
     Args:
-        gradient: 1D array of calculate gradient of datas
-        threshold: Value above which the gradient needs to be.
-            Either a float (absolute threshold) or "relative" (uses threshold_multiplier x max(gradient))
-        threshold_multiplier: Multiplier for max(gradient) when using relative thresholding
+        gradient: 1D array of gradients
+        threshold: Value above which the gradient must lie. Either a float (absolute
+            threshold) or ``"relative"`` (uses ``threshold_multiplier`` × max(|gradient|)).
+        threshold_multiplier: Multiplier for max(|gradient|) when using relative thresholding.
 
     Returns:
-        thinned_edges: 1D array of abrupt shifts
+        1D array of gradient magnitudes at thinned edge locations, 0 elsewhere.
     """
     thinned_edges = np.zeros_like(gradient)
 
-    # Pad gradient with zeros on either end to be able to do hysteresis thresholding at the
-    # start and end of the gradient array
+    # Pad gradient with zeros on either end to detect edges at the series boundaries
     padded_gradient = np.pad(gradient, pad_width=1, mode="constant", constant_values=0)
 
     if threshold == "relative":
@@ -242,7 +237,7 @@ def thin_and_threshold_edges(
     else:
         used_threshold = abs(threshold)
 
-    # Find local maxima in the grading and apply thresholding on the gradient
+    # Find local maxima in the gradient and apply thresholding
     for i in range(1, len(padded_gradient) - 1):
         if (
             padded_gradient[i] > 0
@@ -262,22 +257,26 @@ def thin_and_threshold_edges(
 def compute_abruptness_1D(
     edges_1d: NDArray[np.float64],
     values_1d: NDArray[np.float64],
-    lcutoff: Optional[int] = 3,
-    lmax: Optional[int] = 30,
-    lmin: Optional[int] = 15,
-    alpha: Optional[float] = 0.4,
+    lcutoff: int,
+    lmax: int,
+    lmin: int,
+    alpha: float = 0.4,
 ) -> NDArray[np.float64]:
     """Compute abruptness for 1D data.
 
     Args:
         edges_1d: 1D array indicating the presence of edges (non-zero values)
         values_1d: 1D array of values (e.g., temperature, pressure, etc.)
+        lcutoff: Timesteps excluded on each side of the edge before fitting segments
+        lmax: Maximum segment length used for abruptness
+        lmin: Minimum segment length required for a reliable fit
+        alpha: Pooled-std adjustment for differing segment variances
 
     Returns:
-        abruptness: 1D array of abruptness values at edges, 0 at datapoints without edge
+        Signed abruptness at edge locations, 0 elsewhere.
     """
 
-    time_inds = np.linspace(0, 0 + len(values_1d) - 1, len(values_1d))
+    time_inds = np.arange(len(values_1d), dtype=np.float64)
     abruptness = np.zeros(len(values_1d))
 
     # Calculate abruptness value for each time point in values_1d where an edge exists
@@ -350,13 +349,11 @@ def compute_abruptness_1D(
 # 1D time series analysis of abrupt shifts =====================================
 def construct_detection_ts(
     values_1d: NDArray[np.float64],
-    times_1d: NDArray[np.float64],
     lmin: int,
     lmax: int,
     lcutoff: int,
     alpha: float,
-    smoothing_scale: Optional[Union[int, str]],
-    abruptness_threshold: float,
+    smoothing_scale: Optional[int],
     gradient_threshold: Optional[Union[float, str]] = "relative",
     gradient_threshold_multiplier: float = 0.5,
     ignore_nan_warnings: bool = False,
@@ -365,11 +362,23 @@ def construct_detection_ts(
 
     Args:
         values_1d: 1D array of values (e.g., temperature, pressure, etc.)
-        times_1d: 1D array of time points corresponding to the values
+        lmin: Minimum segment length for abruptness
+        lmax: Maximum segment length for abruptness
+        lcutoff: Timesteps excluded on each side of the edge
+        alpha: Pooled-std adjustment for differing segment variances
+        smoothing_scale: Gaussian smoothing sigma in timesteps, or None to disable
+        gradient_threshold: Absolute or ``"relative"`` gradient threshold
+        gradient_threshold_multiplier: Multiplier for relative gradient thresholding
+        ignore_nan_warnings: Passed for API parity with :class:`ASDETECT` (see note below)
 
     Returns:
-        Abrupt shift score time series, shape (n,).
-        Abruptness values are either 0 (no abrupt shift), or above the given abruptness threshold.
+        Abrupt shift score time series, shape (n,). Signed abruptness at candidate edges,
+        0 elsewhere. Filter with ``shift_threshold`` in :meth:`toad.TOAD.compute_clusters`.
+
+    Note:
+        As for :class:`ASDETECT`, any NaN in ``values_1d`` yields an all-zero detection
+        series. ``compute_shifts`` skips grid cells that contain NaNs before calling
+        ``fit_predict``.
     """
 
     detection_ts = np.zeros_like(values_1d)
@@ -389,12 +398,7 @@ def construct_detection_ts(
         threshold_multiplier=gradient_threshold_multiplier,
     )
 
-    # Calculate abruptness for the edges in the mean timeseries
-    abruptness = compute_abruptness_1D(
+    # Return signed abruptness at candidate edges (significance cut deferred to clustering)
+    return compute_abruptness_1D(
         edges_1d, values_1d, lcutoff=lcutoff, lmax=lmax, lmin=lmin, alpha=alpha
     )
-
-    # Apply an abruptness threshold to keep only edges that are sufficiently abrupt
-    detection_ts = np.where(np.abs(abruptness) > abruptness_threshold, abruptness, 0)
-
-    return detection_ts

@@ -23,6 +23,7 @@ from toad.utils import _attrs, get_unique_variable_name
 
 from .methods.asdetect import ASDETECT
 from .methods.base import ShiftsMethod
+from .methods.edge import EDGE
 
 # Currently implemented methods:
 # - ASDETECT: Implementation of the [Boulton+Lenton2019]_ algorithm for detecting abrupt shifts

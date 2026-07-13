@@ -50,8 +50,6 @@ class _StatsAccessor:
             if var
             else str(self._td.get_clusters(self._td._get_base_var_if_none(None)).name)
         )
-        if self._td._is_shift_variable(var):
-            var = str(self._td.get_clusters(var).name)
         return postprocessing.Stats(self._td, var)
 
     @property

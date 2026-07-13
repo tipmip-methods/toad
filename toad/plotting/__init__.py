@@ -2622,12 +2622,20 @@ class Plotter:
 
         shifts = self.td.get_shifts(var)
 
+        # set vmin, vmax to (-1, 1) if values are generally in that range
+        if np.all(np.abs(shifts) <= 1):
+            vmax = 1
+            vmin = -1
+        else:
+            vmax = None
+            vmin = None
+
         # Prepare plot parameters for different grid types
         plot_params = {
             "ax": ax,
             "add_colorbar": True,
-            "vmax": 1,
-            "vmin": -1,
+            "vmax": vmax,
+            "vmin": vmin,
             "cmap": cmap,
             "cbar_kwargs": {
                 "label": "Maximum shift magnitude",
@@ -2661,7 +2669,6 @@ class Plotter:
 
         return fig, ax
 
-    # TODO currently requires cluster vars to exist, although not technically needed
     def time_of_max_shift_map(
         self,
         var: str | None = None,
@@ -3280,29 +3287,36 @@ class Plotter:
             Tuple of (figure, axes). Axes is a numpy array of axes (one per shift variable).
         """
 
-        if figsize is None:
-            figsize = (12, 2 * len(self.td.shift_vars))
+        shift_vars = self.td.shift_vars
+        all_data = [self.td.get_shifts(var).values.flatten() for var in shift_vars]
 
-        fig, axs = plt.subplots(nrows=len(self.td.shift_vars), figsize=figsize)
+        if figsize is None:
+            figsize = (12, 2 * len(shift_vars))
+
+        fig, axs = plt.subplots(
+            nrows=len(shift_vars),
+            figsize=figsize,
+        )
         if not isinstance(axs, np.ndarray):
             axs = np.array([axs])
 
         if len(axs) > 1:
             _remove_ticks(axs[:-1], keep_y=True)
             _remove_spines(axs[:-1], spines=["right", "top"])
-
         _remove_spines(axs[-1], spines=["right", "top"])
 
-        for i in range(len(self.td.shift_vars)):
+        for i in range(len(shift_vars)):
+            data = all_data[i]
+            # Do not force range, let matplotlib auto-determine
             axs[i].hist(
-                self.td.get_shifts(self.td.shift_vars[i]).values.flatten(),
-                range=(-1, 1),
+                data,
                 bins=bins,
             )
-            axs[i].set_ylabel(
-                f"#{self.td.shift_vars[i]}", rotation=0, ha="right", va="center"
-            )
+            axs[i].set_ylabel(f"#{shift_vars[i]}", rotation=0, ha="right", va="center")
             axs[i].set_yscale(yscale)
+            # Always draw xticks and label for every panel
+            axs[i].tick_params(axis="x", which="both", labelbottom=True)
+            axs[i].set_xlabel("Shift value")
         return fig, axs
 
     def _prepare_map_plot_params(

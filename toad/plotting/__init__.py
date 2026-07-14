@@ -79,6 +79,55 @@ def get_projection(projection: str | ccrs.Projection) -> ccrs.Projection:
         raise TypeError(f"Invalid projection: {projection}")
 
 
+def _plot_boolean_mask_contour(
+    mask, *, linewidths: float, plot_params: dict[str, Any]
+) -> None:
+    """Draw a boolean-mask outline, avoiding Cartopy contour projection bugs.
+
+    PlateCarree GeoAxes need ``transform_first=True`` with 2D gridded coordinates
+    (SciTools/cartopy#2176). Other axes keep the standard xarray contour path.
+    """
+    ax = plot_params["ax"]
+    transform = plot_params.get("transform")
+    projection = getattr(ax, "projection", None)
+
+    if isinstance(projection, ccrs.PlateCarree) and isinstance(
+        transform, ccrs.PlateCarree
+    ):
+        x_dim = plot_params["x"]
+        y_dim = plot_params["y"]
+        lon2, lat2 = np.meshgrid(
+            mask.coords[x_dim].values,
+            mask.coords[y_dim].values,
+        )
+        cmap = plot_params["cmap"]
+        if isinstance(cmap, ListedColormap) and cmap.colors:
+            color = cast(Any, cmap.colors[0])
+        else:
+            color = "black"
+        try:
+            ax.contour(
+                lon2,
+                lat2,
+                mask.values.astype(float),
+                levels=[0.5],
+                transform=transform,
+                transform_first=True,
+                colors=[color],
+                linewidths=linewidths,
+                zorder=plot_params.get("zorder", 2),
+            )
+        except Exception as exc:
+            logger.warning("Skipping cluster contour on PlateCarree map: %s", exc)
+        return
+
+    mask.plot.contour(
+        levels=1,
+        linewidths=linewidths,
+        **plot_params,
+    )
+
+
 default_cmap = "tab20b"
 default_cmap_other = ListedColormap(plt.cm.Greys_r(np.linspace(0.25, 0.75, 256)))  # type: ignore
 
@@ -756,10 +805,10 @@ class Plotter:
                 plot_params["cmap"] = ListedColormap([darker_color])
                 plot_params["zorder"] = base_z + 1  # contour just above its own fill
 
-                mask.plot.contour(
-                    levels=1,
+                _plot_boolean_mask_contour(
+                    mask,
                     linewidths=contour_linewidth,
-                    **plot_params,
+                    plot_params=plot_params,
                 )
 
             if add_labels:
@@ -1077,10 +1126,10 @@ class Plotter:
                 )
                 plot_params["cmap"] = ListedColormap([darker_color])
                 plot_params["zorder"] = base_z + 1
-                mask.plot.contour(
-                    levels=1,
+                _plot_boolean_mask_contour(
+                    mask,
                     linewidths=contour_linewidth,
-                    **plot_params,
+                    plot_params=plot_params,
                 )
 
             if subplots:

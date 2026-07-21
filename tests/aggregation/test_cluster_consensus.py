@@ -201,93 +201,6 @@ def test_rate_independent_of_min_consensus_with_min_cluster_area():
     np.testing.assert_allclose(rate_low, rate_high, equal_nan=True)
 
 
-def test_build_and_apply_matches_compute_consensus():
-    """Two-phase API should match one-shot compute_consensus."""
-    fields = {}
-    for i in range(4):
-        fields[f"foo_r{i + 1}_cluster"] = np.full((4, 1, 3), -1, dtype=np.float32)
-    fields["foo_r1_cluster"][1, 0, 0:2] = 0
-    fields["foo_r2_cluster"][2, 0, 0:2] = 0
-    fields["foo_r3_cluster"][1, 0, 1:3] = 0
-
-    td_one_shot = setup_synthetic_consensus_toad(fields)
-    td_two_phase = setup_synthetic_consensus_toad(fields)
-
-    td_one_shot.compute_consensus(
-        min_consensus=0.75,
-        temporal_tolerance=1,
-        spatial_tolerance=0,
-        min_cluster_area=2,
-        show_progress=False,
-    )
-    support = td_two_phase.build_consensus(
-        temporal_tolerance=1,
-        spatial_tolerance=0,
-        show_progress=False,
-    )
-    td_two_phase.apply_consensus_threshold(
-        support,
-        min_consensus=0.75,
-        min_cluster_area=2,
-    )
-
-    np.testing.assert_array_equal(
-        td_one_shot.data["cluster_consensus"].values,
-        td_two_phase.data["cluster_consensus"].values,
-    )
-    np.testing.assert_allclose(
-        td_one_shot.data["cluster_consensus_rate"].values,
-        td_two_phase.data["cluster_consensus_rate"].values,
-        equal_nan=True,
-    )
-
-
-def test_build_once_apply_multiple_thresholds():
-    """Repeated apply_consensus_threshold should not require rebuilding votes."""
-    fields = {}
-    for i in range(5):
-        fields[f"foo_r{i + 1}_cluster"] = np.full((4, 2, 4), -1, dtype=np.float32)
-    fields["foo_r1_cluster"][1, 0, 0:2] = 0
-    fields["foo_r2_cluster"][1, 0, 0:2] = 0
-    fields["foo_r3_cluster"][1, 0, 0:2] = 0
-    fields["foo_r4_cluster"][2, 1, 2:4] = 0
-    fields["foo_r5_cluster"][2, 1, 2:4] = 0
-
-    td = setup_synthetic_consensus_toad(fields)
-    support = td.build_consensus(
-        temporal_tolerance=0,
-        spatial_tolerance=0,
-        show_progress=False,
-    )
-    td.apply_consensus_threshold(
-        support,
-        min_consensus=0.6,
-        min_cluster_area=2,
-        output_label="consensus_low",
-        overwrite=True,
-    )
-    td.apply_consensus_threshold(
-        support,
-        min_consensus=0.8,
-        min_cluster_area=2,
-        output_label="consensus_high",
-        overwrite=True,
-    )
-
-    rate_low = td.data["consensus_low_rate"].values
-    rate_high = td.data["consensus_high_rate"].values
-    np.testing.assert_allclose(rate_low, rate_high, equal_nan=True)
-
-    labels_low = td.data["consensus_low"].values
-    labels_high = td.data["consensus_high"].values
-    assert (
-        non_noise_cluster_ids(td.data["consensus_low"]).size
-        >= non_noise_cluster_ids(td.data["consensus_high"]).size
-    )
-    assert np.any(labels_low >= 0)
-    assert np.sum(labels_high >= 0) <= np.sum(labels_low >= 0)
-
-
 def test_member_support_retains_voxels_with_enough_dilated_votes():
     """Native voxels with enough dilated member support are kept and labelled."""
     fields = {}
@@ -396,7 +309,8 @@ def test_compute_consensus_end_to_end_on_irregular_grid():
     cv = td.consensus_cluster_vars[-1]
     summary_df = td.aggregate.consensus_summary(cv)
     clusters = td.data[cv]
-    rate = td.data[f"{cv}_rate"]
+    rate_var = td.consensus_rate_var_name(cv)
+    rate = td.data[rate_var]
 
     assert td.time_dim in clusters.dims
     assert clusters.shape == rate.shape
@@ -447,9 +361,12 @@ def test_consensus_cluster_timeseries_matches_manual_mean(td_with_consensus):
     cid = int(summary_df["cluster_id"].iloc[0])
 
     out = td.aggregate.consensus_cluster_timeseries(dc, cid, aggregation="mean")
+    from toad.utils.cluster_consensus_utils import _consensus_cluster_vars
+
+    cluster_vars = _consensus_cluster_vars(td, dc)
     first_cluster_var = next(
         cvar
-        for cvar in dc.attrs["cluster_vars"]
+        for cvar in cluster_vars
         if bool(
             (
                 (dc == cid)
@@ -557,10 +474,9 @@ def test_stitch_meridian_merges_seam_split_clusters():
     np.testing.assert_array_equal(
         non_noise_cluster_ids(td.data["cons_yes"]), np.array([0])
     )
-    assert td.data["cons_no"].attrs["stitch_meridian"] == 0
-    assert td.data["cons_no"].attrs["stitch_meridian_applied"] == 0
-    assert td.data["cons_yes"].attrs["stitch_meridian"] == 1
-    assert td.data["cons_yes"].attrs["stitch_meridian_applied"] == 1
+    da_yes = td.data["cons_yes"]
+    assert da_yes.attrs["stitch_meridian"] == 1
+    assert da_yes.attrs["stitch_meridian_applied"] == 1
 
 
 def test_spatial_tolerance_merges_clusters_separated_by_two_cell_gap():
@@ -639,7 +555,8 @@ def test_all_noise_inputs_yield_no_consensus_clusters():
     summary_df = td.aggregate.consensus_summary(cv)
 
     assert np.all(td.data[cv].values == -1)
-    assert np.all(td.data[f"{cv}_rate"].values == 0)
+    rate = td.data[td.consensus_rate_var_name(cv)]
+    assert np.all(rate.values == 0)
     assert summary_df.empty
 
 
@@ -656,7 +573,7 @@ def test_high_min_consensus_yields_all_noise():
         show_progress=False,
     )
     cv = td.consensus_cluster_vars[-1]
-    rate = td.data[f"{cv}_rate"]
+    rate = td.data[td.consensus_rate_var_name(cv)]
     summary_df = td.aggregate.consensus_summary(cv)
 
     assert np.all(td.data[cv].values == -1)

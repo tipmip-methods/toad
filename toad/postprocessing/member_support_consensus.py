@@ -6,10 +6,9 @@ Pipeline (read top to bottom in this module):
 2. :func:`_build_member_support_dataset` — threshold, label, assemble xarray output
 3. Connectivity helpers — group retained voxels into consensus cluster ids
 
-:meth:`~toad.postprocessing.aggregation.Aggregation.build_consensus`,
-:meth:`~toad.postprocessing.aggregation.Aggregation.apply_consensus_threshold`, and
-:meth:`~toad.postprocessing.aggregation.Aggregation.compute_consensus` orchestrate
-these steps (grid context, empty result, finalize attrs on ``td.data``).
+:meth:`~toad.postprocessing.aggregation.Aggregation.compute_consensus` and
+:meth:`~toad.MMA.run_consensus` orchestrate these steps (grid context, empty result,
+finalize attrs on ``td.data``).
 
 Native **8-neighbour** grid edges (:func:`native_spatial_edges`) are **not** left over
 from the old edge-vote (EAC) algorithm. They are used only when ``stitch_meridian=True``
@@ -43,31 +42,6 @@ def min_consensus_members(n_inputs: int, min_consensus: float) -> int:
     if not (0.0 <= min_consensus <= 1.0):
         raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
     return max(1, int(np.ceil(float(min_consensus) * n_inputs)))
-
-
-@dataclass(frozen=True)
-class ConsensusSupport:
-    """Precomputed member-support votes for repeated consensus thresholding.
-
-    Returned by :meth:`~toad.postprocessing.aggregation.Aggregation.build_consensus`
-    and consumed by
-    :meth:`~toad.postprocessing.aggregation.Aggregation.apply_consensus_threshold`.
-    The vote arrays depend only on input cluster maps and tolerance settings, not on
-    ``min_consensus`` or ``min_cluster_area``.
-    """
-
-    cluster_vars: tuple[str, ...]
-    native_union: np.ndarray
-    member_vote_count: np.ndarray
-    context: SpacetimeGridContext
-    temporal_tolerance: int
-    spatial_tolerance: int
-    stitch_meridian: StitchMeridianSetting
-    stitch_meridian_resolved: bool
-
-    @property
-    def n_members(self) -> int:
-        return len(self.cluster_vars)
 
 
 @dataclass(frozen=True)
@@ -654,26 +628,141 @@ def _build_member_support_dataset(
     return ds
 
 
-def consensus_dataset_from_support(
+def _mark_votes_no_shift_nan(
+    da_votes: xr.DataArray,
     td: Any,
-    support: ConsensusSupport,
+    cluster_vars: list[str],
+    context: SpacetimeGridContext,
+) -> xr.DataArray:
+    """Promote zero vote counts to NaN where no input ever had a shift."""
+    all_none = _all_inputs_no_shift_mask_flat(td, cluster_vars, context)
+    flat = np.asarray(da_votes.data, dtype=np.float64).ravel().copy()
+    flat[(flat == 0) & all_none] = np.nan
+    new_votes = flat.reshape(context.T, context.y_len, context.x_len)
+    return xr.DataArray(
+        new_votes,
+        coords=da_votes.coords,
+        dims=da_votes.dims,
+        attrs=da_votes.attrs,
+        name=da_votes.name,
+    )
+
+
+def build_consensus_votes_dataarray(
+    td: Any,
+    *,
+    cluster_vars: list[str],
+    native_union: np.ndarray,
+    member_vote_count: np.ndarray,
+    context: SpacetimeGridContext,
+) -> xr.DataArray:
+    """Assemble a spacetime consensus vote-count field from accumulated support."""
+    n_st = context.T * context.n_space
+    votes_flat = np.zeros(n_st, dtype=np.float32)
+    if np.any(native_union):
+        votes_flat[native_union] = member_vote_count[native_union].astype(
+            np.float32, copy=False
+        )
+    da_votes = xr.DataArray(
+        votes_flat.reshape(context.T, context.y_len, context.x_len),
+        coords={context.time_dim: context.time_coord, **context.coords_spatial},
+        dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
+        name="votes",
+    )
+    return _mark_votes_no_shift_nan(da_votes, td, cluster_vars, context)
+
+
+def grid_context_from_votes(
+    da_votes: xr.DataArray,
+    *,
+    spatial_dims: tuple[str, str],
+    time_dim: str,
+    stitch_meridian_resolved: bool,
+) -> SpacetimeGridContext:
+    """Rebuild labelling grid context from a stored consensus votes field."""
+    return _build_grid_context(
+        da_votes,
+        spatial_dims=spatial_dims,
+        time_dim=time_dim,
+        stitch_meridian=stitch_meridian_resolved,
+    )
+
+
+def consensus_clusters_from_votes(
+    td: Any,
+    da_votes: xr.DataArray,
     *,
     min_consensus: float,
-) -> xr.Dataset:
-    """Build interim consensus labels and rate from precomputed member-support votes."""
-    cluster_vars = list(support.cluster_vars)
-    if not np.any(support.native_union):
-        return _empty_result(td, cluster_vars, support.context)
-    return _build_member_support_dataset(
-        td,
-        cluster_vars=cluster_vars,
-        min_consensus=min_consensus,
-        temporal_tolerance=support.temporal_tolerance,
-        spatial_tolerance=support.spatial_tolerance,
-        context=support.context,
-        native_union=support.native_union,
-        member_vote_count=support.member_vote_count,
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+    context: SpacetimeGridContext,
+    cluster_vars: list[str],
+) -> xr.DataArray:
+    """Threshold stored vote counts and label tolerance-aware consensus clusters."""
+    n_members = len(cluster_vars)
+    min_votes = min_consensus_members(n_members, min_consensus)
+    n_st = context.T * context.n_space
+
+    votes_flat = np.nan_to_num(
+        np.asarray(da_votes.data, dtype=np.float32).ravel(), nan=0.0
     )
+    member_vote_count = votes_flat.astype(np.int16, copy=False)
+    native_union = member_vote_count > 0
+
+    if not np.any(native_union):
+        da_clusters = xr.DataArray(
+            np.full((context.T, context.y_len, context.x_len), -1, dtype=np.int32),
+            coords={context.time_dim: context.time_coord, **context.coords_spatial},
+            dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
+            name="clusters",
+        )
+        ds = _mark_no_shift_nan(
+            xr.Dataset(
+                {
+                    "clusters": da_clusters,
+                    "rate": xr.zeros_like(da_clusters, dtype=np.float32),
+                }
+            ),
+            td,
+            cluster_vars,
+            context,
+        )
+        return ds["clusters"]
+
+    keep = native_union & (member_vote_count >= min_votes)
+    if np.any(keep):
+        labels_flat = _label_retained_voxels(
+            keep,
+            context=context,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+        )
+        labels_flat = sorted_cluster_labels(labels_flat)
+    else:
+        labels_flat = np.full(n_st, -1, dtype=np.int64)
+
+    clusters_out = np.asarray(labels_flat, dtype=np.int32).reshape(
+        context.T, context.y_len, context.x_len
+    )
+    da_clusters = xr.DataArray(
+        clusters_out,
+        coords={context.time_dim: context.time_coord, **context.coords_spatial},
+        dims=[context.time_dim, context.spatial_dims[0], context.spatial_dims[1]],
+        name="clusters",
+    )
+    ds = _mark_no_shift_nan(
+        xr.Dataset(
+            {
+                "clusters": da_clusters,
+                "rate": xr.zeros_like(da_clusters, dtype=np.float32),
+            }
+        ),
+        td,
+        cluster_vars,
+        context,
+    )
+    da_clusters = ds["clusters"]
+    return da_clusters
 
 
 # Backward-compatible alias (tests, external imports)

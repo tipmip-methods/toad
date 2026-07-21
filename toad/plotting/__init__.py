@@ -1201,10 +1201,10 @@ class Plotter:
     ) -> Tuple[FigureBase | None, Axes]:
         """Map member-support consensus rate from a consensus run (time-collapsed).
 
-        Uses the companion field ``{consensus_var}_rate``: at each spacetime
-        cell this is (supporting inputs) / (total inputs) on native event voxels,
-        including voxels below the consensus threshold. The map collapses time with
-        ``max`` (default) or ``mean`` over finite values, then masks cells where the
+        Uses the stored consensus rate companion field (``{consensus_var}_rate``):
+        at each spacetime cell this is (supporting inputs) / (total inputs) on native
+        event voxels, including voxels below the consensus threshold. The map collapses
+        time with ``max`` (default) or ``mean`` over finite values, then masks cells where the
         result is zero (no input ever detected an event there).
 
         Args:
@@ -1445,6 +1445,7 @@ class Plotter:
         show_legend: bool = True,
         ylabel: Optional[str] = None,
         kde_side: Literal["left", "right"] = "right",
+        orientation: Literal["vertical", "horizontal"] = "vertical",
         point_size: float = 15.0,
         point_alpha: float = 0.75,
         jitter_half_span: Optional[float] = None,
@@ -1455,9 +1456,16 @@ class Plotter:
         """Render violin (+ optional scatter) for transition-time sample lists; shared by consensus/label plotters."""
         n_groups = len(dataset)
         positions = np.arange(n_groups, dtype=float)
+        horizontal = orientation == "horizontal"
+        value_label = ylabel if ylabel is not None else self._transition_time_ylabel()
 
         if ax is None:
-            fig, ax = plt.subplots(figsize=figsize or (max(10, 1.2 * n_groups), 6))
+            default_figsize = (
+                (6, max(10, 1.2 * n_groups))
+                if horizontal
+                else (max(10, 1.2 * n_groups), 6)
+            )
+            fig, ax = plt.subplots(figsize=figsize or default_figsize)
         else:
             fig = ax.get_figure()
 
@@ -1476,11 +1484,18 @@ class Plotter:
             dataset,
             positions=positions,
             widths=width,
+            vert=not horizontal,
             **vp_kwargs,
         )
         if show_scatter:
             _style_violin_bodies_iqr_median(
-                ax, parts, dataset, positions, colors, clip_to_body=False
+                ax,
+                parts,
+                dataset,
+                positions,
+                colors,
+                clip_to_body=False,
+                orientation=orientation,
             )
             all_parts: list[np.ndarray] = []
             for d in dataset:
@@ -1489,13 +1504,29 @@ class Plotter:
                 if a.size:
                     all_parts.append(a)
             if all_parts:
-                all_y = np.concatenate(all_parts)
-                y_span = float(np.ptp(all_y))
-                pad = 0.05 * (y_span if y_span > 0 else 1.0)
-                ax.set_ylim(float(all_y.min()) - pad, float(all_y.max()) + pad)
+                all_values = np.concatenate(all_parts)
+                value_span = float(np.ptp(all_values))
+                pad = 0.05 * (value_span if value_span > 0 else 1.0)
+                if horizontal:
+                    ax.set_xlim(
+                        float(all_values.min()) - pad, float(all_values.max()) + pad
+                    )
+                else:
+                    ax.set_ylim(
+                        float(all_values.min()) - pad, float(all_values.max()) + pad
+                    )
 
-            x_margin = width / 2.0 + 0.05
-            ax.set_xlim(-0.5 - x_margin, (n_groups - 1) + 0.5 + x_margin)
+            category_margin = width / 2.0 + 0.05
+            if horizontal:
+                ax.set_ylim(
+                    -0.5 - category_margin,
+                    (n_groups - 1) + 0.5 + category_margin,
+                )
+            else:
+                ax.set_xlim(
+                    -0.5 - category_margin,
+                    (n_groups - 1) + 0.5 + category_margin,
+                )
 
             if jitter_half_span is None:
                 _jhalf = width / 8.0
@@ -1511,33 +1542,59 @@ class Plotter:
                     continue
                 pos = float(positions[i])
                 if kde_side == "left":
-                    jitter_xc = pos + width / 4.0
+                    jitter_center = pos + width / 4.0
                 else:
-                    jitter_xc = pos - width / 4.0
+                    jitter_center = pos - width / 4.0
                 n_pt = int(np.sum(mask))
-                x_jitter = _jitter_strip_x(n_pt, jitter_xc, _jhalf, rng)
-                ax.scatter(
-                    x_jitter,
-                    arr[mask],
-                    s=point_size,
-                    c=colors[i % len(colors)],
-                    alpha=point_alpha,
-                    edgecolors="#333333",
-                    linewidths=0.35,
-                    zorder=5,
-                )
+                if horizontal:
+                    y_jitter = _jitter_strip_y(n_pt, jitter_center, _jhalf, rng)
+                    ax.scatter(
+                        arr[mask],
+                        y_jitter,
+                        s=point_size,
+                        c=colors[i % len(colors)],
+                        alpha=point_alpha,
+                        edgecolors="#333333",
+                        linewidths=0.35,
+                        zorder=5,
+                    )
+                else:
+                    x_jitter = _jitter_strip_x(n_pt, jitter_center, _jhalf, rng)
+                    ax.scatter(
+                        x_jitter,
+                        arr[mask],
+                        s=point_size,
+                        c=colors[i % len(colors)],
+                        alpha=point_alpha,
+                        edgecolors="#333333",
+                        linewidths=0.35,
+                        zorder=5,
+                    )
         else:
-            _style_violin_bodies_iqr_median(ax, parts, dataset, positions, colors)
+            _style_violin_bodies_iqr_median(
+                ax, parts, dataset, positions, colors, orientation=orientation
+            )
 
-        ax.set_xticks(positions)
-        ax.set_xticklabels(xticklabels)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel if ylabel is not None else self._transition_time_ylabel())
+        if horizontal:
+            ax.set_yticks(positions)
+            ax.set_yticklabels(xticklabels)
+            ax.set_ylabel(xlabel)
+            ax.set_xlabel(value_label)
+            ax.grid(
+                True, axis="x", color="#d9d9d9", linestyle="-", linewidth=0.8, zorder=0
+            )
+        else:
+            ax.set_xticks(positions)
+            ax.set_xticklabels(xticklabels)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(value_label)
+            ax.grid(
+                True, axis="y", color="#d9d9d9", linestyle="-", linewidth=0.8, zorder=0
+            )
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_linewidth(1.2)
         ax.spines["bottom"].set_linewidth(1.2)
-        ax.grid(True, axis="y", color="#d9d9d9", linestyle="-", linewidth=0.8, zorder=0)
         ax.set_axisbelow(True)
 
         if show_legend:
@@ -1641,6 +1698,7 @@ class Plotter:
         show_legend: bool = True,
         ylabel: Optional[str] = None,
         kde_side: Literal["left", "right"] = "right",
+        orientation: Literal["vertical", "horizontal"] = "vertical",
         point_size: float = 15.0,
         point_alpha: float = 0.75,
         jitter_half_span: Optional[float] = None,
@@ -1682,11 +1740,14 @@ class Plotter:
             bw_method: KDE bandwidth factor passed to ``Axes.violinplot``.
             show_sum, show_total, total_color: Pooled columns (same as before).
             show_legend: If True (default), add a legend (three entries with scatter, two without).
-            ylabel: Y-axis label; default :meth:`_transition_time_ylabel`.
-            kde_side: For ``show_scatter=True`` only: ``\"left\"`` puts KDE left of the tick,
-                jitter right; ``\"right\"`` swaps.
+            ylabel: Transition-time axis label (y when ``orientation=\"vertical\"``,
+                x when ``orientation=\"horizontal\"``); default :meth:`_transition_time_ylabel`.
+            kde_side: For ``show_scatter=True`` only: ``\"left\"`` puts KDE left/below the tick,
+                jitter right/above; ``\"right\"`` swaps.
+            orientation: ``\"vertical\"`` (default): cluster id on x, transition time on y.
+                ``\"horizontal\"``: transition time on x, cluster id on y.
             point_size, point_alpha: Scatter markers when ``show_scatter=True`` (ignored otherwise).
-            jitter_half_span: Half-width of horizontal jitter in *x* data units; default ``width / 8``.
+            jitter_half_span: Half-width of category-axis jitter; default ``width / 8``.
             seed: RNG seed for jitter when ``show_scatter=True``.
             tight_layout: If True (default), call ``fig.tight_layout`` before returning. Set False
                 when drawing into a composite figure (e.g. :meth:`consensus_overview`).
@@ -1723,6 +1784,7 @@ class Plotter:
             show_legend=show_legend,
             ylabel=ylabel,
             kde_side=kde_side,
+            orientation=orientation,
             point_size=point_size,
             point_alpha=point_alpha,
             jitter_half_span=jitter_half_span,
@@ -4388,6 +4450,20 @@ def _jitter_strip_x(
     return x_center + rng.uniform(-half_span, half_span, size=n)
 
 
+def _jitter_strip_y(
+    n: int,
+    y_center: float,
+    half_span: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Fixed-width vertical jitter: ``y_center + U(-half_span, half_span)`` per point."""
+    if n <= 0:
+        return np.array([])
+    if half_span <= 0:
+        return np.full(n, y_center, dtype=np.float64)
+    return y_center + rng.uniform(-half_span, half_span, size=n)
+
+
 def _style_violin_bodies_iqr_median(
     ax: Axes,
     parts: Any,
@@ -4396,8 +4472,9 @@ def _style_violin_bodies_iqr_median(
     colors: Sequence[str | tuple[float, ...]],
     *,
     clip_to_body: bool = True,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
 ) -> None:
-    """Style violin bodies and add a vertical mini-boxplot (IQR bar and median dot).
+    """Style violin bodies and add an IQR bar and median dot.
 
     By default the IQR segment and median are clipped to the violin patch so they sit inside
     the KDE. Set ``clip_to_body=False`` for half violins so the markers are drawn in full,
@@ -4420,9 +4497,14 @@ def _style_violin_bodies_iqr_median(
             continue
         q1, q2, q3 = np.percentile(arr_valid, [25, 50, 75])
         pos = float(positions[i])
+        if orientation == "horizontal":
+            iqr_coords = ([q1, q3], [pos, pos])
+            median_coords = ([q2], [pos])
+        else:
+            iqr_coords = ([pos, pos], [q1, q3])
+            median_coords = ([pos], [q2])
         iqr_line = Line2D(
-            [pos, pos],
-            [q1, q3],
+            *iqr_coords,
             color=_VIOLIN_CONSENSUS_IQR_COLOR,
             linestyle="-",
             linewidth=_VIOLIN_CONSENSUS_IQR_LW,
@@ -4433,8 +4515,7 @@ def _style_violin_bodies_iqr_median(
             iqr_line.set_clip_path(clip_path, ax.transData)
         ax.add_line(iqr_line)
         sc = ax.scatter(
-            [pos],
-            [q2],
+            *median_coords,
             s=28,
             c=_VIOLIN_CONSENSUS_MEDIAN_FACE,
             edgecolors=_VIOLIN_CONSENSUS_MEDIAN_EDGE,

@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 from collections.abc import Callable
 from typing import List, Literal, Optional, Union
 
@@ -20,7 +21,6 @@ from toad.clustering.optimizing import (
     default_opt_params,
 )
 from toad.postprocessing.stats import GeneralStats, SpaceStats, TimeStats
-from toad.postprocessing.member_support_consensus import ConsensusSupport
 from toad.regridding.base import BaseRegridder
 from toad.utils import (
     DEFAULT_SHIFT_THRESHOLD,
@@ -484,8 +484,7 @@ class TOAD:
         """Combine multiple clustering results into one per-voxel member-support consensus.
 
         This delegates to :meth:`toad.postprocessing.Aggregation.compute_consensus`; see that
-        docstring for parameters and algorithm details. Internally runs
-        :meth:`build_consensus` then :meth:`apply_consensus_threshold`.
+        docstring for parameters and algorithm details.
 
         Args:
             cluster_vars: Input clustering variables to merge. Defaults to all ``td.cluster_vars``.
@@ -522,60 +521,24 @@ class TOAD:
             min_cluster_area=min_cluster_area,
         )
 
-    def build_consensus(
-        self,
-        cluster_vars: list[str] | None = None,
-        *,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-        stitch_meridian: bool | Literal["auto"] = "auto",
-        show_progress: bool = True,
-    ) -> ConsensusSupport:
-        """Precompute member-support votes for repeated consensus thresholding.
-
-        See :meth:`toad.postprocessing.Aggregation.build_consensus`.
-        """
-        return self.aggregate.build_consensus(
-            cluster_vars=cluster_vars,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            stitch_meridian=stitch_meridian,
-            show_progress=show_progress,
-        )
-
-    def apply_consensus_threshold(
-        self,
-        support: ConsensusSupport,
-        *,
-        min_consensus: float,
-        min_cluster_area: int | None = 2,
-        output_label_suffix: str = "",
-        output_label: str | None = None,
-        overwrite: bool = False,
-    ) -> None:
-        """Apply a consensus threshold to precomputed member-support votes.
-
-        See :meth:`toad.postprocessing.Aggregation.apply_consensus_threshold`.
-        """
-        self.aggregate.apply_consensus_threshold(
-            support,
-            min_consensus=min_consensus,
-            min_cluster_area=min_cluster_area,
-            output_label_suffix=output_label_suffix,
-            output_label=output_label,
-            overwrite=overwrite,
-        )
-
     # # ======================================================================
     # #               netCDF functions
     # # ======================================================================
 
-    def save(self, suffix: Optional[str] = None, path: Optional[str] = None):
+    def save(
+        self,
+        suffix: Optional[str] = None,
+        path: Optional[str] = None,
+        overwrite: bool = False,
+    ):
         """Save the TOAD object to a netCDF file.
 
         Args:
             suffix: Optional string to append to filename before extension
             path: Optional path to save file to. If not provided, uses self.path
+            overwrite: If True, allow saving back to the original path. Uses a
+                temporary file and atomic replace so the source file can still
+                be open for reading (e.g. from lazy loading).
 
         Raises:
             ValueError: If neither path nor self.path is set
@@ -585,9 +548,10 @@ class TOAD:
             raise ValueError("Path to save TOAD dataset not set. Please provide path.")
 
         # Prevent overwriting when using self.path
-        if path is None and self.path is not None and suffix is None:
+        if path is None and self.path is not None and suffix is None and not overwrite:
             raise ValueError(
-                "Please provide either a suffix to append to the original path or specify a new path."
+                "Please provide either a suffix to append to the original path, "
+                "specify a new path, or set overwrite=True."
             )
 
         # Use user-provided path if specified, otherwise use self.path
@@ -637,7 +601,27 @@ class TOAD:
                 f"Could not apply compression settings: {str(e)}. Proceeding with save without compression."
             )
 
-        self.data.to_netcdf(save_path)
+        overwrite_inplace = (
+            overwrite
+            and self.path is not None
+            and os.path.abspath(save_path) == os.path.abspath(self.path)
+        )
+
+        if overwrite_inplace:
+            save_dir = os.path.dirname(save_path) or "."
+            fd, tmp_path = tempfile.mkstemp(
+                suffix=".nc", prefix=".toad-save-", dir=save_dir
+            )
+            os.close(fd)
+            try:
+                self.data.to_netcdf(tmp_path)
+                os.replace(tmp_path, save_path)
+            except Exception:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
+        else:
+            self.data.to_netcdf(save_path)
         self.logger.info(f"Saved TOAD dataset to {save_path}")
 
     # # ======================================================================
@@ -1313,7 +1297,7 @@ class TOAD:
         )
 
     def _is_consensus_rate_variable(self, var: str) -> bool:
-        """Check if a variable is a consensus rate companion variable."""
+        """Check if a variable is a consensus rate variable."""
         return (
             self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CONSENSUS_RATE
         )

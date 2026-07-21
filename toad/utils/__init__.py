@@ -70,9 +70,10 @@ class _Attrs:
     TYPE_CONSENSUS_CLUSTER: str = "consensus_cluster"
     TYPE_CONSENSUS_RATE: str = "consensus_rate"
 
-    # Consensus companion metadata
+    # Consensus metadata
     CONSENSUS_LABELS_VAR: str = "consensus_labels_var"
     CONSENSUS_RATE_SUFFIX: str = "_rate"
+    N_MODELS: str = "n_models"
     CLUSTER_VARS: str = "cluster_vars"
 
 

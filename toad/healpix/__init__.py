@@ -3,7 +3,12 @@
 from toad.healpix.convert import ipix_to_lonlat, lonlat_to_ipix, normalize_lon_180
 from toad.healpix.grid import HealpixGrid, depth_to_nside, nside_to_depth
 from toad.healpix.neighbours import build_ring1_spatial_edges, k_ring_neighbourhood
-from toad.healpix.polygons import ipix_vertices, polygon_path, polygon_paths
+from toad.healpix.polygons import (
+    ipix_vertices,
+    polygon_path,
+    polygon_paths,
+    visible_ipix_front_hemisphere,
+)
 
 __all__ = [
     "HealpixGrid",
@@ -17,4 +22,5 @@ __all__ = [
     "nside_to_depth",
     "polygon_path",
     "polygon_paths",
+    "visible_ipix_front_hemisphere",
 ]

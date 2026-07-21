@@ -96,25 +96,43 @@ def resolve_healpix_nside(
 
 
 def build_simple_consensus_summary_df(
-    clusters_map: np.ndarray,
-    rate_map: np.ndarray,
+    clusters: xr.DataArray,
+    rate: xr.DataArray,
     shift_times_by_cluster: Mapping[int, np.ndarray],
     *,
+    time_dim: str | None = None,
     numeric: bool = True,
 ) -> pd.DataFrame:
-    """Build a per-cluster summary table from collapsed consensus fields.
+    """Build a per-cluster summary table from spacetime consensus fields.
 
     This is the MMA-oriented summary (spatial footprint + pooled shift times).
-    TOAD's richer :meth:`Aggregation.consensus_summary` uses strict spacetime
-    agreement with in-memory cluster variables.
+    ``size`` is the spatial footprint (any-time-ever, via
+    :func:`collapse_consensus_for_map`). ``mean_consensus_rate`` masks the full
+    ``(time x space)`` rate field by ``clusters == cid`` at the *same* spacetime
+    voxel and takes the mean over exactly those voxels -- not diluted by
+    timesteps/pixels where the cluster wasn't active -- mirroring
+    :func:`_build_consensus_summary_df_spacetime`'s ``rate3d.groupby(cluster_map).mean()``
+    used by TOAD's richer :meth:`Aggregation.consensus_summary`.
     """
     del numeric  # reserved for API compatibility with MMA.get_consensus_summary
+    resolved_time_dim = time_dim or infer_consensus_time_dim(clusters)
+    clusters_map = collapse_consensus_for_map(clusters, time_dim=resolved_time_dim)
+
+    rate_by_cluster: dict[int, float] = {}
+    if resolved_time_dim is not None and resolved_time_dim in rate.dims:
+        cluster_labels_masked = clusters.where((clusters >= 0) & (clusters == clusters))
+        group_dim = cluster_labels_masked.name or "cluster"
+        mean_rate = rate.groupby(cluster_labels_masked).mean(skipna=True)
+        rate_by_cluster = {
+            int(cid): float(val)
+            for cid, val in zip(mean_rate[group_dim].values, mean_rate.values)
+        }
+
     rows: list[dict[str, Any]] = []
     for cid in consensus_cluster_ids(clusters_map):
         mask = (clusters_map == cid) & np.isfinite(clusters_map)
         size = int(np.sum(mask))
-        rate_vals = rate_map[mask]
-        mean_consensus_rate = float(np.nanmean(rate_vals)) if rate_vals.size else np.nan
+        mean_consensus_rate = rate_by_cluster.get(cid, np.nan)
         times = shift_times_by_cluster.get(cid, np.array([]))
         mean_shift = float(np.mean(times)) if len(times) > 0 else np.nan
         std_shift = float(np.std(times)) if len(times) > 1 else np.nan

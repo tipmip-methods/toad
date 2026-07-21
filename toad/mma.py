@@ -28,12 +28,6 @@ if TYPE_CHECKING:
     from toad.plotting import MapStyle
     from toad.plotting.consensus_overview import MMAPlotView
 from toad.plotting.consensus_maps import plot_collapsed_consensus_labels_map
-from toad.postprocessing.healpix_member_support_consensus import (
-    HealpixConsensusSupport,
-    build_healpix_consensus_support,
-    consensus_dataset_from_healpix_support,
-)
-from toad.postprocessing.member_support_consensus import ConsensusSupport
 from toad.regridding.healpix import HealPixRegridder
 from toad.utils import _attrs, detect_latlon_names
 from toad.utils.consensus_view import (
@@ -55,7 +49,6 @@ class _ConsensusInputStore:
 
 
 TimeAlignment = Literal["union", "intersection", "strict"]
-MMAConsensusSupport = Union[ConsensusSupport, HealpixConsensusSupport]
 
 
 def _parse_source_paths(value: Any) -> list[str]:
@@ -855,16 +848,37 @@ class MMA:
         )
         return _ConsensusInputStore(ds, self._time_dim)
 
-    def _consensus_shared_attrs(
+    def run_consensus(
         self,
-        *,
-        min_consensus: float,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-        min_cluster_area: int | None,
-        k_neighbors: int,
-    ) -> dict:
-        return {
+        min_consensus: float = 0.5,
+        temporal_tolerance: int = 0,
+        spatial_tolerance: int = 1,
+        min_cluster_area: int | None = 2,
+        k_neighbors: int = 8,
+        show_progress: bool = True,
+    ) -> xr.Dataset:
+        """Run member-support consensus and store results in self.data.
+
+        Args:
+            min_consensus: Minimum fraction of models required per retained voxel.
+            temporal_tolerance: Time-step radius for support dilation and connectivity.
+            spatial_tolerance: HEALPix-hop or native-grid-cell radius for dilation
+                and connectivity.
+            min_cluster_area: Minimum distinct spatial footprint for a consensus cluster.
+                Use ``None`` to disable.
+            k_neighbors: Deprecated; ignored. HEALPix consensus uses ring-1 neighbours.
+            show_progress: Whether to show a progress bar.
+
+        Returns:
+            The internal dataset with consensus_clusters and consensus_clusters_rate.
+        """
+        from toad import TOAD
+        from toad.postprocessing.healpix_member_support_consensus import (
+            run_healpix_member_support_consensus,
+        )
+
+        inputs = self._build_consensus_inputs()
+        shared_attrs = {
             "consensus_method": "member_support",
             "min_consensus": min_consensus,
             "temporal_tolerance": temporal_tolerance,
@@ -878,26 +892,20 @@ class MMA:
             _attrs.TOAD_VERSION: __version__,
         }
 
-    def _store_consensus_dataset(
-        self,
-        labels: np.ndarray,
-        rate: np.ndarray,
-        *,
-        min_consensus: float,
-        temporal_tolerance: int,
-        spatial_tolerance: int,
-        min_cluster_area: int | None,
-        k_neighbors: int,
-    ) -> xr.Dataset:
-        shared_attrs = self._consensus_shared_attrs(
-            min_consensus=min_consensus,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            min_cluster_area=min_cluster_area,
-            k_neighbors=k_neighbors,
-        )
-
         if self._format == "healpix":
+            ds_out = run_healpix_member_support_consensus(
+                inputs,
+                cluster_vars=self._cluster_var_names,
+                min_consensus=min_consensus,
+                temporal_tolerance=temporal_tolerance,
+                spatial_tolerance=spatial_tolerance,
+                nside=cast(int, self.nside),
+                k_neighbors=k_neighbors,
+                min_cluster_area=min_cluster_area,
+                show_progress=show_progress,
+            )
+            labels = ds_out["clusters"].values
+            rate = ds_out["rate"].values
             npix = 12 * cast(int, self.nside) ** 2
             da_clusters, da_consistency = _make_consensus_dataarrays(
                 labels,
@@ -919,6 +927,19 @@ class MMA:
             )
             self._data.attrs["nside"] = self.nside
         else:
+            td = TOAD(inputs.data, time_dim=self._time_dim, log_level="CRITICAL")
+            td.compute_consensus(
+                cluster_vars=self._cluster_var_names,
+                min_consensus=min_consensus,
+                temporal_tolerance=temporal_tolerance,
+                spatial_tolerance=spatial_tolerance,
+                min_cluster_area=min_cluster_area,
+                show_progress=show_progress,
+            )
+            consensus_var = td.consensus_cluster_vars[-1]
+            rate_var = td.consensus_rate_var_name(consensus_var)
+            labels = td.data[consensus_var].values
+            rate = td.data[rate_var].values
             spatial_dims = cast(List[str], self._native_spatial_dims)
             ds0 = xr.open_dataset(self.paths[0])
             coords = {
@@ -953,174 +974,6 @@ class MMA:
             f"nan={int(np.sum(np.isnan(labels_arr)))}"
         )
         return self._data
-
-    def build_consensus(
-        self,
-        temporal_tolerance: int = 0,
-        spatial_tolerance: int = 1,
-        k_neighbors: int = 8,
-        show_progress: bool = True,
-    ) -> MMAConsensusSupport:
-        """Precompute member-support votes for repeated consensus thresholding.
-
-        Run once per tolerance setting, then call :meth:`apply_consensus_threshold`
-        for each ``min_consensus`` without re-looping over model exports.
-
-        Args:
-            temporal_tolerance: Time-step radius for support dilation and connectivity.
-            spatial_tolerance: HEALPix-hop or native-grid-cell radius for dilation
-                and connectivity.
-            k_neighbors: Deprecated; ignored on HEALPix (ring-1 neighbours are used).
-            show_progress: Whether to show a progress bar.
-
-        Returns:
-            A :class:`~toad.postprocessing.member_support_consensus.ConsensusSupport`
-            (native exports) or
-            :class:`~toad.postprocessing.healpix_member_support_consensus.HealpixConsensusSupport`
-            (HealPix exports).
-
-        See Also:
-            :meth:`apply_consensus_threshold`, :meth:`run_consensus`.
-        """
-        inputs = self._build_consensus_inputs()
-
-        if self._format == "healpix":
-            return build_healpix_consensus_support(
-                inputs,
-                cluster_vars=self._cluster_var_names,
-                temporal_tolerance=temporal_tolerance,
-                spatial_tolerance=spatial_tolerance,
-                nside=cast(int, self.nside),
-                k_neighbors=k_neighbors,
-                show_progress=show_progress,
-            )
-
-        from toad import TOAD
-
-        td = TOAD(inputs.data, time_dim=self._time_dim, log_level="CRITICAL")
-        return td.build_consensus(
-            cluster_vars=self._cluster_var_names,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-        )
-
-    def apply_consensus_threshold(
-        self,
-        support: MMAConsensusSupport,
-        *,
-        min_consensus: float,
-        min_cluster_area: int | None = 2,
-        k_neighbors: int = 8,
-    ) -> xr.Dataset:
-        """Apply a consensus threshold to precomputed MMA member-support votes.
-
-        Args:
-            support: Precomputed votes from :meth:`build_consensus`.
-            min_consensus: Minimum fraction of models required per retained voxel.
-            min_cluster_area: Minimum distinct spatial footprint for a consensus cluster.
-                Use ``None`` to disable.
-            k_neighbors: Deprecated; ignored on HEALPix.
-
-        Returns:
-            The internal dataset with ``consensus_clusters`` and
-            ``consensus_clusters_rate``.
-
-        See Also:
-            :meth:`build_consensus`, :meth:`run_consensus`.
-        """
-        if not (0.0 <= min_consensus <= 1.0):
-            raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
-        if min_cluster_area is not None and min_cluster_area < 0:
-            raise ValueError(
-                f"`min_cluster_area` must be >= 0 or None, got {min_cluster_area}."
-            )
-
-        inputs = self._build_consensus_inputs()
-
-        if isinstance(support, HealpixConsensusSupport):
-            if self._format != "healpix":
-                raise TypeError(
-                    "HealpixConsensusSupport requires MMA loaded with HealPix exports."
-                )
-            ds_out = consensus_dataset_from_healpix_support(
-                inputs,
-                support,
-                min_consensus=min_consensus,
-                min_cluster_area=min_cluster_area,
-            )
-            return self._store_consensus_dataset(
-                ds_out["clusters"].values,
-                ds_out["rate"].values,
-                min_consensus=min_consensus,
-                temporal_tolerance=support.temporal_tolerance,
-                spatial_tolerance=support.spatial_tolerance,
-                min_cluster_area=min_cluster_area,
-                k_neighbors=k_neighbors,
-            )
-
-        if self._format != "native":
-            raise TypeError(
-                "ConsensusSupport requires MMA loaded with native-format exports."
-            )
-
-        from toad import TOAD
-
-        td = TOAD(inputs.data, time_dim=self._time_dim, log_level="CRITICAL")
-        td.apply_consensus_threshold(
-            support,
-            min_consensus=min_consensus,
-            min_cluster_area=min_cluster_area,
-            overwrite=True,
-        )
-        consensus_var = td.consensus_cluster_vars[-1]
-        rate_var = td.consensus_rate_var_name(consensus_var)
-        return self._store_consensus_dataset(
-            td.data[consensus_var].values,
-            td.data[rate_var].values,
-            min_consensus=min_consensus,
-            temporal_tolerance=support.temporal_tolerance,
-            spatial_tolerance=support.spatial_tolerance,
-            min_cluster_area=min_cluster_area,
-            k_neighbors=k_neighbors,
-        )
-
-    def run_consensus(
-        self,
-        min_consensus: float = 0.5,
-        temporal_tolerance: int = 0,
-        spatial_tolerance: int = 1,
-        min_cluster_area: int | None = 2,
-        k_neighbors: int = 8,
-        show_progress: bool = True,
-    ) -> xr.Dataset:
-        """Run member-support consensus and store results in self.data.
-
-        Args:
-            min_consensus: Minimum fraction of models required per retained voxel.
-            temporal_tolerance: Time-step radius for support dilation and connectivity.
-            spatial_tolerance: HEALPix-hop or native-grid-cell radius for dilation
-                and connectivity.
-            min_cluster_area: Minimum distinct spatial footprint for a consensus cluster.
-                Use ``None`` to disable.
-            k_neighbors: Deprecated; ignored. HEALPix consensus uses ring-1 neighbours.
-            show_progress: Whether to show a progress bar.
-
-        Returns:
-            The internal dataset with consensus_clusters and consensus_clusters_rate.
-        """
-        support = self.build_consensus(
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            k_neighbors=k_neighbors,
-            show_progress=show_progress,
-        )
-        return self.apply_consensus_threshold(
-            support,
-            min_consensus=min_consensus,
-            min_cluster_area=min_cluster_area,
-            k_neighbors=k_neighbors,
-        )
 
     @property
     def data(self) -> xr.Dataset:
@@ -1376,16 +1229,13 @@ class MMA:
             mean_mean_shift_time, std_mean_shift_time.
         """
         clusters = self.data["consensus_clusters"]
-        clusters_map = collapse_consensus_for_map(clusters, time_dim=self._time_dim)
-        rate_map = collapse_consensus_for_map(
-            self.data["consensus_clusters_rate"],
-            time_dim=self._time_dim,
-        )
+        rate = self.data["consensus_clusters_rate"]
         times_by_cluster = self.get_shift_times_per_consensus_cluster(numeric=numeric)
         return build_simple_consensus_summary_df(
-            clusters_map,
-            rate_map,
+            clusters,
+            rate,
             times_by_cluster,
+            time_dim=self._time_dim,
             numeric=numeric,
         )
 

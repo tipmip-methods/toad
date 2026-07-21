@@ -4,38 +4,20 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
 import xarray as xr
-from scipy.sparse import coo_matrix
+from scipy import ndimage
+from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components
 from tqdm import tqdm
 
 from toad.clustering import sorted_cluster_labels
 from toad.healpix import build_ring1_spatial_edges
 from toad.postprocessing.member_support_consensus import min_consensus_members
-
-
-@dataclass(frozen=True)
-class HealpixConsensusSupport:
-    """Precomputed HEALPix member-support votes for repeated thresholding.
-
-    Returned by :meth:`~toad.mma.MMA.build_consensus` on HEALPix exports and
-    consumed by :meth:`~toad.mma.MMA.apply_consensus_threshold`.
-    """
-
-    cluster_vars: tuple[str, ...]
-    native_union: np.ndarray
-    member_vote_count: np.ndarray
-    context: HealpixSpacetimeContext
-    temporal_tolerance: int
-    spatial_tolerance: int
-    nside: int
-
-    @property
-    def n_members(self) -> int:
-        return len(self.cluster_vars)
+from toad.utils import _attrs
 
 
 @dataclass(frozen=True)
@@ -100,6 +82,56 @@ def _spatial_neighbourhoods_for_tolerance(
     return neighbourhoods
 
 
+def _healpix_adjacency_csr(
+    spatial_rows: np.ndarray,
+    spatial_cols: np.ndarray,
+    npix: int,
+) -> csr_matrix:
+    """Symmetric ring-1 HEALPix adjacency as a sparse matrix."""
+    rows = np.asarray(spatial_rows, dtype=np.int64)
+    cols = np.asarray(spatial_cols, dtype=np.int64)
+    both_rows = np.concatenate([rows, cols])
+    both_cols = np.concatenate([cols, rows])
+    data = np.ones(both_rows.shape[0], dtype=np.float32)
+    return csr_matrix((data, (both_rows, both_cols)), shape=(npix, npix))
+
+
+@lru_cache(maxsize=16)
+def _healpix_spatial_reachability_table(nside: int, connect_s: int) -> np.ndarray:
+    """All pixels within ``connect_s`` ring-1 hops for every HEALPix cell (includes self)."""
+    if connect_s < 1:
+        raise ValueError(f"`connect_s` must be >= 1, got {connect_s}.")
+    npix = 12 * nside**2
+    spatial_rows, spatial_cols = build_healpix_spatial_edges(nside)
+    adjacency: list[list[int]] = [[] for _ in range(npix)]
+    for u, v in zip(spatial_rows.tolist(), spatial_cols.tolist()):
+        adjacency[int(u)].append(int(v))
+        adjacency[int(v)].append(int(u))
+
+    neighbourhoods: list[list[int]] = []
+    max_deg = 1
+    for root in range(npix):
+        seen = {root}
+        frontier = {root}
+        for _ in range(connect_s):
+            next_frontier: set[int] = set()
+            for node in frontier:
+                next_frontier.update(adjacency[node])
+            next_frontier -= seen
+            if not next_frontier:
+                break
+            seen.update(next_frontier)
+            frontier = next_frontier
+        nbr_list = sorted(seen)
+        neighbourhoods.append(nbr_list)
+        max_deg = max(max_deg, len(nbr_list))
+
+    table = np.full((npix, max_deg), -1, dtype=np.int64)
+    for s, nbr_list in enumerate(neighbourhoods):
+        table[s, : len(nbr_list)] = nbr_list
+    return table
+
+
 def _dilate_healpix_support_mask(
     mask_tpix: np.ndarray,
     *,
@@ -108,34 +140,38 @@ def _dilate_healpix_support_mask(
     spatial_rows: np.ndarray,
     spatial_cols: np.ndarray,
 ) -> np.ndarray:
-    """Dilate a native-event mask on (time, hp_pixel) for support counting."""
+    """Dilate a native-event mask on (time, hp_pixel) for support counting.
+
+    Spacetime box dilation is separable on HEALPix: expand each timestep by
+    ``spatial_tolerance`` hops on the ring-1 graph, then apply a temporal OR
+    window of width ``2 * temporal_tolerance + 1``.
+    """
     k_t = max(0, int(temporal_tolerance))
     k_s = max(0, int(spatial_tolerance))
     mask = np.asarray(mask_tpix, dtype=bool)
     if k_t == 0 and k_s == 0:
         return mask.copy()
 
-    T, npix = mask.shape
-    spatial_nbrs = _spatial_neighbourhoods_for_tolerance(
-        spatial_indices=np.arange(npix, dtype=np.int64),
-        npix=npix,
-        spatial_rows=spatial_rows,
-        spatial_cols=spatial_cols,
-        spatial_tolerance=k_s,
-    )
+    _, npix = mask.shape
+    spatial_dilated = mask.copy()
+    if k_s > 0:
+        adj = _healpix_adjacency_csr(spatial_rows, spatial_cols, npix)
+        current = mask.astype(np.float32)
+        for _ in range(k_s):
+            current = (adj @ current.T).T
+            spatial_dilated |= current > 0
 
-    out = np.zeros_like(mask)
-    for t in range(T):
-        t_lo = max(0, t - k_t)
-        t_hi = min(T - 1, t + k_t)
-        for tt in range(t_lo, t_hi + 1):
-            active_s = np.flatnonzero(mask[tt])
-            if active_s.size == 0:
-                continue
-            for s in range(npix):
-                if np.any(mask[tt, spatial_nbrs[s]]):
-                    out[t, s] = True
-    return out
+    if k_t == 0:
+        return spatial_dilated
+
+    size = 2 * k_t + 1
+    return ndimage.maximum_filter1d(
+        spatial_dilated.astype(np.uint8),
+        size=size,
+        axis=0,
+        mode="constant",
+        cval=0,
+    ).astype(bool, copy=False)
 
 
 def _labels_tpix(
@@ -201,36 +237,46 @@ def _component_graph_edges_for_kept_voxels(
     connect_s = max(1, int(spatial_tolerance))
     kept_t = kept_nodes // context.npix
     kept_s = kept_nodes % context.npix
-    node_to_pos = {int(node): i for i, node in enumerate(kept_nodes.tolist())}
-    neighbourhoods = _spatial_neighbourhoods_for_tolerance(
-        spatial_indices=kept_s,
-        npix=context.npix,
-        spatial_rows=context.spatial_rows,
-        spatial_cols=context.spatial_cols,
-        spatial_tolerance=connect_s,
-    )
-    keep_ts = keep.reshape(context.T, context.npix)
-    rows: list[int] = []
-    cols: list[int] = []
-    for i, (t, s) in enumerate(zip(kept_t.tolist(), kept_s.tolist())):
-        lo_t = max(0, int(t) - connect_t)
-        hi_t = min(context.T - 1, int(t) + connect_t)
-        for tt in range(lo_t, hi_t + 1):
-            for ss in neighbourhoods[int(s)].tolist():
-                if not keep_ts[tt, ss]:
-                    continue
-                cand = int(tt) * context.npix + int(ss)
-                j = node_to_pos.get(cand)
-                if j is None or j <= i:
-                    continue
-                rows.append(i)
-                cols.append(j)
+    node_to_pos = np.full(keep.size, -1, dtype=np.int64)
+    node_to_pos[kept_nodes] = np.arange(kept_nodes.size, dtype=np.int64)
 
-    return (
-        kept_nodes,
-        np.asarray(rows, dtype=np.int64),
-        np.asarray(cols, dtype=np.int64),
-    )
+    spatial_nbrs = _healpix_spatial_reachability_table(context.nside, connect_s)
+    deg = spatial_nbrs.shape[1]
+    keep_ts = keep.reshape(context.T, context.npix)
+
+    rows_parts: list[np.ndarray] = []
+    cols_parts: list[np.ndarray] = []
+    for dt in range(-connect_t, connect_t + 1):
+        tt = kept_t + dt
+        valid_t = (tt >= 0) & (tt < context.T)
+        if not np.any(valid_t):
+            continue
+        idx = np.flatnonzero(valid_t)
+        tt_v = tt[valid_t]
+        s_v = kept_s[valid_t]
+        ss = spatial_nbrs[s_v]
+        cand = tt_v[:, None] * context.npix + ss
+        valid_nbr = ss >= 0
+        tt_rep = np.repeat(tt_v, deg)
+        ss_flat = ss.ravel()
+        valid_flat = valid_nbr.ravel()
+        keep_mask = np.zeros(cand.size, dtype=bool)
+        ok = valid_flat
+        keep_mask[ok] = keep_ts[tt_rep[ok], ss_flat[ok]]
+        j_pos = node_to_pos[cand.ravel()]
+        i_rep = np.repeat(idx, deg)
+        edge_ok = keep_mask & (j_pos >= 0) & (j_pos > i_rep)
+        rows_parts.append(i_rep[edge_ok])
+        cols_parts.append(j_pos[edge_ok])
+
+    if rows_parts:
+        rows = np.concatenate(rows_parts)
+        cols = np.concatenate(cols_parts)
+    else:
+        rows = np.array([], dtype=np.int64)
+        cols = np.array([], dtype=np.int64)
+
+    return kept_nodes, rows, cols
 
 
 def _label_retained_voxels(
@@ -282,6 +328,8 @@ def _mark_no_shift_nan(
     cluster_vars: list[str],
     context: HealpixSpacetimeContext,
 ) -> xr.Dataset:
+    if not cluster_vars or not all(cvar in td.data for cvar in cluster_vars):
+        return ds
     all_none = _all_inputs_no_shift_mask_flat(td, cluster_vars, context)
     da_c = ds["clusters"]
     flat = np.asarray(da_c.data, dtype=np.float64).ravel().copy()
@@ -351,7 +399,154 @@ def _filter_min_cluster_area(
     )
 
 
-def build_healpix_consensus_support(
+def _mark_healpix_votes_no_shift_nan(
+    da_votes: xr.DataArray,
+    td: Any,
+    cluster_vars: list[str],
+    context: HealpixSpacetimeContext,
+) -> xr.DataArray:
+    all_none = _all_inputs_no_shift_mask_flat(td, cluster_vars, context)
+    flat = np.asarray(da_votes.data, dtype=np.float64).ravel().copy()
+    flat[(flat == 0) & all_none] = np.nan
+    new_votes = flat.reshape(context.T, context.npix)
+    return xr.DataArray(
+        new_votes,
+        coords=da_votes.coords,
+        dims=da_votes.dims,
+        attrs=da_votes.attrs,
+        name=da_votes.name,
+    )
+
+
+def build_healpix_consensus_votes_dataarray(
+    td: Any,
+    *,
+    cluster_vars: list[str],
+    native_union: np.ndarray,
+    member_vote_count: np.ndarray,
+    context: HealpixSpacetimeContext,
+) -> xr.DataArray:
+    n_st = context.T * context.npix
+    votes_flat = np.zeros(n_st, dtype=np.float32)
+    if np.any(native_union):
+        votes_flat[native_union] = member_vote_count[native_union].astype(
+            np.float32, copy=False
+        )
+    da_votes = xr.DataArray(
+        votes_flat.reshape(context.T, context.npix),
+        coords={
+            context.time_dim: context.time_coord,
+            context.pixel_dim: np.arange(context.npix),
+        },
+        dims=[context.time_dim, context.pixel_dim],
+        name="votes",
+    )
+    return _mark_healpix_votes_no_shift_nan(da_votes, td, cluster_vars, context)
+
+
+def _healpix_context_from_votes(
+    da_votes: xr.DataArray, *, nside: int
+) -> HealpixSpacetimeContext:
+    time_dim = da_votes.dims[0]
+    pixel_dim = "hp_pixel"
+    T = int(da_votes.sizes[time_dim])
+    npix = int(da_votes.sizes[pixel_dim])
+    spatial_rows, spatial_cols = build_healpix_spatial_edges(nside)
+    return HealpixSpacetimeContext(
+        time_dim=time_dim,
+        pixel_dim=pixel_dim,
+        T=T,
+        npix=npix,
+        nside=nside,
+        time_coord=da_votes[time_dim],
+        spatial_rows=spatial_rows,
+        spatial_cols=spatial_cols,
+    )
+
+
+def consensus_clusters_from_healpix_votes(
+    td: Any,
+    da_votes: xr.DataArray,
+    *,
+    min_consensus: float,
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+    context: HealpixSpacetimeContext,
+    cluster_vars: list[str],
+) -> xr.DataArray:
+    n_members_attr = da_votes.attrs.get(_attrs.N_MODELS)
+    if n_members_attr is not None:
+        n_members = int(n_members_attr)
+    else:
+        n_members = len(cluster_vars)
+    min_votes = min_consensus_members(n_members, min_consensus)
+    n_st = context.T * context.npix
+
+    votes_flat = np.nan_to_num(
+        np.asarray(da_votes.data, dtype=np.float32).ravel(), nan=0.0
+    )
+    member_vote_count = votes_flat.astype(np.int16, copy=False)
+    native_union = member_vote_count > 0
+
+    if not np.any(native_union):
+        da_clusters = xr.DataArray(
+            np.full((context.T, context.npix), -1, dtype=np.int32),
+            coords={
+                context.time_dim: context.time_coord,
+                context.pixel_dim: np.arange(context.npix),
+            },
+            dims=[context.time_dim, context.pixel_dim],
+            name="clusters",
+        )
+        ds = _mark_no_shift_nan(
+            xr.Dataset(
+                {
+                    "clusters": da_clusters,
+                    "rate": xr.zeros_like(da_clusters, dtype=np.float32),
+                }
+            ),
+            td,
+            cluster_vars,
+            context,
+        )
+        return ds["clusters"]
+
+    keep = native_union & (member_vote_count >= min_votes)
+    if np.any(keep):
+        labels_flat = _label_retained_voxels(
+            keep,
+            context=context,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+        )
+        labels_flat = sorted_cluster_labels(labels_flat)
+    else:
+        labels_flat = np.full(n_st, -1, dtype=np.int64)
+
+    da_clusters = xr.DataArray(
+        np.asarray(labels_flat, dtype=np.int32).reshape(context.T, context.npix),
+        coords={
+            context.time_dim: context.time_coord,
+            context.pixel_dim: np.arange(context.npix),
+        },
+        dims=[context.time_dim, context.pixel_dim],
+        name="clusters",
+    )
+    ds = _mark_no_shift_nan(
+        xr.Dataset(
+            {
+                "clusters": da_clusters,
+                "rate": xr.zeros_like(da_clusters, dtype=np.float32),
+            }
+        ),
+        td,
+        cluster_vars,
+        context,
+    )
+    return ds["clusters"]
+
+
+def _accumulate_healpix_votes_context(
     td: Any,
     *,
     cluster_vars: list[str],
@@ -360,8 +555,7 @@ def build_healpix_consensus_support(
     nside: int,
     k_neighbors: int = 8,
     show_progress: bool = True,
-) -> HealpixConsensusSupport:
-    """Precompute dilated member-support votes on a HEALPix cluster grid."""
+) -> tuple[np.ndarray, np.ndarray, HealpixSpacetimeContext]:
     if temporal_tolerance < 0:
         raise ValueError(
             f"`temporal_tolerance` must be >= 0, got {temporal_tolerance}."
@@ -407,34 +601,74 @@ def build_healpix_consensus_support(
         show_progress=show_progress,
         context=context,
     )
-    return HealpixConsensusSupport(
-        cluster_vars=tuple(cluster_vars),
-        native_union=native_union,
-        member_vote_count=member_vote_count,
-        context=context,
-        temporal_tolerance=temporal_tolerance,
-        spatial_tolerance=spatial_tolerance,
+    return native_union, member_vote_count, context
+
+
+def run_healpix_member_support_consensus(
+    td: Any,
+    *,
+    cluster_vars: list[str],
+    min_consensus: float,
+    temporal_tolerance: int,
+    spatial_tolerance: int,
+    nside: int,
+    k_neighbors: int = 8,
+    min_cluster_area: int | None = 2,
+    show_progress: bool = True,
+) -> xr.Dataset:
+    """Run member-support consensus on HEALPix cluster label fields."""
+    if temporal_tolerance < 0:
+        raise ValueError(
+            f"`temporal_tolerance` must be >= 0, got {temporal_tolerance}."
+        )
+    if spatial_tolerance < 0:
+        raise ValueError(f"`spatial_tolerance` must be >= 0, got {spatial_tolerance}.")
+    if not (0.0 <= min_consensus <= 1.0):
+        raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
+    if not cluster_vars:
+        raise ValueError("cluster_vars must not be empty.")
+
+    pixel_dim = "hp_pixel"
+    time_dim = td.time_dim
+    sample = td.data[cluster_vars[0]]
+    if pixel_dim not in sample.dims:
+        raise ValueError(
+            f"Expected cluster labels on dimension {pixel_dim!r}, got dims={sample.dims}."
+        )
+
+    T = int(sample.sizes[time_dim])
+    npix = int(sample.sizes[pixel_dim])
+    if npix != 12 * nside**2:
+        raise ValueError(
+            f"hp_pixel size {npix} does not match nside={nside} (expected {12 * nside**2})."
+        )
+
+    spatial_rows, spatial_cols = build_healpix_spatial_edges(
+        nside, k_neighbors=k_neighbors
+    )
+    context = HealpixSpacetimeContext(
+        time_dim=time_dim,
+        pixel_dim=pixel_dim,
+        T=T,
+        npix=npix,
         nside=nside,
+        time_coord=sample[time_dim],
+        spatial_rows=spatial_rows,
+        spatial_cols=spatial_cols,
     )
 
+    native_union, member_vote_count = _accumulate_member_support_healpix(
+        td,
+        cluster_vars=cluster_vars,
+        temporal_tolerance=temporal_tolerance,
+        spatial_tolerance=spatial_tolerance,
+        show_progress=show_progress,
+        context=context,
+    )
 
-def consensus_dataset_from_healpix_support(
-    td: Any,
-    support: HealpixConsensusSupport,
-    *,
-    min_consensus: float,
-    min_cluster_area: int | None = 2,
-) -> xr.Dataset:
-    """Build interim HEALPix consensus labels and rate from precomputed votes."""
-    cluster_vars = list(support.cluster_vars)
-    context = support.context
-    time_dim = context.time_dim
-    pixel_dim = context.pixel_dim
-    T, npix = context.T, context.npix
     n_members = len(cluster_vars)
-    n_st = T * npix
-
-    if not np.any(support.native_union):
+    n_st = context.T * context.npix
+    if not np.any(native_union):
         da_clusters = xr.DataArray(
             np.full((T, npix), -1, dtype=np.int32),
             coords={time_dim: context.time_coord, pixel_dim: np.arange(npix)},
@@ -455,20 +689,19 @@ def consensus_dataset_from_healpix_support(
         )
 
     min_votes = min_consensus_members(n_members, min_consensus)
-    keep = support.native_union & (support.member_vote_count >= min_votes)
+    keep = native_union & (member_vote_count >= min_votes)
     rate_flat = np.zeros(n_st, dtype=np.float32)
-    if np.any(support.native_union):
-        rate_flat[support.native_union] = (
-            support.member_vote_count[support.native_union].astype(np.float32)
-            / n_members
+    if np.any(native_union):
+        rate_flat[native_union] = (
+            member_vote_count[native_union].astype(np.float32) / n_members
         )
 
     if np.any(keep):
         labels_flat = _label_retained_voxels(
             keep,
             context=context,
-            temporal_tolerance=support.temporal_tolerance,
-            spatial_tolerance=support.spatial_tolerance,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
         )
         labels_flat = sorted_cluster_labels(labels_flat)
     else:
@@ -501,36 +734,3 @@ def consensus_dataset_from_healpix_support(
         )
         ds = xr.Dataset({"clusters": da_c, "rate": da_r})
     return ds
-
-
-def run_healpix_member_support_consensus(
-    td: Any,
-    *,
-    cluster_vars: list[str],
-    min_consensus: float,
-    temporal_tolerance: int,
-    spatial_tolerance: int,
-    nside: int,
-    k_neighbors: int = 8,
-    min_cluster_area: int | None = 2,
-    show_progress: bool = True,
-) -> xr.Dataset:
-    """Run member-support consensus on HEALPix cluster label fields."""
-    if not (0.0 <= min_consensus <= 1.0):
-        raise ValueError(f"`min_consensus` must be in [0, 1], got {min_consensus}.")
-
-    support = build_healpix_consensus_support(
-        td,
-        cluster_vars=cluster_vars,
-        temporal_tolerance=temporal_tolerance,
-        spatial_tolerance=spatial_tolerance,
-        nside=nside,
-        k_neighbors=k_neighbors,
-        show_progress=show_progress,
-    )
-    return consensus_dataset_from_healpix_support(
-        td,
-        support,
-        min_consensus=min_consensus,
-        min_cluster_area=min_cluster_area,
-    )

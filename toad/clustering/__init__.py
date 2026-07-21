@@ -642,23 +642,20 @@ def sorted_cluster_labels(cluster_labels: np.ndarray) -> np.ndarray:
     if not np.any(valid):
         return np.asarray(cluster_labels).copy()
 
-    unique_labels, counts = np.unique(flat[valid], return_counts=True)
-    sorted_indices = np.argsort(counts)[::-1]
-    sorted_unique_labels = unique_labels[sorted_indices]
-    label_mapping = {int(old): new for new, old in enumerate(sorted_unique_labels)}
-    label_mapping[-1] = -1
+    unique_labels, inverse = np.unique(
+        flat[valid].astype(np.int64, copy=False),
+        return_inverse=True,
+    )
+    counts = np.bincount(inverse)
+    order = np.argsort(counts)[::-1]
+    new_ids = np.empty(unique_labels.size, dtype=np.int64)
+    new_ids[order] = np.arange(unique_labels.size, dtype=np.int64)
 
-    out = np.empty(flat.shape, dtype=np.float64)
-    for i, label in enumerate(flat):
-        if not np.isfinite(label):
-            out[i] = np.nan
-        elif int(label) == -1:
-            out[i] = -1.0
-        else:
-            out[i] = float(label_mapping[int(label)])
+    out = np.asarray(flat, dtype=np.float64).copy()
+    out[valid] = new_ids[inverse]
     out = out.reshape(original_shape)
     if np.issubdtype(cluster_labels.dtype, np.integer) and np.all(np.isfinite(flat)):
-        return np.round(out).astype(np.int64)
+        return out.astype(np.int64)
     return out
 
 

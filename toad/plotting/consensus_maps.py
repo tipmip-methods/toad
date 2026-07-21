@@ -97,7 +97,9 @@ def _add_healpix_polygon_layer(
     cmap: str = "tab10",
     vmin: float | None = None,
     vmax: float | None = None,
+    norm: mcolors.Normalize | None = None,
     zorder: int = 3,
+    paths: list[np.ndarray] | None = None,
     **kwargs: Any,
 ) -> PolyCollection:
     """Add one PolyCollection layer for a subset of HEALPix pixels."""
@@ -106,8 +108,9 @@ def _add_healpix_polygon_layer(
         ax.add_collection(empty)
         return empty
 
-    lons, lats = ipix_vertices(ipix, grid, step=edge_step)
-    paths = polygon_paths(lons, lats)
+    if paths is None:
+        lons, lats = ipix_vertices(ipix, grid, step=edge_step)
+        paths = polygon_paths(lons, lats)
     collection_kwargs: dict[str, Any] = {
         "transform": ccrs.PlateCarree(),
         "zorder": zorder,
@@ -123,14 +126,11 @@ def _add_healpix_polygon_layer(
             **collection_kwargs,
         )
     else:
-        norm: mcolors.Normalize | None
-        if vmin is not None or vmax is not None:
+        if norm is None and (vmin is not None or vmax is not None):
             norm = mcolors.Normalize(
                 vmin=-0.5 if vmin is None else vmin,
                 vmax=9.5 if vmax is None else vmax,
             )
-        else:
-            norm = None
         collection = PolyCollection(
             paths,
             array=np.asarray(values, dtype=np.float64),

@@ -527,6 +527,21 @@ class TOAD:
     # #               netCDF functions
     # # ======================================================================
 
+    def _write_netcdf_atomic(self, save_path: str) -> None:
+        """Write via a temp file and atomic replace (safe if target is open for read)."""
+        save_dir = os.path.dirname(os.path.abspath(save_path)) or "."
+        fd, tmp_path = tempfile.mkstemp(
+            suffix=".nc", prefix=".toad-save-", dir=save_dir
+        )
+        os.close(fd)
+        try:
+            self.data.to_netcdf(tmp_path)
+            os.replace(tmp_path, save_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
     def save(
         self,
         suffix: Optional[str] = None,
@@ -538,9 +553,9 @@ class TOAD:
         Args:
             suffix: Optional string to append to filename before extension
             path: Optional path to save file to. If not provided, uses self.path
-            overwrite: If True, allow saving back to the original path. Uses a
-                temporary file and atomic replace so the source file can still
-                be open for reading (e.g. from lazy loading).
+            overwrite: If True, allow saving back to the original path without a
+                suffix. All saves use a temporary file and atomic replace so an
+                existing destination can stay open for reading (e.g. lazy load).
 
         Raises:
             ValueError: If neither path nor self.path is set
@@ -603,27 +618,7 @@ class TOAD:
                 f"Could not apply compression settings: {str(e)}. Proceeding with save without compression."
             )
 
-        overwrite_inplace = (
-            overwrite
-            and self.path is not None
-            and os.path.abspath(save_path) == os.path.abspath(self.path)
-        )
-
-        if overwrite_inplace:
-            save_dir = os.path.dirname(save_path) or "."
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".nc", prefix=".toad-save-", dir=save_dir
-            )
-            os.close(fd)
-            try:
-                self.data.to_netcdf(tmp_path)
-                os.replace(tmp_path, save_path)
-            except Exception:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
-        else:
-            self.data.to_netcdf(save_path)
+        self._write_netcdf_atomic(save_path)
         self.logger.info(f"Saved TOAD dataset to {save_path}")
 
     # # ======================================================================

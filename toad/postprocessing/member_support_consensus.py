@@ -31,6 +31,228 @@ from scipy.spatial import KDTree
 from tqdm import tqdm
 
 from toad.clustering import sorted_cluster_labels
+from toad.utils import _attrs
+
+
+def sign_var_for_cluster_var(cluster_var: str) -> str:
+    """Legacy companion sign field name (v1 MMA exports)."""
+    if cluster_var.endswith("_cluster"):
+        return f"{cluster_var[:-8]}_sign"
+    return f"{cluster_var}_sign"
+
+
+def build_cluster_signs_map(
+    cluster_labels: np.ndarray,
+    signs_at_labels: np.ndarray,
+) -> dict[int, int]:
+    """Build ``{cluster_id: sign}`` from parallel label/sign arrays at clustered points."""
+    sign_by_id: dict[int, int] = {}
+    for lid, s in zip(cluster_labels, signs_at_labels):
+        if not np.isfinite(lid) or lid < 0:
+            continue
+        lid_int = int(lid)
+        s_int = int(np.sign(s))
+        if s_int == 0:
+            continue
+        prev = sign_by_id.get(lid_int)
+        if prev is not None and prev != s_int:
+            raise ValueError(
+                f"Cluster {lid_int} has mixed signs ({prev} vs {s_int}); "
+                "expected homogeneous sign per cluster id."
+            )
+        sign_by_id[lid_int] = s_int
+    return sign_by_id
+
+
+def cluster_id_signs_from_map(
+    cluster_ids: np.ndarray,
+    sign_by_id: dict[int, int],
+) -> np.ndarray:
+    """Build a sign array parallel to ``cluster_ids`` (NaN where unknown)."""
+    ids = np.asarray(cluster_ids, dtype=int)
+    signs = np.full(ids.shape, np.nan, dtype=np.int8)
+    for i, cid in enumerate(ids):
+        sign = sign_by_id.get(int(cid))
+        if sign is not None:
+            signs[i] = int(sign)
+    return signs
+
+
+def cluster_id_signs_to_map(
+    cluster_ids: np.ndarray,
+    signs: np.ndarray,
+) -> dict[int, int]:
+    """Parse ``cluster_id_signs`` parallel to ``cluster_ids``."""
+    out: dict[int, int] = {}
+    for cid, sign in zip(np.asarray(cluster_ids, dtype=int), np.asarray(signs)):
+        if not np.isfinite(sign) or int(sign) == 0:
+            continue
+        out[int(cid)] = int(sign)
+    return out
+
+
+def _decode_legacy_cluster_signs_json(raw: str | dict | None) -> dict[int, int]:
+    """Parse legacy JSON ``{cluster_id: sign}`` metadata."""
+    import json
+
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return {int(k): int(v) for k, v in raw.items()}
+    return {int(k): int(v) for k, v in json.loads(str(raw)).items()}
+
+
+def read_cluster_signs_map(da: xr.DataArray) -> dict[int, int]:
+    """Return ``{cluster_id: sign}`` from cluster-variable attrs."""
+    cluster_ids = da.attrs.get(_attrs.CLUSTER_IDS)
+    if cluster_ids is not None and _attrs.CLUSTER_ID_SIGNS in da.attrs:
+        return cluster_id_signs_to_map(cluster_ids, da.attrs[_attrs.CLUSTER_ID_SIGNS])
+    for legacy_key in ("cluster_signs", "consensus_cluster_signs"):
+        if legacy_key in da.attrs:
+            return _decode_legacy_cluster_signs_json(da.attrs[legacy_key])
+    return {}
+
+
+def cluster_signs_map_for_var(td: Any, cluster_var: str) -> dict[int, int]:
+    """Return ``{cluster_id: sign}`` for a cluster variable on ``td.data``."""
+    da = td.data[cluster_var]
+    sign_map = read_cluster_signs_map(da)
+    if sign_map:
+        return sign_map
+    sign_var = sign_var_for_cluster_var(cluster_var)
+    if sign_var not in td.data:
+        return {}
+    labels = np.asarray(da.values)
+    signs = np.asarray(td.data[sign_var].values)
+    valid = np.isfinite(labels) & (labels >= 0) & np.isfinite(signs)
+    if not np.any(valid):
+        return {}
+    return build_cluster_signs_map(labels[valid].ravel(), signs[valid].ravel())
+
+
+def signs_flat_from_cluster_labels(
+    labels_flat: np.ndarray,
+    sign_map: dict[int, int],
+) -> np.ndarray:
+    """Expand a per-id sign map to a flat spacetime sign array."""
+    signs_flat = np.full(labels_flat.shape, np.nan, dtype=np.float64)
+    for cid, s in sign_map.items():
+        signs_flat[labels_flat == cid] = float(s)
+    return signs_flat
+
+
+def has_sign_aware_inputs(td: Any, cluster_vars: list[str]) -> bool:
+    """True when every cluster input has sign metadata (attrs or legacy sign field)."""
+    if not cluster_vars:
+        return False
+    for cvar in cluster_vars:
+        if cluster_signs_map_for_var(td, cvar):
+            continue
+        return False
+    return True
+
+
+def _label_retained_voxels_with_offset(
+    keep: np.ndarray,
+    *,
+    label_fn,
+    label_offset: int = 0,
+) -> tuple[np.ndarray, dict[int, int], int]:
+    """Label one sign-specific retained mask and assign ``sign_by_id`` entries."""
+    n_st = keep.size
+    labels_flat = np.full(n_st, -1, dtype=np.int64)
+    sign_by_id: dict[int, int] = {}
+    if not np.any(keep):
+        return labels_flat, sign_by_id, label_offset
+
+    labeled = label_fn(keep)
+    labeled = sorted_cluster_labels(labeled)
+    assigned = labeled >= 0
+    if not np.any(assigned):
+        return labels_flat, sign_by_id, label_offset
+
+    sign_value = 1 if label_offset == 0 else -1
+    if label_offset > 0:
+        labeled = labeled.copy()
+        labeled[assigned] += label_offset
+    labels_flat[assigned] = labeled[assigned]
+    for cid in np.unique(labeled[assigned]):
+        sign_by_id[int(cid)] = sign_value
+    next_offset = int(labeled[assigned].max()) + 1
+    return labels_flat, sign_by_id, next_offset
+
+
+def build_sign_aware_consensus_labels(
+    *,
+    native_union: np.ndarray,
+    votes_pos: np.ndarray,
+    votes_neg: np.ndarray,
+    n_members: int,
+    min_consensus: float,
+    n_st: int,
+    label_fn,
+    sign_aware: bool,
+    votes_any: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict[int, int]]:
+    """Threshold sign-split votes, label components, and build member-support rate."""
+    min_votes = min_consensus_members(n_members, min_consensus)
+    labels_flat = np.full(n_st, -1, dtype=np.int64)
+    rate_flat = np.zeros(n_st, dtype=np.float32)
+    sign_by_id: dict[int, int] = {}
+
+    if not sign_aware:
+        vote_arr = votes_any if votes_any is not None else votes_pos
+        keep = native_union & (vote_arr >= min_votes)
+        if np.any(native_union):
+            rate_flat[native_union] = (
+                vote_arr[native_union].astype(np.float32) / n_members
+            )
+        if np.any(keep):
+            labels_flat = label_fn(keep)
+            labels_flat = sorted_cluster_labels(labels_flat)
+        return labels_flat, rate_flat, sign_by_id
+
+    keep_pos = native_union & (votes_pos >= min_votes)
+    keep_neg = native_union & (votes_neg >= min_votes)
+    if np.any(native_union):
+        rate_flat[native_union] = (
+            np.maximum(votes_pos[native_union], votes_neg[native_union]).astype(
+                np.float32
+            )
+            / n_members
+        )
+
+    both = keep_pos & keep_neg
+    keep_pos_only = keep_pos & ~(both & (votes_neg > votes_pos))
+    keep_neg_only = keep_neg & ~(both & (votes_pos >= votes_neg))
+
+    offset = 0
+    pos_labels, pos_signs, offset = _label_retained_voxels_with_offset(
+        keep_pos_only,
+        label_fn=label_fn,
+        label_offset=0,
+    )
+    assigned = pos_labels >= 0
+    labels_flat[assigned] = pos_labels[assigned]
+    sign_by_id.update(pos_signs)
+
+    neg_labels, neg_signs, _ = _label_retained_voxels_with_offset(
+        keep_neg_only,
+        label_fn=label_fn,
+        label_offset=offset,
+    )
+    assigned_neg = neg_labels >= 0
+    labels_flat[assigned_neg] = neg_labels[assigned_neg]
+    sign_by_id.update(neg_signs)
+
+    for flat_idx in np.where(labels_flat >= 0)[0]:
+        cid = int(labels_flat[flat_idx])
+        sign = sign_by_id[cid]
+        votes = votes_pos[flat_idx] if sign > 0 else votes_neg[flat_idx]
+        rate_flat[flat_idx] = float(votes) / n_members
+
+    return labels_flat, rate_flat, sign_by_id
+
 
 StitchMeridianSetting = bool | Literal["auto"]
 
@@ -203,16 +425,19 @@ def _accumulate_member_support(
     spatial_tolerance: int,
     show_progress: bool,
     context: SpacetimeGridContext,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``(native_union, member_vote_count)`` flat spacetime arrays.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, bool]:
+    """Return ``(native_union, votes_primary, votes_secondary, sign_aware)``.
 
-    Flat index layout: ``node = t * n_space + s`` with ``s = y * x_len + x``.
-    ``native_union`` marks voxels where at least one input had a real cluster event;
-    ``member_vote_count`` counts how many inputs' *dilated* support covers each voxel.
+    When sign-aware inputs are present, ``votes_primary`` / ``votes_secondary`` are
+    positive / negative vote counts. Otherwise ``votes_primary`` is the combined
+    vote count and ``votes_secondary`` is ``None``.
     """
     n_st = context.T * context.n_space
     native_union = np.zeros(n_st, dtype=bool)
-    member_vote_count = np.zeros(n_st, dtype=np.int16)
+    sign_aware = has_sign_aware_inputs(td, cluster_vars)
+    votes_pos = np.zeros(n_st, dtype=np.int16)
+    votes_neg = np.zeros(n_st, dtype=np.int16)
+    votes_any = np.zeros(n_st, dtype=np.int16)
 
     # --- per input: native event mask → dilated support → increment vote count ---
     for cvar in tqdm(
@@ -223,19 +448,38 @@ def _accumulate_member_support(
     ):
         labels_orig = _labels_tyx(td, cvar, context.time_dim, context.spatial_dims)
         orig_flat = np.asarray(labels_orig).reshape(-1)
-        native_mask = np.isfinite(orig_flat) & (orig_flat >= 0)
-        if not np.any(native_mask):
+        valid = np.isfinite(orig_flat) & (orig_flat >= 0)
+        if not np.any(valid):
             continue
-        native_union |= native_mask
-        dilated = _dilate_boolean_support_mask(
-            native_mask.reshape(context.T, context.y_len, context.x_len),
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            stitch_meridian=context.stitch_meridian,
-        )
-        member_vote_count[dilated.reshape(-1)] += 1
 
-    return native_union, member_vote_count
+        if sign_aware:
+            sign_map = cluster_signs_map_for_var(td, cvar)
+            signs_flat = signs_flat_from_cluster_labels(orig_flat, sign_map)
+            for sign_value, vote_arr in ((1.0, votes_pos), (-1.0, votes_neg)):
+                native_mask = valid & (signs_flat == sign_value)
+                if not np.any(native_mask):
+                    continue
+                native_union |= native_mask
+                dilated = _dilate_boolean_support_mask(
+                    native_mask.reshape(context.T, context.y_len, context.x_len),
+                    temporal_tolerance=temporal_tolerance,
+                    spatial_tolerance=spatial_tolerance,
+                    stitch_meridian=context.stitch_meridian,
+                )
+                vote_arr[dilated.reshape(-1)] += 1
+        else:
+            native_union |= valid
+            dilated = _dilate_boolean_support_mask(
+                valid.reshape(context.T, context.y_len, context.x_len),
+                temporal_tolerance=temporal_tolerance,
+                spatial_tolerance=spatial_tolerance,
+                stitch_meridian=context.stitch_meridian,
+            )
+            votes_any[dilated.reshape(-1)] += 1
+
+    if sign_aware:
+        return native_union, votes_pos, votes_neg, True
+    return native_union, votes_any, None, False
 
 
 # ---------------------------------------------------------------------------
@@ -564,34 +808,37 @@ def _build_member_support_dataset(
     spatial_tolerance: int,
     context: SpacetimeGridContext,
     native_union: np.ndarray,
-    member_vote_count: np.ndarray,
-) -> xr.Dataset:
+    votes_primary: np.ndarray,
+    votes_secondary: np.ndarray | None = None,
+    sign_aware: bool = False,
+) -> tuple[xr.Dataset, dict[int, int]]:
     """Threshold votes, label retained voxels, and return interim clusters + rate."""
     n_members = len(cluster_vars)
-    min_votes = min_consensus_members(n_members, min_consensus)
     n_st = context.T * context.n_space
 
-    # --- retain native event voxels with enough distinct input votes ---
-    keep = native_union & (member_vote_count >= min_votes)
-
-    # --- member support fraction at every native event voxel (incl. sub-threshold) ---
-    rate_flat = np.zeros(n_st, dtype=np.float32)
-    if np.any(native_union):
-        rate_flat[native_union] = (
-            member_vote_count[native_union].astype(np.float32) / n_members
-        )
-
-    # --- tolerance-aware connected components on retained voxels ---
-    if np.any(keep):
-        labels_flat = _label_retained_voxels(
+    def label_fn(keep: np.ndarray) -> np.ndarray:
+        return _label_retained_voxels(
             keep,
             context=context,
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,
         )
-        labels_flat = sorted_cluster_labels(labels_flat)
-    else:
-        labels_flat = np.full(n_st, -1, dtype=np.int64)
+
+    labels_flat, rate_flat, sign_by_id = build_sign_aware_consensus_labels(
+        native_union=native_union,
+        votes_pos=votes_primary,
+        votes_neg=(
+            votes_secondary
+            if votes_secondary is not None
+            else np.zeros(n_st, dtype=np.int16)
+        ),
+        n_members=n_members,
+        min_consensus=min_consensus,
+        n_st=n_st,
+        label_fn=label_fn,
+        sign_aware=sign_aware,
+        votes_any=votes_primary if not sign_aware else None,
+    )
 
     # --- reshape to xarray; mark all-NaN-input cells as NaN ---
     clusters_out = np.asarray(labels_flat, dtype=np.int32).reshape(
@@ -625,7 +872,7 @@ def _build_member_support_dataset(
         "when covered by at least min_consensus_members distinct input variables. "
         "Consensus ids are tolerance-aware connected components of retained voxels."
     )
-    return ds
+    return ds, sign_by_id
 
 
 def _mark_votes_no_shift_nan(

@@ -143,6 +143,9 @@ def test_mma_healpix_files():
         assert ds["consensus_clusters"].dims == ("time", "hp_pixel")
         npix = 12 * 8**2
         assert ds["consensus_clusters"].shape == (ds.sizes["time"], npix)
+        assert mma.consensus_cluster_ids() == sorted(
+            mma.get_shift_times_per_consensus_cluster().keys()
+        )
         # Shift times from HealPix cluster (no native grid in export)
         times_by_cluster = mma.get_shift_times_per_consensus_cluster()
         assert isinstance(times_by_cluster, dict)

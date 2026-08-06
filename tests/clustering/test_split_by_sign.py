@@ -7,6 +7,9 @@ from sklearn.cluster import DBSCAN, HDBSCAN  # type: ignore
 
 from toad import TOAD
 from toad.clustering import compute_clusters
+from toad.postprocessing.member_support_consensus import (
+    read_cluster_signs_map,
+)
 from toad.utils import _attrs
 
 
@@ -60,6 +63,15 @@ def test_both_directions_split_by_sign_synthetic():
         overwrite=True,
     )
     _assert_clusters_sign_homogeneous(td.data["test_dts_cluster"], td.data["test_dts"])
+    clusters = td.data["test_dts_cluster"].values
+    valid = clusters[np.isfinite(clusters) & (clusters >= 0)]
+    if valid.size == 0:
+        return
+    sign_map = read_cluster_signs_map(td.data["test_dts_cluster"])
+    assert sign_map
+    for cid, expected_sign in sign_map.items():
+        mask = clusters == cid
+        assert np.all(np.sign(td.data["test_dts"].values)[mask] == expected_sign)
 
 
 def test_both_directions_sign_homogeneous_on_synth_data():
@@ -78,3 +90,6 @@ def test_both_directions_sign_homogeneous_on_synth_data():
     cluster_var = td.cluster_vars[0]
     shifts_var = td.data[cluster_var].attrs[_attrs.SHIFTS_VARIABLE]
     _assert_clusters_sign_homogeneous(td.data[cluster_var], td.data[shifts_var])
+    sign_map = read_cluster_signs_map(td.data[cluster_var])
+    if np.any(td.data[cluster_var].values >= 0):
+        assert sign_map

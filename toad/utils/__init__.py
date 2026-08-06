@@ -75,6 +75,7 @@ class _Attrs:
     CONSENSUS_RATE_SUFFIX: str = "_rate"
     N_MODELS: str = "n_models"
     CLUSTER_VARS: str = "cluster_vars"
+    CLUSTER_ID_SIGNS: str = "cluster_id_signs"
 
 
 _attrs = _Attrs()

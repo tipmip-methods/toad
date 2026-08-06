@@ -54,6 +54,7 @@ class HealPixRegridder(BaseRegridder):
         coords: np.ndarray,
         weights: np.ndarray,
         space_dims_size: tuple[int, int],
+        signs: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Regrid data to new coordinate system.
@@ -88,6 +89,14 @@ class HealPixRegridder(BaseRegridder):
             for (lat, lon), hp_idx in zip(map(tuple, unique_coords), unique_hp_indices)
         }
 
+        if signs is not None and len(signs) != len(coords):
+            raise ValueError("signs must have the same length as coords.")
+        sign_col = (
+            np.sign(signs).astype(np.float32)
+            if signs is not None
+            else np.full(len(coords), np.nan, dtype=np.float32)
+        )
+
         # Create DataFrame with mapped healpix indices
         df = pd.DataFrame(
             {
@@ -95,6 +104,7 @@ class HealPixRegridder(BaseRegridder):
                 "lat": coords[:, 1],
                 "lon": coords[:, 2],
                 "vals": weights,
+                "sign": sign_col,
                 "hp_pix": [
                     coord_to_hp[(lat, lon)]
                     for lat, lon in zip(coords[:, 1], coords[:, 2])
@@ -107,7 +117,11 @@ class HealPixRegridder(BaseRegridder):
             "time",
             "hp_pix",
         ]  # This means if multiple points fall in the same HEALPix pixel at the same time, they get averaged.
-        df = df.groupby(group_cols)["vals"].mean().reset_index()
+        df = (
+            df.groupby(group_cols, as_index=False)
+            .agg({"vals": "mean", "sign": "first"})
+            .reset_index(drop=True)
+        )
 
         # Add regridded coordinates
         df["lat"], df["lon"] = zip(

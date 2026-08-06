@@ -192,6 +192,34 @@ def _get_native_spatial_coords(
     return coords_2d, use_sphere
 
 
+def _load_cluster_signs_map(path: str) -> dict[int, int]:
+    """Load ``{cluster_id: sign}`` from MMA export attrs or legacy fields."""
+    from toad.postprocessing.member_support_consensus import (
+        build_cluster_signs_map,
+        read_cluster_signs_map,
+    )
+
+    ds = xr.open_dataset(path)
+    if "cluster" not in ds:
+        ds.close()
+        return {}
+    cluster = ds["cluster"]
+    sign_map = read_cluster_signs_map(cluster)
+    if sign_map:
+        ds.close()
+        return sign_map
+    if "cluster_sign" not in ds:
+        ds.close()
+        return {}
+    labels = np.asarray(cluster.values)
+    signs = np.asarray(ds["cluster_sign"].values)
+    ds.close()
+    valid = np.isfinite(labels) & (labels >= 0) & np.isfinite(signs)
+    if not np.any(valid):
+        return {}
+    return build_cluster_signs_map(labels[valid].ravel(), signs[valid].ravel())
+
+
 def _load_healpix_labels(path: str, nside: int) -> tuple[np.ndarray, str, xr.DataArray]:
     """Load full spacetime cluster labels from a HealPix MMA export."""
     ds = xr.open_dataset(path)
@@ -450,6 +478,7 @@ class MMA:
         self.time_alignment: TimeAlignment = "union"
         self._cluster_masks: list[list[tuple[int, np.ndarray]]] = []
         self._label_arrays: list[np.ndarray] = []
+        self._cluster_sign_maps: list[dict[int, int] | None] = []
         self._cluster_var_names: list[str] = []
         self._time_dim: str = "time"
         self._time_coord: xr.DataArray | None = None
@@ -602,7 +631,9 @@ class MMA:
                 raise ValueError(
                     "First file has HealPix format. Pass nside=... for MMA."
                 )
-            pending_hp: list[tuple[str, np.ndarray, str, xr.DataArray]] = []
+            pending_hp: list[
+                tuple[str, np.ndarray, str, xr.DataArray, dict[int, int]]
+            ] = []
             for path in self.paths:
                 ds = xr.open_dataset(path)
                 file_nside = ds.attrs.get("nside")
@@ -613,22 +644,23 @@ class MMA:
                         "All files must use the same nside."
                     )
                 labels, time_dim, time_coord = _load_healpix_labels(path, self.nside)
-                pending_hp.append((path, labels, time_dim, time_coord))
+                sign_map = _load_cluster_signs_map(path)
+                pending_hp.append((path, labels, time_dim, time_coord, sign_map))
 
             self._time_dim = pending_hp[0][2]
-            if any(td != self._time_dim for _, _, td, _ in pending_hp):
+            if any(td != self._time_dim for _, _, td, _, _ in pending_hp):
                 raise ValueError(
                     "All MMA exports must use the same time dimension name."
                 )
             common_time = _merge_time_coords(
-                [tc for _, _, _, tc in pending_hp],
+                [tc for _, _, _, tc, _ in pending_hp],
                 self._time_dim,
                 self.time_alignment,
             )
             self._time_coord = common_time
             npix = 12 * cast(int, self.nside) ** 2
 
-            for path, labels, time_dim, time_coord in pending_hp:
+            for path, labels, time_dim, time_coord, sign_map in pending_hp:
                 if int(time_coord.sizes[time_dim]) != int(common_time.sizes[time_dim]):
                     logger.info(
                         f"MMA: aligned {path} from {int(time_coord.sizes[time_dim])} to "
@@ -645,6 +677,7 @@ class MMA:
                 )
                 var_name = f"mma_model_{len(self._label_arrays)}_cluster"
                 self._label_arrays.append(aligned)
+                self._cluster_sign_maps.append(sign_map or None)
                 self._cluster_var_names.append(var_name)
                 self._cluster_masks.append(
                     _load_ever_in_healpix_masks(path, self.nside)
@@ -682,6 +715,7 @@ class MMA:
                     spatial_dims,
                     spatial_shape,
                 ) = _load_native_labels(path)
+                sign_map = _load_cluster_signs_map(path)
                 if ref_shape is None:
                     ref_shape = spatial_shape
                     self._native_coords_2d = coords_2d
@@ -703,16 +737,19 @@ class MMA:
                         use_sphere,
                         spatial_dims,
                         spatial_shape,
+                        sign_map,
                     )
                 )
 
             self._time_dim = pending_native[0][2]
-            if any(td != self._time_dim for _, _, td, _, _, _, _, _ in pending_native):
+            if any(
+                td != self._time_dim for _, _, td, _, _, _, _, _, _ in pending_native
+            ):
                 raise ValueError(
                     "All MMA exports must use the same time dimension name."
                 )
             common_time = _merge_time_coords(
-                [tc for _, _, _, tc, _, _, _, _ in pending_native],
+                [tc for _, _, _, tc, _, _, _, _, _ in pending_native],
                 self._time_dim,
                 self.time_alignment,
             )
@@ -731,6 +768,7 @@ class MMA:
                 _use_sphere,
                 spatial_dims,
                 _spatial_shape,
+                sign_map,
             ) in pending_native:
                 if int(time_coord.sizes[time_dim]) != int(common_time.sizes[time_dim]):
                     logger.info(
@@ -748,6 +786,7 @@ class MMA:
                 )
                 var_name = f"mma_model_{len(self._label_arrays)}_cluster"
                 self._label_arrays.append(aligned)
+                self._cluster_sign_maps.append(sign_map or None)
                 self._cluster_var_names.append(var_name)
                 masks, _, _, _, _ = _load_ever_in_native_masks(path)
                 self._cluster_masks.append(masks)
@@ -822,12 +861,19 @@ class MMA:
         return da
 
     def _build_consensus_inputs(self) -> _ConsensusInputStore:
+        from toad.postprocessing.member_support_consensus import (
+            cluster_id_signs_from_map,
+        )
+
         coords = {self._time_dim: cast(xr.DataArray, self._time_coord)}
         data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
         if self._format == "healpix":
             npix = 12 * cast(int, self.nside) ** 2
             coords["hp_pixel"] = np.arange(npix)
-            for name, labels in zip(self._cluster_var_names, self._label_arrays):
+            for name, labels in zip(
+                self._cluster_var_names,
+                self._label_arrays,
+            ):
                 data_vars[name] = ((self._time_dim, "hp_pixel"), labels)
         else:
             spatial_dims = cast(List[str], self._native_spatial_dims)
@@ -836,7 +882,10 @@ class MMA:
                 if d in ds0:
                     coords[d] = ds0[d]
             ds0.close()
-            for name, labels in zip(self._cluster_var_names, self._label_arrays):
+            for name, labels in zip(
+                self._cluster_var_names,
+                self._label_arrays,
+            ):
                 data_vars[name] = ((self._time_dim, *spatial_dims), labels)
 
         ds = xr.Dataset(
@@ -846,6 +895,17 @@ class MMA:
             },
             coords=coords,
         )
+        for name, sign_map in zip(
+            self._cluster_var_names,
+            self._cluster_sign_maps or [None] * len(self._cluster_var_names),
+        ):
+            if not sign_map:
+                continue
+            cluster_ids = np.array(sorted(sign_map), dtype=int)
+            ds[name].attrs[_attrs.CLUSTER_IDS] = cluster_ids
+            ds[name].attrs[_attrs.CLUSTER_ID_SIGNS] = cluster_id_signs_from_map(
+                cluster_ids, sign_map
+            )
         return _ConsensusInputStore(ds, self._time_dim)
 
     def run_consensus(
@@ -877,6 +937,10 @@ class MMA:
             run_healpix_member_support_consensus,
         )
 
+        from toad.postprocessing.member_support_consensus import (
+            cluster_id_signs_from_map,
+        )
+
         inputs = self._build_consensus_inputs()
         shared_attrs = {
             "consensus_method": "member_support",
@@ -893,7 +957,7 @@ class MMA:
         }
 
         if self._format == "healpix":
-            ds_out = run_healpix_member_support_consensus(
+            ds_out, sign_by_id = run_healpix_member_support_consensus(
                 inputs,
                 cluster_vars=self._cluster_var_names,
                 min_consensus=min_consensus,
@@ -907,6 +971,14 @@ class MMA:
             labels = ds_out["clusters"].values
             rate = ds_out["rate"].values
             npix = 12 * cast(int, self.nside) ** 2
+            cluster_extra: dict[str, Any] = {}
+            u = np.unique(labels[np.isfinite(labels) & (labels >= 0)]).astype(int)
+            if u.size:
+                cluster_extra[_attrs.CLUSTER_IDS] = u
+                if sign_by_id:
+                    cluster_extra[_attrs.CLUSTER_ID_SIGNS] = cluster_id_signs_from_map(
+                        u, sign_by_id
+                    )
             da_clusters, da_consistency = _make_consensus_dataarrays(
                 labels,
                 rate,
@@ -918,7 +990,7 @@ class MMA:
                 shared_attrs=shared_attrs,
                 cluster_desc="Spacetime member-support consensus on HealPix.",
                 consistency_desc="Member-support rate per HealPix pixel and time.",
-                extra_attrs={"nside": self.nside},
+                extra_attrs={"nside": self.nside, **cluster_extra},
             )
             self._data = xr.merge(
                 [da_clusters, da_consistency],
@@ -938,7 +1010,8 @@ class MMA:
             )
             consensus_var = td.consensus_cluster_vars[-1]
             rate_var = td.consensus_rate_var_name(consensus_var)
-            labels = td.data[consensus_var].values
+            consensus_da = td.data[consensus_var]
+            labels = consensus_da.values
             rate = td.data[rate_var].values
             spatial_dims = cast(List[str], self._native_spatial_dims)
             ds0 = xr.open_dataset(self.paths[0])
@@ -947,6 +1020,15 @@ class MMA:
                 **{d: ds0[d] for d in spatial_dims if d in ds0},
             }
             ds0.close()
+            cluster_extra = {}
+            if _attrs.CLUSTER_IDS in consensus_da.attrs:
+                cluster_extra[_attrs.CLUSTER_IDS] = consensus_da.attrs[
+                    _attrs.CLUSTER_IDS
+                ]
+            if _attrs.CLUSTER_ID_SIGNS in consensus_da.attrs:
+                cluster_extra[_attrs.CLUSTER_ID_SIGNS] = consensus_da.attrs[
+                    _attrs.CLUSTER_ID_SIGNS
+                ]
             da_clusters, da_consistency = _make_consensus_dataarrays(
                 labels,
                 rate,
@@ -955,6 +1037,7 @@ class MMA:
                 shared_attrs=shared_attrs,
                 cluster_desc="Spacetime member-support consensus on native grid.",
                 consistency_desc="Member-support rate per grid cell and time.",
+                extra_attrs=cluster_extra or None,
             )
             self._data = xr.merge(
                 [da_clusters, da_consistency],
@@ -966,8 +1049,7 @@ class MMA:
         self._data.attrs["source_paths"] = json.dumps(self.paths)
 
         labels_arr = self._data["consensus_clusters"].values
-        pos = labels_arr[(labels_arr >= 0) & np.isfinite(labels_arr)]
-        n_clusters = len(np.unique(pos)) if pos.size else 0
+        n_clusters = len(self.consensus_cluster_ids())
         logger.info(
             f"MMA member-support consensus: {n_clusters} clusters, "
             f"noise={int(np.sum(labels_arr == -1))}, "
@@ -987,6 +1069,15 @@ class MMA:
     @data.setter
     def data(self, value: xr.Dataset) -> None:
         self._data = value
+
+    def consensus_cluster_ids(self) -> list[int]:
+        """Return sorted consensus cluster IDs in ``consensus_clusters``.
+
+        Distinct non-negative, finite labels (excludes noise ``-1`` and NaN).
+        """
+        clusters = self.data["consensus_clusters"].values
+        ids = np.unique(clusters[(clusters >= 0) & np.isfinite(clusters)])
+        return [int(x) for x in ids]
 
     def get_healpix_latlon(self) -> tuple[np.ndarray, np.ndarray]:
         """Get (lat, lon) in degrees for each HealPix pixel, for plotting with cartopy etc.
@@ -1195,12 +1286,8 @@ class MMA:
             >>> for cid, times in times_by_cluster.items():
             ...     plt.hist(times, bins=30, alpha=0.5, label=f"Cluster {cid}")
         """
-        clusters = self.data["consensus_clusters"].values
-        ids = np.unique(clusters[(clusters >= 0) & np.isfinite(clusters)])
-        ids = [int(x) for x in ids]
-
         out: Dict[int, np.ndarray] = {}
-        for cid in ids:
+        for cid in self.consensus_cluster_ids():
             times_list: List[np.ndarray] = []
             for path in self.paths:
                 times_list.append(

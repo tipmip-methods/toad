@@ -11,7 +11,9 @@ from toad.postprocessing.member_support_consensus import (
     _accumulate_member_support,
     _build_grid_context,
     _build_member_support_dataset,
+    _decode_legacy_cluster_signs_json,
     _empty_result,
+    cluster_id_signs_from_map,
     min_consensus_members,
 )
 from toad.utils import _attrs, get_unique_variable_name
@@ -130,11 +132,26 @@ def _finalize_consensus_variables(
     stitch_meridian_resolved: bool,
     min_cluster_area: int | None,
     time_dim: str,
+    sign_by_id: dict[int, int] | None = None,
 ) -> np.ndarray:
     """Rename solver outputs, post-filter, attach TOAD attrs, and merge into ``td.data``."""
     # --- rename interim solver variables to user-facing names ---
     da_labels = ds_out["clusters"].rename(new_output_label)
     da_rate = ds_out["rate"].rename(f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}")
+
+    interim_sign_map = dict(sign_by_id or {})
+    if not interim_sign_map:
+        legacy_raw = ds_out["clusters"].attrs.get("consensus_cluster_signs")
+        if legacy_raw is not None:
+            interim_sign_map = _decode_legacy_cluster_signs_json(legacy_raw)
+
+    for stale_key in (
+        "_interim_sign_by_id",
+        "consensus_cluster_signs",
+        "cluster_signs",
+    ):
+        da_labels.attrs.pop(stale_key, None)
+        da_rate.attrs.pop(stale_key, None)
 
     # --- optional post-filter on spatial footprint (see _filter_consensus_labels_min_size) ---
     if min_cluster_area is not None and min_cluster_area > 0:
@@ -170,6 +187,10 @@ def _finalize_consensus_variables(
     da_labels.attrs[_attrs.CLUSTER_IDS] = (
         u.astype(int) if u.size else np.array([], dtype=int)
     )
+    if interim_sign_map and u.size:
+        id_signs = cluster_id_signs_from_map(u.astype(int), interim_sign_map)
+        da_labels.attrs[_attrs.CLUSTER_ID_SIGNS] = id_signs
+        da_rate.attrs[_attrs.CLUSTER_ID_SIGNS] = id_signs
     da_labels.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
     da_labels.attrs[_attrs.TOAD_VERSION] = __version__
 
@@ -400,18 +421,21 @@ class Aggregation:
             time_dim=self.td.time_dim,
             stitch_meridian=stitch_meridian_resolved,
         )
-        native_union, member_vote_count = _accumulate_member_support(
-            self.td,
-            cluster_vars=cluster_vars,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-            context=context,
+        native_union, votes_primary, votes_secondary, sign_aware = (
+            _accumulate_member_support(
+                self.td,
+                cluster_vars=cluster_vars,
+                temporal_tolerance=temporal_tolerance,
+                spatial_tolerance=spatial_tolerance,
+                show_progress=show_progress,
+                context=context,
+            )
         )
+        sign_by_id: dict[int, int] = {}
         if not np.any(native_union):
             ds_out = _empty_result(self.td, cluster_vars, context)
         else:
-            ds_out = _build_member_support_dataset(
+            ds_out, sign_by_id = _build_member_support_dataset(
                 self.td,
                 cluster_vars=cluster_vars,
                 min_consensus=min_consensus,
@@ -419,7 +443,9 @@ class Aggregation:
                 spatial_tolerance=spatial_tolerance,
                 context=context,
                 native_union=native_union,
-                member_vote_count=member_vote_count,
+                votes_primary=votes_primary,
+                votes_secondary=votes_secondary,
+                sign_aware=sign_aware,
             )
 
         # --- optional size filter, TOAD attrs, merge into td.data ---
@@ -435,6 +461,7 @@ class Aggregation:
             stitch_meridian_resolved=stitch_meridian_resolved,
             min_cluster_area=min_cluster_area,
             time_dim=self.td.time_dim,
+            sign_by_id=sign_by_id,
         )
 
         logger.info(_format_consensus_summary(new_output_label, lab))

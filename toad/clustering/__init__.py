@@ -378,6 +378,7 @@ def compute_clusters(
                 disable_regridder=disable_regridder,
                 space_dims_size=space_dims_size,
                 time_weight=time_weight,
+                signs=np.sign(vals_sh[mask]),
             )
             clustering_time += time_now() - cluster_start
 
@@ -462,6 +463,18 @@ def compute_clusters(
             **regridder_params,
         }
     )
+    if n_pts > 0:
+        from toad.postprocessing.member_support_consensus import (
+            build_cluster_signs_map,
+            cluster_id_signs_from_map,
+        )
+
+        sign_map = build_cluster_signs_map(cluster_labels, np.sign(vals_sh))
+        if sign_map:
+            cluster_ids = clusters.attrs[_attrs.CLUSTER_IDS]
+            clusters.attrs[_attrs.CLUSTER_ID_SIGNS] = cluster_id_signs_from_map(
+                cluster_ids, sign_map
+            )
 
     logger.info(_format_cluster_summary(new_output_label, cluster_labels, n_pts))
 
@@ -475,7 +488,7 @@ def compute_clusters(
             source_variable=new_output_label,
         )
 
-    # Merge the cluster labels back into the original data
+    # Merge cluster labels back into the original data
     return xr.merge([td.data, clusters], combine_attrs="override", compat="override")
 
 
@@ -496,11 +509,14 @@ def _cluster_coords_subset(
     disable_regridder: bool,
     space_dims_size: tuple[int, int],
     time_weight: float,
+    signs: np.ndarray | None = None,
 ) -> tuple[np.ndarray, BaseRegridder | None]:
     """Regrid, scale, and cluster one subset of (time, lat, lon) points."""
     used_regridder = regridder
     if used_regridder and not disable_regridder:
-        coords, weights = used_regridder.regrid(coords, weights, space_dims_size)
+        coords, weights = used_regridder.regrid(
+            coords, weights, space_dims_size, signs=signs
+        )
 
     if has_latlon:
         coords = geodetic_to_cartesian(
@@ -579,6 +595,26 @@ def _export_mma_cluster_labels(
             if 0 <= hp_idx < npix:
                 cluster_healpix[t_idx, hp_idx] = np.float32(row["cluster"])
 
+        cluster_attrs = {
+            "description": "Cluster variable (time, hp_pixel). For consensus and shift time extraction.",
+            "source_variable": source_variable,
+            "format": "healpix",
+            "nside": nside,
+        }
+        if _attrs.CLUSTER_ID_SIGNS in clusters.attrs:
+            cluster_attrs[_attrs.CLUSTER_ID_SIGNS] = clusters.attrs[
+                _attrs.CLUSTER_ID_SIGNS
+            ]
+        if _attrs.CLUSTER_IDS in clusters.attrs:
+            cluster_attrs[_attrs.CLUSTER_IDS] = clusters.attrs[_attrs.CLUSTER_IDS]
+
+        data_vars = {
+            "cluster": (
+                (time_dim, "hp_pixel"),
+                cluster_healpix,
+                cluster_attrs,
+            ),
+        }
         our_dims = {time_dim, *spatial_dims}
         all_coords = {
             k: v for k, v in td.data.coords.items() if set(v.dims).issubset(our_dims)
@@ -599,23 +635,12 @@ def _export_mma_cluster_labels(
             ):
                 all_coords[k] = td.data[k]
         out = xr.Dataset(
-            {
-                "cluster": (
-                    (time_dim, "hp_pixel"),
-                    cluster_healpix,
-                    {
-                        "description": "Cluster variable (time, hp_pixel). For consensus and shift time extraction.",
-                        "source_variable": source_variable,
-                        "format": "healpix",
-                        "nside": nside,
-                    },
-                ),
-            },
+            data_vars,
             coords={**all_coords, "hp_pixel": np.arange(npix)},
             attrs={
                 "format": "healpix",
                 "nside": nside,
-                "Conventions": "TOAD_cluster_labels_v1",
+                "Conventions": "TOAD_cluster_labels_v2",
             },
         )
     else:
@@ -638,19 +663,27 @@ def _export_mma_cluster_labels(
                 and set(td.data[k].dims).issubset(our_dims)
             ):
                 all_coords[k] = td.data[k]
+        cluster_attrs = {
+            "description": "Cluster variable in original dims for shift time extraction",
+            "source_variable": source_variable,
+        }
+        if _attrs.CLUSTER_ID_SIGNS in clusters.attrs:
+            cluster_attrs[_attrs.CLUSTER_ID_SIGNS] = clusters.attrs[
+                _attrs.CLUSTER_ID_SIGNS
+            ]
+        if _attrs.CLUSTER_IDS in clusters.attrs:
+            cluster_attrs[_attrs.CLUSTER_IDS] = clusters.attrs[_attrs.CLUSTER_IDS]
+        native_vars = {
+            "cluster": (
+                clusters.dims,
+                clusters.values.astype(np.float32),
+                cluster_attrs,
+            ),
+        }
         out = xr.Dataset(
-            {
-                "cluster": (
-                    clusters.dims,
-                    clusters.values.astype(np.float32),
-                    {
-                        "description": "Cluster variable in original dims for shift time extraction",
-                        "source_variable": source_variable,
-                    },
-                ),
-            },
+            native_vars,
             coords=all_coords,
-            attrs={"format": "native", "Conventions": "TOAD_cluster_labels_v1"},
+            attrs={"format": "native", "Conventions": "TOAD_cluster_labels_v2"},
         )
     out.to_netcdf(path)
     logger.info(f"Exported cluster labels for MMA to {path} (mma_grid={mma_grid})")

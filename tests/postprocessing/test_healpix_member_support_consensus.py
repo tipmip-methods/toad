@@ -230,7 +230,7 @@ def test_healpix_member_support_basic():
         },
         coords=coords,
     )
-    out = run_healpix_member_support_consensus(
+    out, _sign_by_id = run_healpix_member_support_consensus(
         _Store(ds, "time"),
         cluster_vars=["model_a_cluster", "model_b_cluster"],
         min_consensus=0.5,

@@ -2601,6 +2601,7 @@ class Plotter:
         ax: Optional[Axes] = None,
         map_style: Optional[Union[MapStyle, dict]] = None,
         cmap: Optional[Union[str, Colormap]] = "RdBu_r",
+        cbar_kwargs: Optional[dict] = None,
         **kwargs: Any,
     ):
         """Plot a map showing the value in the time dimension where the absolute value of the shift is maximal, keeping sign.
@@ -2617,6 +2618,8 @@ class Plotter:
                 Can be a MapStyle instance or a dictionary containing style settings. Defaults to None.
             cmap: Colormap to use for the plot. Can be a string name of a colormap
                 recognized by matplotlib, or an actual Colormap object. Defaults to 'RdBu_r'.
+            cbar_kwargs: Optional dictionary of keyword arguments to pass to the colorbar.
+                If not provided, defaults to {'label': 'Max detection signal'}.
 
         Returns:
             Tuple[FigureBase | None, matplotlib.axes.Axes]:
@@ -2640,6 +2643,13 @@ class Plotter:
 
         shifts = self.td.get_shifts(var)
 
+        # Handle cbar_kwargs and allow user override
+        default_cbar_kwargs = {"label": "Max detection signal"}
+        if cbar_kwargs is not None:
+            merged_cbar_kwargs = {**default_cbar_kwargs, **cbar_kwargs}
+        else:
+            merged_cbar_kwargs = default_cbar_kwargs
+
         # Prepare plot parameters for different grid types
         plot_params = {
             "ax": ax,
@@ -2647,9 +2657,7 @@ class Plotter:
             "vmax": 1,
             "vmin": -1,
             "cmap": cmap,
-            "cbar_kwargs": {
-                "label": "Max detection signal",
-            },
+            "cbar_kwargs": merged_cbar_kwargs,
             **kwargs,
         }
 

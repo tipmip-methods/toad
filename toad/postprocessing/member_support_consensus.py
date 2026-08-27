@@ -70,11 +70,11 @@ def cluster_id_signs_from_map(
 ) -> np.ndarray:
     """Build a sign array parallel to ``cluster_ids`` (NaN where unknown)."""
     ids = np.asarray(cluster_ids, dtype=int)
-    signs = np.full(ids.shape, np.nan, dtype=np.int8)
+    signs = np.full(ids.shape, np.nan, dtype=np.float32)
     for i, cid in enumerate(ids):
         sign = sign_by_id.get(int(cid))
         if sign is not None:
-            signs[i] = int(sign)
+            signs[i] = float(sign)
     return signs
 
 
@@ -157,6 +157,7 @@ def _label_retained_voxels_with_offset(
     *,
     label_fn,
     label_offset: int = 0,
+    sign_value: int,
 ) -> tuple[np.ndarray, dict[int, int], int]:
     """Label one sign-specific retained mask and assign ``sign_by_id`` entries."""
     n_st = keep.size
@@ -171,7 +172,6 @@ def _label_retained_voxels_with_offset(
     if not np.any(assigned):
         return labels_flat, sign_by_id, label_offset
 
-    sign_value = 1 if label_offset == 0 else -1
     if label_offset > 0:
         labeled = labeled.copy()
         labeled[assigned] += label_offset
@@ -231,6 +231,7 @@ def build_sign_aware_consensus_labels(
         keep_pos_only,
         label_fn=label_fn,
         label_offset=0,
+        sign_value=1,
     )
     assigned = pos_labels >= 0
     labels_flat[assigned] = pos_labels[assigned]
@@ -240,6 +241,7 @@ def build_sign_aware_consensus_labels(
         keep_neg_only,
         label_fn=label_fn,
         label_offset=offset,
+        sign_value=-1,
     )
     assigned_neg = neg_labels >= 0
     labels_flat[assigned_neg] = neg_labels[assigned_neg]

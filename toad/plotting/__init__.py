@@ -1352,21 +1352,34 @@ class Plotter:
         times_total_all = self._concat_finite_from_shift_dists(dists_full)
         if cluster_ids is not None:
             if isinstance(cluster_ids, int):
-                wanted = {cluster_ids}
+                id_order = [int(cluster_ids)]
             else:
-                wanted = {int(x) for x in cluster_ids}
-            dists = {k: v for k, v in dists.items() if k in wanted}
+                id_order = [int(x) for x in cluster_ids]
+            dists = {
+                cid: np.asarray(dists.get(cid, np.array([])), dtype=np.float64)
+                for cid in id_order
+            }
+        else:
+            id_order = sorted(int(k) for k in dists.keys())
 
-        ids_sorted = sorted(dists.keys())
-        datasets = [np.asarray(dists[cid], dtype=np.float64) for cid in ids_sorted]
-        datasets = [d[np.isfinite(d)] for d in datasets]
-        ids_sorted = [cid for cid, d in zip(ids_sorted, datasets) if d.size > 0]
-        datasets = [d for d in datasets if d.size > 0]
-        if not ids_sorted:
+        datasets = [
+            np.asarray(dists[cid], dtype=np.float64)[
+                np.isfinite(np.asarray(dists[cid], dtype=np.float64))
+            ]
+            for cid in id_order
+        ]
+        if pad_empty_for_violin:
+            ids_sorted = list(id_order)
+        else:
+            ids_sorted = [cid for cid, d in zip(id_order, datasets) if d.size > 0]
+            datasets = [d for d in datasets if d.size > 0]
+        if not any(d.size > 0 for d in datasets):
             raise ValueError("No finite samples left after filtering.")
 
         times_sum_plotted = (
-            np.concatenate(datasets, dtype=np.float64) if datasets else np.array([])
+            np.concatenate([d for d in datasets if d.size], dtype=np.float64)
+            if any(d.size for d in datasets)
+            else np.array([])
         )
 
         # Match :meth:`consensus_map` / `_discrete_colors_from_cmap` so violin hues agree with map +
@@ -1378,9 +1391,7 @@ class Plotter:
         xticklabels = [str(i) for i in ids_sorted]
 
         if pad_empty_for_violin:
-            dataset: list[np.ndarray] = [
-                arr if len(arr) > 0 else np.array([np.nan]) for arr in datasets
-            ]
+            dataset = [arr if len(arr) > 0 else np.array([np.nan]) for arr in datasets]
         else:
             dataset = list(datasets)
         if show_sum and times_sum_plotted.size > 0:
@@ -1480,23 +1491,37 @@ class Plotter:
         if show_scatter:
             vp_kwargs["side"] = "low" if kde_side == "left" else "high"
 
-        parts = ax.violinplot(
-            dataset,
-            positions=positions,
-            widths=width,
-            vert=not horizontal,
-            **vp_kwargs,
-        )
-        if show_scatter:
-            _style_violin_bodies_iqr_median(
-                ax,
-                parts,
-                dataset,
-                positions,
-                colors,
-                clip_to_body=False,
-                orientation=orientation,
+        finite_dataset: list[np.ndarray] = []
+        finite_positions: list[float] = []
+        finite_colors: list[str] = []
+        for i, d in enumerate(dataset):
+            arr = np.asarray(d, dtype=np.float64)
+            arr = arr[np.isfinite(arr)]
+            if arr.size:
+                finite_dataset.append(arr)
+                finite_positions.append(float(positions[i]))
+                finite_colors.append(colors[i % len(colors)])
+
+        parts = None
+        if finite_dataset:
+            parts = ax.violinplot(
+                finite_dataset,
+                positions=finite_positions,
+                widths=width,
+                vert=not horizontal,
+                **vp_kwargs,
             )
+        if show_scatter:
+            if parts is not None:
+                _style_violin_bodies_iqr_median(
+                    ax,
+                    parts,
+                    finite_dataset,
+                    finite_positions,
+                    finite_colors,
+                    clip_to_body=False,
+                    orientation=orientation,
+                )
             all_parts: list[np.ndarray] = []
             for d in dataset:
                 a = np.asarray(d, dtype=np.float64)
@@ -1571,9 +1596,15 @@ class Plotter:
                         zorder=5,
                     )
         else:
-            _style_violin_bodies_iqr_median(
-                ax, parts, dataset, positions, colors, orientation=orientation
-            )
+            if parts is not None:
+                _style_violin_bodies_iqr_median(
+                    ax,
+                    parts,
+                    finite_dataset,
+                    finite_positions,
+                    finite_colors,
+                    orientation=orientation,
+                )
 
         if horizontal:
             ax.set_yticks(positions)

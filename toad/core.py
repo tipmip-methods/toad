@@ -145,8 +145,21 @@ class TOAD:
             self.data = self.data.rename({"latitude": "lat"})
             self.logger.info("Renamed dimension latitude to lat")
 
+        # Determine effective time dimension
+        if "time" in self.data.dims:
+            self.time_dim = "time"
+        elif "gwl" in self.data.dims:
+            self.time_dim = "gwl"
+            self.logger.info(
+                "No 'time' dimension found, using 'gwl' as the time dimension."
+            )
+        else:
+            raise ValueError(
+                "No suitable time dimension found in data. Searched for 'time' and 'gwl'."
+            )
+
         if auto_clean:
-            self.data = preprocessing.clean_for_toad(self.data, time_dim=time_dim)
+            self.data = preprocessing.clean_for_toad(self.data, time_dim=self.time_dim)
 
         # Check that all variables have the same dimensions
         dims = [self.data[var].dims for var in self.data.data_vars]
@@ -164,11 +177,6 @@ class TOAD:
             self.logger.info(
                 "Found lat/lon coordinates (not dimensions). TOAD will use these for clustering and plotting instead of native dimensions. Drop lat/lon variables to use native coordinates."
             )
-
-        # Save time dim for later
-        self.time_dim = time_dim
-        if self.time_dim not in self.data.dims:
-            raise ValueError(f"Time dimension {self.time_dim} not found in data.")
 
     def _is_time_numeric(self) -> bool:
         """Check if the time dimension contains numeric values (int/float) or datetime objects (cftime).

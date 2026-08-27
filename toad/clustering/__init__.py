@@ -540,10 +540,15 @@ def _cluster_coords_subset(
     try:
         labels = np.asarray(method.fit_predict(X=coords, y=weights), dtype=int)
     except ValueError as e:
-        if "min_samples" in str(e) and "must be at most" in str(e):
+        msg = str(e)
+        insufficient_samples = ("min_samples" in msg and "must be at most" in msg) or (
+            "requires more than one sample" in msg
+        )
+        if insufficient_samples:
             logger.warning(
-                "Clustering failed due to insufficient data points. "
-                f"Returning no clusters. Error: {e}"
+                "No events available for clustering (%d point(s)); returning no clusters. %s",
+                len(coords),
+                e,
             )
             labels = np.full(len(coords), -1, dtype=int)
         else:

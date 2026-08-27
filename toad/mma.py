@@ -1073,9 +1073,16 @@ class MMA:
     def consensus_cluster_ids(self) -> list[int]:
         """Return sorted consensus cluster IDs in ``consensus_clusters``.
 
-        Distinct non-negative, finite labels (excludes noise ``-1`` and NaN).
+        Prefer ``cluster_ids`` stored on the data array (O(1)); otherwise scan
+        distinct non-negative, finite labels (excludes noise ``-1`` and NaN).
         """
-        clusters = self.data["consensus_clusters"].values
+        da = self.data["consensus_clusters"]
+        stored = da.attrs.get(_attrs.CLUSTER_IDS)
+        if stored is not None:
+            ids = np.asarray(stored, dtype=int)
+            ids = ids[ids >= 0]
+            return sorted(int(x) for x in ids)
+        clusters = da.values
         ids = np.unique(clusters[(clusters >= 0) & np.isfinite(clusters)])
         return [int(x) for x in ids]
 
@@ -1166,6 +1173,138 @@ class MMA:
             attrs={"description": "Consensus cluster ID per grid cell"},
         )
 
+    def _consensus_tolerances(self) -> tuple[int, int]:
+        """Return ``(temporal_tolerance, spatial_tolerance)`` stored with consensus."""
+        for source in (
+            self.data["consensus_clusters"].attrs,
+            self.data["consensus_clusters_rate"].attrs,
+            self.data.attrs,
+        ):
+            temporal = source.get("temporal_tolerance")
+            spatial = source.get("spatial_tolerance")
+            if temporal is not None and spatial is not None:
+                return int(temporal), int(spatial)
+        return 0, 1
+
+    def _dilate_healpix_model_support(self, event_mask: np.ndarray) -> np.ndarray:
+        """Dilate a model event mask with the same spacetime tolerances as consensus."""
+        from toad.postprocessing.healpix_member_support_consensus import (
+            _dilate_healpix_support_mask,
+            build_healpix_spatial_edges,
+        )
+
+        temporal_tolerance, spatial_tolerance = self._consensus_tolerances()
+        mask = np.asarray(event_mask, dtype=bool)
+        nside = cast(int, self.nside)
+        npix = mask.shape[1]
+        if 12 * nside**2 != npix:
+            raise ValueError(
+                f"HEALPix event mask has npix={npix}, expected {12 * nside**2} for nside={nside}."
+            )
+        spatial_rows, spatial_cols = build_healpix_spatial_edges(nside)
+        return _dilate_healpix_support_mask(
+            mask,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            spatial_rows=spatial_rows,
+            spatial_cols=spatial_cols,
+        )
+
+    def _dilate_native_model_support(self, event_mask: np.ndarray) -> np.ndarray:
+        """Dilate a native-grid model event mask with consensus tolerances."""
+        from toad.postprocessing.member_support_consensus import (
+            _dilate_boolean_support_mask,
+        )
+
+        temporal_tolerance, spatial_tolerance = self._consensus_tolerances()
+        stitch = bool(self.data.attrs.get("stitch_meridian", True))
+        return _dilate_boolean_support_mask(
+            np.asarray(event_mask, dtype=bool),
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            stitch_meridian=stitch,
+        )
+
+    def get_member_support_agreement_from_export(
+        self,
+        export_path: str,
+        consensus_cluster_id: int,
+    ) -> np.ndarray | None:
+        """Return a bool mask where consensus ``cid`` meets dilated model support.
+
+        HEALPix exports return ``(time, hp_pixel)``; native exports return the
+        cluster array shape ``(time, …spatial…)``. Agreement uses the same
+        spacetime dilation as member-support consensus voting, not exact voxel
+        co-location of cluster labels.
+        """
+        ds = xr.open_dataset(export_path)
+        try:
+            if "cluster" not in ds:
+                return None
+            clusters = ds["cluster"]
+            time_dims = [d for d in clusters.dims if d in ds.coords]
+            if not time_dims:
+                return None
+            time_dim = time_dims[0]
+            consensus = self.data["consensus_clusters"]
+
+            if "hp_pixel" in clusters.dims:
+                cluster_da = clusters.transpose(time_dim, "hp_pixel")
+                if self._time_coord is not None and self._time_dim in consensus.dims:
+                    cluster_da = cluster_da.reindex({time_dim: self._time_coord})
+                    consensus_vals = consensus.transpose(
+                        self._time_dim, "hp_pixel"
+                    ).values
+                elif self._time_dim in consensus.dims:
+                    consensus_vals = consensus.transpose(
+                        self._time_dim, "hp_pixel"
+                    ).values
+                else:
+                    consensus_vals = consensus.values
+                    consensus_vals = consensus_vals[np.newaxis, :]
+                arr = cluster_da.values
+                region_mask = (consensus_vals == consensus_cluster_id) & np.isfinite(
+                    consensus_vals
+                )
+                in_cluster = (arr != -1) & np.isfinite(arr)
+                model_support = self._dilate_healpix_model_support(in_cluster)
+                return region_mask & model_support
+
+            cluster_da = clusters
+            if self._time_coord is not None and self._time_dim in consensus.dims:
+                cluster_da = cluster_da.reindex({time_dim: self._time_coord})
+                region_mask = (
+                    (consensus == consensus_cluster_id) & consensus.notnull()
+                ).values
+            else:
+                consensus_ids = self.map_consensus_to_dataset(ds)
+                region_mask = (
+                    (consensus_ids == consensus_cluster_id) & consensus_ids.notnull()
+                ).values
+            in_cluster = ((cluster_da != -1) & cluster_da.notnull()).values
+            if region_mask.shape != in_cluster.shape:
+                region_mask = np.broadcast_to(region_mask, in_cluster.shape)
+            model_support = self._dilate_native_model_support(in_cluster)
+            return region_mask & model_support
+        finally:
+            ds.close()
+
+    def _shift_times_from_agreement_mask(
+        self,
+        combined: np.ndarray,
+        time_coord: xr.DataArray,
+        time_dim: str,
+        cluster_dims: tuple[str, ...],
+    ) -> np.ndarray:
+        time_axis = cluster_dims.index(time_dim)
+        broadcast_shape = [1] * combined.ndim
+        broadcast_shape[time_axis] = int(time_coord.sizes[time_dim])
+        event_times = np.broadcast_to(
+            np.asarray(time_coord.values).reshape(broadcast_shape),
+            combined.shape,
+        )[combined]
+        return event_times
+
     def get_shift_times_from_export(
         self,
         export_path: str,
@@ -1177,6 +1316,11 @@ class MMA:
         The export must contain the ``cluster`` variable (time × space), written
         when using ``export_for_mma``. Space is either hp_pixel (HealPix) or native dims.
 
+        Shift times are recorded at each consensus spacetime cell where the
+        model's **dilated** cluster support (same ``temporal_tolerance`` /
+        ``spatial_tolerance`` as consensus) covers that cell — matching the
+        member-support voting rule, not strict label co-location.
+
         Args:
             export_path: Path to the per-model export file (from compute_clusters).
             consensus_cluster_id: Consensus cluster ID (e.g. 0, 1, 2).
@@ -1185,81 +1329,27 @@ class MMA:
         Returns:
             Flattened array of time values for events in the consensus region.
         """
-        ds = xr.open_dataset(export_path)
-        if "cluster" not in ds:
-            ds.close()
-            raise ValueError(
-                f"Export file {export_path} has no 'cluster' variable. "
-                "Re-export with compute_clusters(export_for_mma=...) to include it."
-            )
-        clusters = ds["cluster"]
-        time_dims = [d for d in clusters.dims if d in ds.coords]
-        if not time_dims:
-            ds.close()
-            raise ValueError(f"Export {export_path} cluster has no time dimension.")
-        time_dim = time_dims[0]
-        time_coord = ds[time_dim]
+        combined = self.get_member_support_agreement_from_export(
+            export_path, consensus_cluster_id
+        )
+        if combined is None or not np.any(combined):
+            return np.array([])
 
-        if "hp_pixel" in clusters.dims:
-            consensus = self.data["consensus_clusters"]
-            cluster_da = clusters.transpose(time_dim, "hp_pixel")
-            if self._time_coord is not None and self._time_dim in consensus.dims:
-                cluster_da = cluster_da.reindex({time_dim: self._time_coord})
+        ds = xr.open_dataset(export_path)
+        try:
+            clusters = ds["cluster"]
+            time_dims = [d for d in clusters.dims if d in ds.coords]
+            time_dim = time_dims[0]
+            time_coord = ds[time_dim]
+            if self._time_coord is not None:
                 time_coord = self._time_coord
-                consensus_vals = consensus.transpose(self._time_dim, "hp_pixel").values
-                arr = cluster_da.values
-                region_mask = (consensus_vals == consensus_cluster_id) & np.isfinite(
-                    consensus_vals
-                )
-            elif self._time_dim in consensus.dims:
-                consensus_vals = consensus.transpose(self._time_dim, "hp_pixel").values
-                arr = cluster_da.values
-                region_mask = (consensus_vals == consensus_cluster_id) & np.isfinite(
-                    consensus_vals
-                )
-            else:
-                consensus_vals = consensus.values
-                arr = cluster_da.values
-                region_mask = (consensus_vals == consensus_cluster_id) & np.isfinite(
-                    consensus_vals
-                )
-                region_mask = region_mask[np.newaxis, :]
-            in_cluster = (arr != -1) & np.isfinite(arr)
-            combined = region_mask & in_cluster
-            event_times = np.broadcast_to(time_coord.values[:, np.newaxis], arr.shape)[
-                combined
-            ]
-            ds.close()
-        else:
-            consensus = self.data["consensus_clusters"]
-            cluster_da = clusters
-            if self._time_coord is not None and self._time_dim in consensus.dims:
-                cluster_da = cluster_da.reindex({time_dim: self._time_coord})
-                time_coord = self._time_coord
-                region_mask = (consensus == consensus_cluster_id) & consensus.notnull()
-                in_cluster = (cluster_da != -1) & cluster_da.notnull()
-                combined = region_mask & in_cluster
-                t = xr.DataArray(
-                    time_coord.values,
-                    dims=[time_dim],
-                    coords={time_dim: time_coord},
-                )
-                t_broadcast = t.broadcast_like(cluster_da)
-                event_times = t_broadcast.where(combined).values.ravel()
-            else:
-                consensus_ids = self.map_consensus_to_dataset(ds)
-                region_mask = (
-                    consensus_ids == consensus_cluster_id
-                ) & consensus_ids.notnull()
-                in_cluster = (clusters != -1) & clusters.notnull()
-                combined = region_mask.broadcast_like(clusters) & in_cluster
-                t = xr.DataArray(
-                    time_coord.values,
-                    dims=[time_dim],
-                    coords={time_dim: time_coord},
-                )
-                t_broadcast = t.broadcast_like(clusters)
-                event_times = t_broadcast.where(combined).values.ravel()
+            event_times = self._shift_times_from_agreement_mask(
+                combined,
+                time_coord,
+                time_dim,
+                tuple(clusters.dims),
+            )
+        finally:
             ds.close()
 
         if numeric:

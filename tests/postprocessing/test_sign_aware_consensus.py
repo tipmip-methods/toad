@@ -6,6 +6,7 @@ from toad.postprocessing.healpix_member_support_consensus import (
     run_healpix_member_support_consensus,
 )
 from toad.postprocessing.member_support_consensus import (
+    build_sign_aware_consensus_labels,
     cluster_id_signs_from_map,
     cluster_id_signs_to_map,
 )
@@ -16,6 +17,36 @@ class _Store:
     def __init__(self, data: xr.Dataset, time_dim: str):
         self.data = data
         self.time_dim = time_dim
+
+
+def test_sign_aware_negative_only_consensus_rate_uses_neg_votes():
+    """When only negative-sign voxels pass the threshold, rate must not be zeroed."""
+    n_st = 10
+    native_union = np.zeros(n_st, dtype=bool)
+    native_union[5] = True
+    votes_pos = np.zeros(n_st, dtype=np.int16)
+    votes_neg = np.zeros(n_st, dtype=np.int16)
+    votes_neg[5] = 4
+
+    def label_fn(keep: np.ndarray) -> np.ndarray:
+        out = np.full(n_st, -1, dtype=np.int64)
+        out[keep] = 0
+        return out
+
+    labels, rate, sign_by_id = build_sign_aware_consensus_labels(
+        native_union=native_union,
+        votes_pos=votes_pos,
+        votes_neg=votes_neg,
+        n_members=7,
+        min_consensus=0.5,
+        n_st=n_st,
+        label_fn=label_fn,
+        sign_aware=True,
+    )
+
+    assert labels[5] == 0
+    assert sign_by_id[0] == -1
+    assert rate[5] == 4 / 7
 
 
 def test_healpix_consensus_splits_opposite_sign_support():

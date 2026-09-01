@@ -44,6 +44,8 @@ class _Attrs:
     SHIFT_THRESHOLD: str = "shift_threshold"
     SHIFT_SELECTION: str = "shift_selection"
     SHIFT_DIRECTION: str = "shift_direction"
+    MIN_EVENT_MAGNITUDE: str = "min_event_magnitude"
+    MIN_EVENT_MAGNITUDE_WINDOW: str = "min_event_magnitude_window"
     SCALER: str = "scaler"
     TIME_WEIGHT: str = "time_weight"
     N_DATA_POINTS: str = "n_data_points"

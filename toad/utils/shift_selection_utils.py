@@ -12,6 +12,253 @@ from numba import njit
 
 
 @njit(cache=True)
+def _episode_magnitude(
+    base: np.ndarray,
+    start: int,
+    end: int,
+    pre_window: int,
+    post_window: int,
+) -> float:
+    """Absolute change in ``base`` across a dts episode using pre/post window means."""
+    n = base.size
+    pre_lo = max(0, start - pre_window)
+    pre_hi = start
+    post_lo = end + 1
+    post_hi = min(n, end + 1 + post_window)
+
+    pre_sum = 0.0
+    pre_count = 0
+    for t in range(pre_lo, pre_hi):
+        v = base[t]
+        if not np.isnan(v):
+            pre_sum += v
+            pre_count += 1
+
+    post_sum = 0.0
+    post_count = 0
+    for t in range(post_lo, post_hi):
+        v = base[t]
+        if not np.isnan(v):
+            post_sum += v
+            post_count += 1
+
+    if pre_count == 0 or post_count == 0:
+        return np.nan
+
+    pre = pre_sum / pre_count
+    post = post_sum / post_count
+    return abs(post - pre)
+
+
+@njit(cache=True)
+def _peaks_local_for_ts_filtered(
+    ts: np.ndarray,
+    base: np.ndarray,
+    thr: float,
+    min_magnitude: float,
+    pre_window: int,
+    post_window: int,
+    eps: float = 1e-12,
+):
+    """Local dts peaks whose base-variable episode magnitude meets ``min_magnitude``."""
+    n = ts.size
+    idxs = np.empty(n, dtype=np.int64)
+    sgns = np.empty(n, dtype=np.int8)
+    k = 0
+    i = 0
+
+    while i < n:
+        while i < n:
+            v = ts[i]
+            if not np.isnan(v) and (abs(v) > thr):
+                break
+            i += 1
+        if i >= n:
+            break
+
+        start = i
+        max_abs = abs(ts[i])
+        plat_start = i
+        plat_end = i
+        i += 1
+
+        while i < n:
+            v = ts[i]
+            if np.isnan(v):
+                break
+            av = abs(v)
+            if not (av > thr):
+                break
+            if av > max_abs + eps:
+                max_abs = av
+                plat_start = i
+                plat_end = i
+            elif abs(av - max_abs) <= eps:
+                plat_end = i
+            i += 1
+
+        end = i - 1
+        max_idx = plat_start + (plat_end - plat_start) // 2
+        if max_abs > thr:
+            mag = _episode_magnitude(base, start, end, pre_window, post_window)
+            if not np.isnan(mag) and mag >= min_magnitude:
+                idxs[k] = max_idx
+                sgns[k] = np.int8(-1 if np.signbit(ts[max_idx]) else 1)
+                k += 1
+
+    return idxs[:k], sgns[:k]
+
+
+@njit(cache=True)
+def _peak_global_for_ts_filtered(
+    ts: np.ndarray,
+    base: np.ndarray,
+    thr: float,
+    min_magnitude: float,
+    pre_window: int,
+    post_window: int,
+    eps: float = 1e-12,
+):
+    """Global dts peak among episodes whose base-variable magnitude meets ``min_magnitude``."""
+    n = ts.size
+    best_idx = np.int64(-1)
+    best_sgn = np.int8(0)
+    best_abs = -1.0
+    i = 0
+
+    while i < n:
+        while i < n:
+            v = ts[i]
+            if not np.isnan(v) and (abs(v) > thr):
+                break
+            i += 1
+        if i >= n:
+            break
+
+        start = i
+        max_abs = abs(ts[i])
+        plat_start = i
+        plat_end = i
+        i += 1
+
+        while i < n:
+            v = ts[i]
+            if np.isnan(v):
+                break
+            av = abs(v)
+            if not (av > thr):
+                break
+            if av > max_abs + eps:
+                max_abs = av
+                plat_start = i
+                plat_end = i
+            elif abs(av - max_abs) <= eps:
+                plat_end = i
+            i += 1
+
+        end = i - 1
+        max_idx = plat_start + (plat_end - plat_start) // 2
+        if max_abs > thr:
+            mag = _episode_magnitude(base, start, end, pre_window, post_window)
+            if not np.isnan(mag) and mag >= min_magnitude and max_abs > best_abs + eps:
+                best_abs = max_abs
+                best_idx = np.int64(max_idx)
+                best_sgn = np.int8(-1 if np.signbit(ts[max_idx]) else 1)
+
+    return best_idx, best_sgn
+
+
+@njit(cache=True)
+def _compute_local_mask_TP_filtered(
+    dts_TP: np.ndarray,
+    base_TP: np.ndarray,
+    thr: float,
+    min_magnitude: float,
+    pre_window: int,
+    post_window: int,
+    out_TP: np.ndarray,
+):
+    T, P = dts_TP.shape
+    for p in range(P):
+        ts = dts_TP[:, p]
+        base = base_TP[:, p]
+        idxs, sgns = _peaks_local_for_ts_filtered(
+            ts, base, thr, min_magnitude, pre_window, post_window
+        )
+        for m in range(idxs.size):
+            out_TP[idxs[m], p] = sgns[m]
+
+
+@njit(cache=True)
+def _compute_global_mask_TP_filtered(
+    dts_TP: np.ndarray,
+    base_TP: np.ndarray,
+    thr: float,
+    min_magnitude: float,
+    pre_window: int,
+    post_window: int,
+    out_TP: np.ndarray,
+):
+    T, P = dts_TP.shape
+    for p in range(P):
+        ts = dts_TP[:, p]
+        base = base_TP[:, p]
+        idx, sgn = _peak_global_for_ts_filtered(
+            ts, base, thr, min_magnitude, pre_window, post_window
+        )
+        if idx >= 0:
+            out_TP[idx, p] = sgn
+
+
+@njit(cache=True)
+def _compute_episode_pass_mask_TP(
+    dts_TP: np.ndarray,
+    base_TP: np.ndarray,
+    thr: float,
+    min_magnitude: float,
+    pre_window: int,
+    post_window: int,
+    out_TP: np.ndarray,
+    eps: float = 1e-12,
+):
+    """Mark timesteps inside dts episodes whose base-variable magnitude passes."""
+    T, P = dts_TP.shape
+    for p in range(P):
+        ts = dts_TP[:, p]
+        base = base_TP[:, p]
+        i = 0
+        while i < T:
+            while i < T:
+                v = ts[i]
+                if not np.isnan(v) and (abs(v) > thr):
+                    break
+                i += 1
+            if i >= T:
+                break
+
+            start = i
+            max_abs = abs(ts[i])
+            i += 1
+            while i < T:
+                v = ts[i]
+                if np.isnan(v):
+                    break
+                av = abs(v)
+                if not (av > thr):
+                    break
+                if av > max_abs + eps:
+                    max_abs = av
+                i += 1
+
+            end = i - 1
+            if max_abs > thr:
+                mag = _episode_magnitude(base, start, end, pre_window, post_window)
+                if not np.isnan(mag) and mag >= min_magnitude:
+                    for t in range(start, end + 1):
+                        out_TP[t, p] = 1
+
+
+@njit(cache=True)
 def _peaks_local_for_ts(ts: np.ndarray, thr: float, eps: float = 1e-12):
     """Finds local peaks in segments of a time series where values exceed a threshold.
 
@@ -196,6 +443,9 @@ def _compute_dts_peak_sign_mask(
     time_dim: str,
     shift_threshold: float = DEFAULT_SHIFT_THRESHOLD,
     shift_selection: Literal["local", "global"] | str = "local",
+    base: xr.DataArray | None = None,
+    min_event_magnitude: float | None = None,
+    min_event_magnitude_window: int = 3,
 ) -> xr.DataArray:
     """Computes a dense mask indicating peak signs in the shifts data.
 
@@ -204,47 +454,47 @@ def _compute_dts_peak_sign_mask(
     For global selection, marks the middle of the global max-|value| plateau (only if max > threshold).
     NaN values break segments/plateaus.
 
-    Args:
-        shifts: Input DataArray containing the shifts data.
-        time_dim: Name of the time dimension.
-        shift_threshold: Threshold value for detecting peaks. Defaults to 0.5.
-        shift_selection: Selection method, either "local" or "global". Defaults to "local".
-
-    Returns:
-        xr.DataArray: Mask array with same dimensions as input, containing values:
-            -1: Negative peak
-            0: No peak
-            +1: Positive peak
-
-    Raises:
-        ValueError: If shift_selection is not "local" or "global".
-
-    Notes:
-        - Works with float32 or float64 input without dtype casting
-        - Optimized to avoid unnecessary transposes and extra passes
+    When ``min_event_magnitude`` is set, episodes must also show at least that absolute
+    change in ``base`` (mean of ``min_event_magnitude_window`` steps before/after the
+    episode). ``base`` must be supplied and aligned with ``shifts``.
     """
     if shift_selection not in ("local", "global"):
         raise ValueError('shift_selection must be "local" or "global"')
+    if min_event_magnitude is not None and base is None:
+        raise ValueError("base is required when min_event_magnitude is set")
+    if min_event_magnitude_window < 1:
+        raise ValueError("min_event_magnitude_window must be at least 1")
 
-    # Put time first (view), then flatten space -> (T, P) WITHOUT transposing to (P, T)
     space_dims = tuple(d for d in shifts.dims if d != time_dim)
     da_t_first = shifts.transpose(time_dim, *space_dims)
 
-    # Use .data to avoid an eager copy if it's already a NumPy array; no dtype cast here
-    vals = np.asarray(da_t_first.data)  # shape: (T, *space_shape), float32 or float64
+    vals = np.asarray(da_t_first.data)
     T = vals.shape[0]
     space_shape = vals.shape[1:]
     P = int(np.prod(space_shape)) if space_shape else 1
 
-    dts_TP = vals.reshape(T, P)  # view if possible, minimal overhead
-    out_TP = np.zeros((T, P), dtype=np.int8)  # dense mask (touches once)
+    dts_TP = vals.reshape(T, P)
+    out_TP = np.zeros((T, P), dtype=np.int8)
 
-    if shift_selection == "local":
+    if min_event_magnitude is not None:
+        base_t_first = base.transpose(time_dim, *space_dims)
+        base_TP = np.asarray(base_t_first.data).reshape(T, P)
+        min_mag = float(min_event_magnitude)
+        pre_w = int(min_event_magnitude_window)
+        post_w = int(min_event_magnitude_window)
+        if shift_selection == "local":
+            _compute_local_mask_TP_filtered(
+                dts_TP, base_TP, float(shift_threshold), min_mag, pre_w, post_w, out_TP
+            )
+        else:
+            _compute_global_mask_TP_filtered(
+                dts_TP, base_TP, float(shift_threshold), min_mag, pre_w, post_w, out_TP
+            )
+    elif shift_selection == "local":
         _compute_local_mask_TP(dts_TP, float(shift_threshold), out_TP)
     else:
         _compute_global_mask_TP(dts_TP, float(shift_threshold), out_TP)
 
-    # Back to xarray with original dims
     out = out_TP.reshape((T, *space_shape))
     out_da_t_first = xr.DataArray(
         out,
@@ -253,3 +503,47 @@ def _compute_dts_peak_sign_mask(
         name=shifts.name,
     )
     return out_da_t_first.transpose(*shifts.dims)
+
+
+def _compute_episode_pass_mask(
+    shifts: xr.DataArray,
+    base: xr.DataArray,
+    time_dim: str,
+    shift_threshold: float,
+    min_event_magnitude: float,
+    min_event_magnitude_window: int = 3,
+) -> xr.DataArray:
+    """Boolean mask of timesteps inside magnitude-qualified dts episodes."""
+    if min_event_magnitude_window < 1:
+        raise ValueError("min_event_magnitude_window must be at least 1")
+
+    space_dims = tuple(d for d in shifts.dims if d != time_dim)
+    da_t_first = shifts.transpose(time_dim, *space_dims)
+    base_t_first = base.transpose(time_dim, *space_dims)
+
+    vals = np.asarray(da_t_first.data)
+    base_vals = np.asarray(base_t_first.data)
+    T = vals.shape[0]
+    space_shape = vals.shape[1:]
+    P = int(np.prod(space_shape)) if space_shape else 1
+
+    dts_TP = vals.reshape(T, P)
+    base_TP = base_vals.reshape(T, P)
+    out_TP = np.zeros((T, P), dtype=np.int8)
+    _compute_episode_pass_mask_TP(
+        dts_TP,
+        base_TP,
+        float(shift_threshold),
+        float(min_event_magnitude),
+        int(min_event_magnitude_window),
+        int(min_event_magnitude_window),
+        out_TP,
+    )
+
+    out = out_TP.reshape((T, *space_shape))
+    out_da = xr.DataArray(
+        out.astype(bool),
+        coords=da_t_first.coords,
+        dims=(time_dim, *space_dims),
+    )
+    return out_da.transpose(*shifts.dims)

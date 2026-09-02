@@ -39,6 +39,19 @@ __all__ = ["Plotter", "MapStyle", "add_shared_ylabel"]
 
 logger = logging.getLogger("TOAD")
 
+TimeseriesWindow = Literal["full", "cluster", "shift"]
+
+
+def _resolve_timeseries_window(
+    full_timeseries: bool,
+    timeseries_window: TimeseriesWindow | None,
+) -> TimeseriesWindow:
+    """Map legacy ``full_timeseries`` bool to a window mode when needed."""
+    if timeseries_window is not None:
+        return timeseries_window
+    return "full" if full_timeseries else "cluster"
+
+
 _projection_map = {
     "plate_carree": ccrs.PlateCarree(),
     "north_pole": ccrs.NorthPolarStereo(),
@@ -2864,6 +2877,7 @@ class Plotter:
         trajectories_alpha: float = 0.5,
         trajectories_linewidth: float = 0.5,
         full_timeseries: bool = True,
+        timeseries_window: TimeseriesWindow | None = None,
         highlight_color: Optional[str] = None,
         highlight_alpha: float = 0.5,
         highlight_linewidth: float = 0.5,
@@ -2944,9 +2958,14 @@ class Plotter:
             trajectories_alpha: Alpha transparency for individual time series lines. Defaults to 0.5.
             trajectories_linewidth: Linewidth for individual time series lines. Defaults to 0.5.
             full_timeseries: If True, plot the full timeseries for each cell. If False,
-                only plot the segment belonging to the cluster.
+                only plot the segment belonging to the cluster. Superseded by
+                ``timeseries_window`` when that argument is set.
+            timeseries_window: Which portion of each trajectory to plot:
+                ``"full"`` — entire series; ``"cluster"`` — cluster start/end window only;
+                ``"shift"`` — full dts episodes that overlap the cluster window; episodes
+                are not cropped at the cluster bounds (when ``cluster_ids`` is set).
             highlight_color: Color to highlight the actual cluster segment
-                when full_timeseries is True.
+                when ``timeseries_window="full"``.
             highlight_alpha: Alpha for the cluster highlight segment.
             highlight_linewidth: Line width for the cluster highlight segment.
             plot_shift_indicator: If True, overlay a dot on each trajectory at every timestep where
@@ -3034,6 +3053,10 @@ class Plotter:
 
         if plot_map and map_var is None:
             map_var = var
+
+        timeseries_window = _resolve_timeseries_window(
+            full_timeseries, timeseries_window
+        )
 
         # Infer plot variable (pass map=plot_map)
         timeseries_var = self._infer_plot_var(
@@ -3126,7 +3149,7 @@ class Plotter:
                     range_alpha=trajectory_range_alpha,
                     normalize=normalize,
                     time_dim=self.td.time_dim,
-                    full_timeseries=full_timeseries,
+                    timeseries_window=timeseries_window,
                 )
 
             if plot_trajectory_std:
@@ -3139,7 +3162,7 @@ class Plotter:
                     iqr_alpha=trajectory_std_alpha,
                     normalize=normalize,
                     time_dim=self.td.time_dim,
-                    full_timeseries=full_timeseries,
+                    timeseries_window=timeseries_window,
                 )
 
             if plot_mean:
@@ -3152,7 +3175,7 @@ class Plotter:
                     mean_linewidth=mean_linewidth,
                     add_legend=add_legend,
                     normalize=normalize,
-                    full_timeseries=full_timeseries,
+                    timeseries_window=timeseries_window,
                 )
 
             if plot_median:
@@ -3165,13 +3188,12 @@ class Plotter:
                     median_linewidth=median_linewidth,
                     add_legend=add_legend,
                     normalize=normalize,
-                    full_timeseries=full_timeseries,
+                    timeseries_window=timeseries_window,
                 )
 
             # Plot shift duration (horizontal shading) - only for real clusters.
-            # Skip when full_timeseries=False: the entire visible plot is already the
-            # cluster segment, so the indicator would cover the whole background.
-            if plot_cluster_duration and id is not None and full_timeseries:
+            # Skip when the plot already shows only a cropped window.
+            if plot_cluster_duration and id is not None and timeseries_window == "full":
                 self._plot_cluster_duration(
                     current_ax=current_ax,
                     var=var,
@@ -3194,7 +3216,7 @@ class Plotter:
                     max_trajectories=max_trajectories,
                     trajectories_sample_seed=trajectories_sample_seed,
                     trajectory_ids=trajectory_ids,
-                    full_timeseries=full_timeseries,
+                    timeseries_window=timeseries_window,
                     normalize=normalize,
                     add_legend=add_legend,
                     use_subplots=use_subplots,
@@ -3212,7 +3234,7 @@ class Plotter:
                         highlight_color=highlight_color,
                         highlight_alpha=highlight_alpha,
                         highlight_linewidth=highlight_linewidth,
-                        full_timeseries=full_timeseries,
+                        timeseries_window=timeseries_window,
                         normalize=normalize,
                         cells=cells,
                     )
@@ -3250,7 +3272,7 @@ class Plotter:
             has_aggregate=has_aggregate,
             single_plot=single_plot,
             max_trajectories=max_trajectories,
-            full_timeseries=full_timeseries,
+            timeseries_window=timeseries_window,
             normalize=normalize,
             y_label=y_label,
         )
@@ -3714,26 +3736,14 @@ class Plotter:
         range_alpha: float,
         normalize: Optional[Literal["max", "max_each"]] | str,
         time_dim: str,
-        full_timeseries: bool = True,
+        timeseries_window: TimeseriesWindow = "full",
     ) -> None:
-        """Plot full range (min to max) as shaded area.
-
-        Args:
-            current_ax: Axes to plot on
-            plot_var: Variable to plot
-            var: Base variable name
-            cluster_id: Cluster ID (None for all data)
-            id_color: Color for the band
-            range_alpha: Alpha transparency
-            normalize: Normalization method
-            time_dim: Time dimension name
-            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
-        """
+        """Plot full range (min to max) as shaded area."""
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
-            "keep_full_timeseries": full_timeseries,
+            "timeseries_window": timeseries_window,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -3768,29 +3778,14 @@ class Plotter:
         percentile_lower: float = 0.16,
         percentile_upper: float = 0.84,
         fill_zorder: int = 1,
-        full_timeseries: bool = True,
+        timeseries_window: TimeseriesWindow = "full",
     ) -> None:
-        """Plot interquartile range as shaded area between two percentiles.
-
-        Args:
-            current_ax: Axes to plot on
-            plot_var: Variable to plot
-            var: Base variable name
-            cluster_id: Cluster ID (None for all data)
-            id_color: Color for the band
-            iqr_alpha: Alpha transparency
-            normalize: Normalization method
-            time_dim: Time dimension name
-            percentile_lower: Lower percentile for band (default 0.16)
-            percentile_upper: Upper percentile for band (default 0.84)
-            fill_zorder: Z-order for fill_between (default 1)
-            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
-        """
+        """Plot interquartile range as shaded area between two percentiles."""
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
-            "keep_full_timeseries": full_timeseries,
+            "timeseries_window": timeseries_window,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -3824,26 +3819,14 @@ class Plotter:
         mean_linewidth: float,
         add_legend: bool,
         normalize: Optional[Literal["max", "max_each"]] | str,
-        full_timeseries: bool = True,
+        timeseries_window: TimeseriesWindow = "full",
     ) -> None:
-        """Plot mean timeseries curve.
-
-        Args:
-            current_ax: Axes to plot on
-            plot_var: Variable to plot
-            var: Base variable name
-            cluster_id: Cluster ID (None for all data)
-            id_color: Color for the curve
-            mean_linewidth: Line width
-            add_legend: Whether to add legend
-            normalize: Normalization method
-            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
-        """
+        """Plot mean timeseries curve."""
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
-            "keep_full_timeseries": full_timeseries,
+            "timeseries_window": timeseries_window,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -3874,26 +3857,14 @@ class Plotter:
         median_linewidth: float,
         add_legend: bool,
         normalize: Optional[Literal["max", "max_each"]] | str,
-        full_timeseries: bool = True,
+        timeseries_window: TimeseriesWindow = "full",
     ) -> None:
-        """Plot median timeseries curve.
-
-        Args:
-            current_ax: Axes to plot on
-            plot_var: Variable to plot
-            var: Base variable name
-            cluster_id: Cluster ID (None for all data)
-            id_color: Color for the curve
-            median_linewidth: Line width
-            add_legend: Whether to add legend
-            normalize: Normalization method
-            full_timeseries: If True, plot the full timeseries. If False, only plot the cluster segment.
-        """
+        """Plot median timeseries curve."""
         ts_kwargs = {
             "var": plot_var,
             "cluster_id": cluster_id,
             "normalize": normalize,
-            "keep_full_timeseries": full_timeseries,
+            "timeseries_window": timeseries_window,
         }
         if cluster_id is not None:
             ts_kwargs["cluster_var"] = var
@@ -3964,7 +3935,7 @@ class Plotter:
         trajectory_linewidth: float,
         max_trajectories: int,
         trajectories_sample_seed: int,
-        full_timeseries: bool,
+        timeseries_window: TimeseriesWindow,
         normalize: Optional[Literal["max", "max_each"]] | str,
         add_legend: bool,
         use_subplots: bool,
@@ -3985,7 +3956,7 @@ class Plotter:
             trajectory_linewidth: Line width
             max_trajectories: Maximum number of trajectories
             trajectories_sample_seed: Seed for random sampling
-            full_timeseries: Whether to plot full timeseries
+            timeseries_window: Which portion of each trajectory to plot
             normalize: Normalization method
             add_legend: Whether to add legend
             use_subplots: Whether using subplots
@@ -4001,10 +3972,10 @@ class Plotter:
             "cluster_id": cluster_id,
             "normalize": normalize,
             "aggregation": "raw",
+            "timeseries_window": timeseries_window,
         }
         if is_real_cluster:
             individual_ts_kwargs["cluster_var"] = var
-            individual_ts_kwargs["keep_full_timeseries"] = full_timeseries
 
         cells = self.td.get_timeseries(**individual_ts_kwargs)
 
@@ -4090,27 +4061,14 @@ class Plotter:
         highlight_color: str,
         highlight_alpha: float,
         highlight_linewidth: float,
-        full_timeseries: bool,
+        timeseries_window: TimeseriesWindow,
         normalize: Optional[Literal["max", "max_each"]] | str,
         cells: Optional[Any] = None,
     ) -> None:
-        """Highlight cluster segments when full_timeseries is True.
-
-        Args:
-            current_ax: Axes to plot on
-            plot_var: Variable to plot
-            var: Base variable name
-            cluster_id: Cluster ID
-            highlight_color: Color for highlight
-            highlight_alpha: Alpha transparency
-            highlight_linewidth: Line width
-            full_timeseries: Whether full timeseries was plotted
-            normalize: Normalization method
-            cells: Optional pre-fetched cells (when full_timeseries=False)
-        """
-        if not full_timeseries:
-            # Reuse cells if already fetched with keep_full_timeseries=False
-            if cells is not None:
+        """Highlight cluster segments when ``timeseries_window="full"``."""
+        if timeseries_window != "full":
+            # Reuse cells if already fetched with a cropped window
+            if timeseries_window == "cluster" and cells is not None:
                 cells_highlight = cells
             else:
                 return
@@ -4121,7 +4079,7 @@ class Plotter:
                 "cluster_var": var,
                 "normalize": normalize,
                 "aggregation": "raw",
-                "keep_full_timeseries": False,
+                "timeseries_window": "cluster",
             }
             cells_highlight = self.td.get_timeseries(**highlight_ts_kwargs)
 
@@ -4255,7 +4213,7 @@ class Plotter:
         has_aggregate: bool,
         single_plot: bool,
         max_trajectories: int,
-        full_timeseries: bool,
+        timeseries_window: TimeseriesWindow,
         normalize: Optional[Literal["max", "max_each"]] | str,
         y_label: str,
     ) -> None:
@@ -4273,7 +4231,7 @@ class Plotter:
             has_aggregate: Whether plotting aggregated statistics
             single_plot: Whether single plot mode
             max_trajectories: Maximum trajectories
-            full_timeseries: Whether full timeseries mode
+            timeseries_window: Which portion of each trajectory is plotted
             normalize: Normalization method
             y_label: Y-axis label text
         """
@@ -4352,7 +4310,7 @@ class Plotter:
                         cluster_ids_list[0],
                         cluster_var=var,
                         aggregation="raw",
-                        keep_full_timeseries=full_timeseries,
+                        timeseries_window=timeseries_window,
                         normalize=normalize,
                     )
                     if cells is not None:

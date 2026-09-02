@@ -547,3 +547,92 @@ def _compute_episode_pass_mask(
         dims=(time_dim, *space_dims),
     )
     return out_da.transpose(*shifts.dims)
+
+
+@njit(cache=True)
+def _episode_overlap_mask_for_ts(
+    ts: np.ndarray,
+    thr: float,
+    win_start: int,
+    win_end: int,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """Mark full dts episodes that overlap ``[win_start, win_end]`` (inclusive indices)."""
+    n = ts.size
+    out = np.zeros(n, dtype=np.bool_)
+    i = 0
+
+    while i < n:
+        while i < n:
+            v = ts[i]
+            if not np.isnan(v) and (abs(v) > thr):
+                break
+            i += 1
+        if i >= n:
+            break
+
+        seg_start = i
+        i += 1
+        while i < n:
+            v = ts[i]
+            if np.isnan(v) or not (abs(v) > thr):
+                break
+            i += 1
+        seg_end = i - 1
+
+        if seg_start <= win_end and seg_end >= win_start:
+            for t in range(seg_start, seg_end + 1):
+                out[t] = True
+
+    return out
+
+
+@njit(cache=True)
+def _compute_episode_overlap_mask_TP(
+    dts_TP: np.ndarray,
+    thr: float,
+    win_start: int,
+    win_end: int,
+    out_TP: np.ndarray,
+):
+    T, P = dts_TP.shape
+    for p in range(P):
+        mask = _episode_overlap_mask_for_ts(dts_TP[:, p], thr, win_start, win_end)
+        for t in range(T):
+            if mask[t]:
+                out_TP[t, p] = 1
+
+
+def _compute_episode_overlap_mask(
+    shifts: xr.DataArray,
+    time_dim: str,
+    shift_threshold: float,
+    window_start: int,
+    window_end: int,
+) -> xr.DataArray:
+    """Boolean mask of timesteps in dts episodes overlapping a time index window."""
+    space_dims = tuple(d for d in shifts.dims if d != time_dim)
+    da_t_first = shifts.transpose(time_dim, *space_dims)
+
+    vals = np.asarray(da_t_first.data)
+    T = vals.shape[0]
+    space_shape = vals.shape[1:]
+    P = int(np.prod(space_shape)) if space_shape else 1
+
+    dts_TP = vals.reshape(T, P)
+    out_TP = np.zeros((T, P), dtype=np.int8)
+    _compute_episode_overlap_mask_TP(
+        dts_TP,
+        float(shift_threshold),
+        int(window_start),
+        int(window_end),
+        out_TP,
+    )
+
+    out = out_TP.reshape((T, *space_shape))
+    out_da = xr.DataArray(
+        out.astype(bool),
+        coords=da_t_first.coords,
+        dims=(time_dim, *space_dims),
+    )
+    return out_da.transpose(*shifts.dims)

@@ -34,6 +34,7 @@ from toad.utils.repr_html import (
     render_consensus_variables_html,
     render_hierarchy_html,
 )
+from toad.utils.shift_selection_utils import _compute_episode_overlap_mask
 
 
 class _StatsAccessor:
@@ -1472,6 +1473,7 @@ class TOAD:
         percentile: Optional[float] = None,
         normalize: Optional[Literal["max", "max_each"]] | str = None,
         keep_full_timeseries: bool = True,
+        timeseries_window: Literal["full", "cluster", "shift"] | None = None,
     ) -> xr.DataArray:
         """Get time series for cluster, optionally aggregated across space.
 
@@ -1501,6 +1503,13 @@ class TOAD:
                 - None: Do not normalize
             keep_full_timeseries: If True, returns full time series of cluster cells. If
                 False, values outside cluster bounds will be nan. Ignored when cluster_id is None.
+                Superseded by ``timeseries_window`` when that argument is set.
+            timeseries_window: Which portion of each trajectory to retain:
+                ``"full"`` — entire time axis;
+                ``"cluster"`` — only timesteps within the cluster start/end window;
+                ``"shift"`` — full dts episodes whose overlap with the cluster start/end
+                window is non-empty when ``cluster_id`` is set; otherwise all detection
+                episodes on the full axis.
 
         Returns:
             The time series data for the specified cluster(s), or all data if cluster_id is None.
@@ -1514,6 +1523,9 @@ class TOAD:
 
         """
         var = self._get_base_var_if_none(var)
+
+        if timeseries_window is None:
+            timeseries_window = "full" if keep_full_timeseries else "cluster"
 
         # Smart inference: if var is a cluster variable, extract base variable for data
         # and use the cluster variable for masking
@@ -1533,6 +1545,20 @@ class TOAD:
         # Handle case when cluster_id is None - return all data
         if cluster_id is None:
             data = self.data[var]
+            if timeseries_window == "shift":
+                shift_vars = self.shift_vars_for_var(var)
+                if not shift_vars:
+                    raise ValueError(
+                        f"No shifts variable for {var!r}; cannot use timeseries_window='shift'."
+                    )
+                shifts_variable = shift_vars[0]
+                dts = self.data[shifts_variable]
+                threshold = float(
+                    self.data[shifts_variable].attrs.get(
+                        _attrs.SHIFT_THRESHOLD, DEFAULT_SHIFT_THRESHOLD
+                    )
+                )
+                data = data.where(np.abs(dts) > threshold)
             # Stack spatial dimensions to get timeseries format (same as cluster data format)
             non_time_dims = [d for d in data.dims if d != self.time_dim]
             if len(non_time_dims) > 0:
@@ -1549,16 +1575,41 @@ class TOAD:
             # Apply mask
             data = self.data[var].where(mask)
 
-            # Crop to cluster duration
-            if not keep_full_timeseries:
+            if timeseries_window == "cluster":
                 start_idx = self.stats(var).time.start_timestep(cluster_id)
                 end_idx = self.stats(var).time.end_timestep(cluster_id)
-                # Set values outside the [start_idx, end_idx] range to NaN along the time dimension
                 time_indices = np.arange(data.sizes[self.time_dim])
                 mask_in_range = (time_indices >= start_idx) & (time_indices <= end_idx)
                 data = data.where(
                     xr.DataArray(mask_in_range, dims=self.time_dim, name="time_mask")
                 )
+            elif timeseries_window == "shift":
+                shift_vars = self.shift_vars_for_var(var)
+                if not shift_vars:
+                    raise ValueError(
+                        f"No shifts variable for {var!r}; cannot use timeseries_window='shift'."
+                    )
+                shifts_variable = shift_vars[0]
+                dts = self.data[shifts_variable]
+                threshold = DEFAULT_SHIFT_THRESHOLD
+                for source in (cluster_var, shifts_variable):
+                    if source in self.data:
+                        threshold = float(
+                            self.data[source].attrs.get(
+                                _attrs.SHIFT_THRESHOLD, threshold
+                            )
+                        )
+                        break
+                start_idx = int(self.stats(var).time.start_timestep(cluster_id))
+                end_idx = int(self.stats(var).time.end_timestep(cluster_id))
+                overlap_mask = _compute_episode_overlap_mask(
+                    dts,
+                    self.time_dim,
+                    threshold,
+                    start_idx,
+                    end_idx,
+                )
+                data = data.where(overlap_mask)
 
         # Aggregate (and normalise) spatially
         data = self._finalize_timeseries(data, aggregation, percentile, normalize)

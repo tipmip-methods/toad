@@ -319,6 +319,31 @@ class TestPlottingWithExplicitVar:
             assert fig is not None
             plt.close(fig)
 
+    def test_timeseries_shift_window_without_cluster_ids(self, td_with_clusters):
+        """Shift window applies when plotting all data without cluster_ids."""
+        td = td_with_clusters
+        var = td.base_vars[0]
+        expected = td.get_timeseries(
+            var=var,
+            cluster_id=None,
+            aggregation="raw",
+            timeseries_window="shift",
+            normalize="max_each",
+        )
+
+        fig, ax = td.plot.timeseries(
+            timeseries_window="shift",
+            normalize="max_each",
+            plot_cluster_duration=False,
+            max_trajectories=len(expected),
+            trajectory_ids=list(range(len(expected))),
+        )
+
+        plotted = np.stack([line.get_ydata() for line in ax.get_lines()], axis=0)
+        assert plotted.shape == expected.values.shape
+        assert np.allclose(plotted, expected.values, equal_nan=True)
+        plt.close(fig)
+
     def test_overview_with_var(self, td_with_clusters):
         """Test overview with explicit variable name."""
         td = td_with_clusters

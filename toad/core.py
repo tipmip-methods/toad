@@ -147,7 +147,9 @@ class TOAD:
             self.logger.info("Renamed dimension latitude to lat")
 
         # Determine effective time dimension
-        if "time" in self.data.dims:
+        if time_dim in self.data.dims:
+            self.time_dim = time_dim
+        elif "time" in self.data.dims:
             self.time_dim = "time"
         elif "gwl" in self.data.dims:
             self.time_dim = "gwl"
@@ -156,7 +158,8 @@ class TOAD:
             )
         else:
             raise ValueError(
-                "No suitable time dimension found in data. Searched for 'time' and 'gwl'."
+                f"No suitable time dimension found in data. "
+                f"Searched for {time_dim!r}, 'time', and 'gwl'."
             )
 
         if auto_clean:

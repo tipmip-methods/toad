@@ -6,15 +6,16 @@ import pandas as pd
 import xarray as xr
 
 from toad._version import __version__
-from toad.clustering import sorted_cluster_labels
 from toad.postprocessing.member_support_consensus import (
     _accumulate_member_support,
     _build_grid_context,
     _build_member_support_dataset,
-    _decode_legacy_cluster_signs_json,
     _empty_result,
-    cluster_id_signs_from_map,
+    area_rank_id_mapping,
+    cluster_spatial_areas,
+    consensus_sign_var_name,
     min_consensus_members,
+    relabel_by_id_mapping,
 )
 from toad.utils import _attrs, get_unique_variable_name
 from toad.utils.cluster_consensus_utils import (
@@ -64,50 +65,52 @@ def _filter_consensus_labels_min_size(
     min_cluster_area: int,
     *,
     time_dim: str,
-) -> tuple[xr.DataArray, xr.DataArray]:
+    da_sign: xr.DataArray | None = None,
+) -> (
+    tuple[xr.DataArray, xr.DataArray] | tuple[xr.DataArray, xr.DataArray, xr.DataArray]
+):
     """Remove consensus clusters whose spatial footprint is too small.
 
     For each cluster id, ``area`` is the number of spatial cells where that id appears at
     any time along ``time_dim`` (same definition as the ``area`` column in
     :func:`toad.utils.cluster_consensus_utils._build_consensus_summary_df_spacetime`).
     Clusters with ``area < min_cluster_area`` are set to noise ``-1``. Remaining clusters
-    are renumbered by :func:`toad.clustering.sorted_cluster_labels` (largest id 0, etc.).
-    The companion rate field is left unchanged (member-support fractions are
-    independent of the consensus threshold and cluster-size filter).
+    are renumbered by descending area (largest id 0, etc.), i.e. on the same quantity
+    this filter thresholds. The companion rate field is left unchanged (member-support
+    fractions are independent of the consensus threshold and cluster-size filter).
     """
     if min_cluster_area <= 0:
-        return da_labels, da_rate
+        if da_sign is None:
+            return da_labels, da_rate
+        return da_labels, da_rate, da_sign
     if time_dim not in da_labels.dims:
         raise ValueError(
             f"`time_dim` {time_dim!r} must be a dimension of `da_labels`, "
             f"got dims={tuple(da_labels.dims)}."
         )
     lab = np.asarray(da_labels.data, dtype=np.float64)
-    flat = lab.ravel()
     time_axis = da_labels.get_axis_num(time_dim)
     lab_ts = np.moveaxis(lab, time_axis, 0).reshape(lab.shape[time_axis], -1)
-    valid = np.isfinite(lab_ts) & (lab_ts >= 0)
-    if not np.any(valid):
-        return da_labels, da_rate
+    areas_by_id = cluster_spatial_areas(lab_ts)
+    if not areas_by_id:
+        if da_sign is None:
+            return da_labels, da_rate
+        return da_labels, da_rate, da_sign
 
-    # Count distinct spatial cells ever labelled with each consensus id (any time)
-    label_ids = lab_ts[valid].astype(np.int64, copy=False)
-    spatial_ids = np.broadcast_to(
-        np.arange(0, lab_ts.shape[1], dtype=np.int64).reshape(1, -1),
-        lab_ts.shape,
-    )[valid]
-    label_space_pairs = np.column_stack((label_ids, spatial_ids))
-    unique_pairs = np.unique(label_space_pairs, axis=0)
-    unique_ids, areas = np.unique(unique_pairs[:, 0], return_counts=True)
-    remove = unique_ids[areas < int(min_cluster_area)]
-    if remove.size == 0:
-        return da_labels, da_rate
+    remove = [cid for cid, area in areas_by_id.items() if area < int(min_cluster_area)]
+    if not remove:
+        if da_sign is None:
+            return da_labels, da_rate
+        return da_labels, da_rate, da_sign
 
-    # Demote small clusters to noise (-1) and re-sort ids
-    flat = flat.copy()
+    # Demote small clusters to noise (-1) and re-rank survivors by area
+    flat = lab.ravel().copy()
     fin = np.isfinite(flat)
-    flat[fin & np.isin(flat, remove.astype(np.float64))] = -1.0
-    flat = sorted_cluster_labels(flat)
+    flat[fin & np.isin(flat, np.array(remove, dtype=np.float64))] = -1.0
+    survivors = {
+        cid: area for cid, area in areas_by_id.items() if cid not in set(remove)
+    }
+    flat = relabel_by_id_mapping(flat, area_rank_id_mapping(survivors))
     lab_out = flat.reshape(lab.shape)
     da_l = xr.DataArray(
         lab_out,
@@ -116,7 +119,19 @@ def _filter_consensus_labels_min_size(
         attrs=da_labels.attrs,
         name=da_labels.name,
     )
-    return da_l, da_rate
+    if da_sign is None:
+        return da_l, da_rate
+
+    sign_flat = np.asarray(da_sign.data, dtype=np.float32).ravel().copy()
+    sign_flat[~np.isfinite(lab_out.ravel()) | (lab_out.ravel() < 0)] = np.nan
+    da_s = xr.DataArray(
+        sign_flat.reshape(lab_out.shape),
+        coords=da_sign.coords,
+        dims=da_sign.dims,
+        attrs=da_sign.attrs,
+        name=da_sign.name,
+    )
+    return da_l, da_rate, da_s
 
 
 def _finalize_consensus_variables(
@@ -132,18 +147,14 @@ def _finalize_consensus_variables(
     stitch_meridian_resolved: bool,
     min_cluster_area: int | None,
     time_dim: str,
-    sign_by_id: dict[int, int] | None = None,
 ) -> np.ndarray:
     """Rename solver outputs, post-filter, attach TOAD attrs, and merge into ``td.data``."""
     # --- rename interim solver variables to user-facing names ---
     da_labels = ds_out["clusters"].rename(new_output_label)
     da_rate = ds_out["rate"].rename(f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}")
-
-    interim_sign_map = dict(sign_by_id or {})
-    if not interim_sign_map:
-        legacy_raw = ds_out["clusters"].attrs.get("consensus_cluster_signs")
-        if legacy_raw is not None:
-            interim_sign_map = _decode_legacy_cluster_signs_json(legacy_raw)
+    da_sign = None
+    if "signs" in ds_out:
+        da_sign = ds_out["signs"].rename(consensus_sign_var_name(new_output_label))
 
     for stale_key in (
         "_interim_sign_by_id",
@@ -152,17 +163,30 @@ def _finalize_consensus_variables(
     ):
         da_labels.attrs.pop(stale_key, None)
         da_rate.attrs.pop(stale_key, None)
+        if da_sign is not None:
+            da_sign.attrs.pop(stale_key, None)
 
     # --- optional post-filter on spatial footprint (see _filter_consensus_labels_min_size) ---
     if min_cluster_area is not None and min_cluster_area > 0:
-        da_labels, da_rate = _filter_consensus_labels_min_size(
-            da_labels,
-            da_rate,
-            min_cluster_area,
-            time_dim=time_dim,
-        )
+        if da_sign is not None:
+            da_labels, da_rate, da_sign = _filter_consensus_labels_min_size(
+                da_labels,
+                da_rate,
+                min_cluster_area,
+                time_dim=time_dim,
+                da_sign=da_sign,
+            )
+        else:
+            da_labels, da_rate = _filter_consensus_labels_min_size(
+                da_labels,
+                da_rate,
+                min_cluster_area,
+                time_dim=time_dim,
+            )
         da_labels.attrs["min_cluster_area"] = int(min_cluster_area)
         da_rate.attrs["min_cluster_area"] = int(min_cluster_area)
+        if da_sign is not None:
+            da_sign.attrs["min_cluster_area"] = int(min_cluster_area)
 
     # --- TOAD metadata (method params, variable_type, cluster_vars, version) ---
     lab = np.asarray(da_labels.data, dtype=np.float64)
@@ -187,10 +211,6 @@ def _finalize_consensus_variables(
     da_labels.attrs[_attrs.CLUSTER_IDS] = (
         u.astype(int) if u.size else np.array([], dtype=int)
     )
-    if interim_sign_map and u.size:
-        id_signs = cluster_id_signs_from_map(u.astype(int), interim_sign_map)
-        da_labels.attrs[_attrs.CLUSTER_ID_SIGNS] = id_signs
-        da_rate.attrs[_attrs.CLUSTER_ID_SIGNS] = id_signs
     da_labels.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
     da_labels.attrs[_attrs.TOAD_VERSION] = __version__
 
@@ -199,9 +219,18 @@ def _finalize_consensus_variables(
     da_rate.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
     da_rate.attrs[_attrs.TOAD_VERSION] = __version__
 
-    # --- merge label + rate pair into td.data ---
+    merge_vars = [da_labels, da_rate]
+    if da_sign is not None:
+        da_sign.attrs.update(consensus_param_attrs)
+        da_sign.attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_CONSENSUS_SIGN
+        da_sign.attrs[_attrs.CONSENSUS_LABELS_VAR] = new_output_label
+        da_sign.attrs[_attrs.CLUSTER_VARS] = list(cluster_vars)
+        da_sign.attrs[_attrs.TOAD_VERSION] = __version__
+        merge_vars.append(da_sign)
+
+    # --- merge label + rate (+ sign) into td.data ---
     td.data = xr.merge(
-        [td.data, da_labels, da_rate],
+        [td.data, *merge_vars],
         combine_attrs="override",
         compat="override",
     )
@@ -297,9 +326,15 @@ class Aggregation:
         3. At each native event voxel, count how many distinct inputs have dilated support
            covering that cell.
         4. Retain the voxel if the count reaches ``max(1, ceil(min_consensus * n_inputs))``.
+           When inputs carry cluster signs, votes are counted separately for ``+`` and
+           ``−``, and a voxel is retained for a sign only if a **native event of that
+           sign** is present (opposite-sign support cannot promote it).
         5. Group retained voxels into consensus cluster ids using the same tolerances for
-           spacetime connectivity (``max(1, tolerance)`` along each axis).
-        6. Optionally drop clusters whose spatial footprint is below ``min_cluster_area``.
+           spacetime connectivity (``max(1, tolerance)`` along each axis). Ids are numbered
+           by descending **spatial footprint**, so cluster ``0`` is always the largest on a
+           map — the same quantity ``min_cluster_area`` thresholds.
+        6. Optionally drop clusters whose spatial footprint is below ``min_cluster_area``;
+           remaining ids are re-ranked; the companion sign grid is cleared at removed voxels.
 
         Dilation never writes extra cells to the output: only voxels that were **detected** in
         at least one input can appear in the consensus mask. Spatial tolerance is in native
@@ -318,7 +353,9 @@ class Aggregation:
         * **Rate** (``variable_type=consensus_rate``): supporting inputs divided
           by total inputs at each native event voxel, **including** voxels below the consensus
           threshold; ``0`` where no input assigned a cluster; ``NaN`` where the label is
-          ``NaN``.
+          ``NaN``. With signed inputs the support is counted for the sign of the native
+          event at that voxel (the stronger sign where a voxel has both), so the rate never
+          credits a voxel with opposite-sign support that the keep rule ignored.
 
         Both arrays store ``cluster_vars``, ``min_consensus``, ``min_consensus_members``,
         tolerance settings, and ``stitch_meridian`` / ``stitch_meridian_applied``. For a
@@ -412,6 +449,9 @@ class Aggregation:
             rate_drop = f"{new_output_label}{_attrs.CONSENSUS_RATE_SUFFIX}"
             if rate_drop in self.td.data:
                 self.td.data = self.td.data.drop_vars(rate_drop)
+            sign_drop = consensus_sign_var_name(new_output_label)
+            if sign_drop in self.td.data:
+                self.td.data = self.td.data.drop_vars(sign_drop)
 
         # --- member-support solver: dilated votes → threshold → connected components ---
         sample = self.td.data[cluster_vars[0]]
@@ -421,31 +461,25 @@ class Aggregation:
             time_dim=self.td.time_dim,
             stitch_meridian=stitch_meridian_resolved,
         )
-        native_union, votes_primary, votes_secondary, sign_aware = (
-            _accumulate_member_support(
-                self.td,
-                cluster_vars=cluster_vars,
-                temporal_tolerance=temporal_tolerance,
-                spatial_tolerance=spatial_tolerance,
-                show_progress=show_progress,
-                context=context,
-            )
+        support = _accumulate_member_support(
+            self.td,
+            cluster_vars=cluster_vars,
+            temporal_tolerance=temporal_tolerance,
+            spatial_tolerance=spatial_tolerance,
+            show_progress=show_progress,
+            context=context,
         )
-        sign_by_id: dict[int, int] = {}
-        if not np.any(native_union):
+        if not np.any(support.native_union):
             ds_out = _empty_result(self.td, cluster_vars, context)
         else:
-            ds_out, sign_by_id = _build_member_support_dataset(
+            ds_out = _build_member_support_dataset(
                 self.td,
                 cluster_vars=cluster_vars,
                 min_consensus=min_consensus,
                 temporal_tolerance=temporal_tolerance,
                 spatial_tolerance=spatial_tolerance,
                 context=context,
-                native_union=native_union,
-                votes_primary=votes_primary,
-                votes_secondary=votes_secondary,
-                sign_aware=sign_aware,
+                support=support,
             )
 
         # --- optional size filter, TOAD attrs, merge into td.data ---
@@ -461,7 +495,6 @@ class Aggregation:
             stitch_meridian_resolved=stitch_meridian_resolved,
             min_cluster_area=min_cluster_area,
             time_dim=self.td.time_dim,
-            sign_by_id=sign_by_id,
         )
 
         logger.info(_format_consensus_summary(new_output_label, lab))

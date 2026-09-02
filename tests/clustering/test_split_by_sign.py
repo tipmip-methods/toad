@@ -7,9 +7,7 @@ from sklearn.cluster import DBSCAN, HDBSCAN  # type: ignore
 
 from toad import TOAD
 from toad.clustering import compute_clusters
-from toad.postprocessing.member_support_consensus import (
-    read_cluster_signs_map,
-)
+from toad.postprocessing.member_support_consensus import sign_var_for_cluster_var
 from toad.utils import _attrs
 
 
@@ -20,13 +18,15 @@ def cleanup_memory():
     gc.collect()
 
 
-def _assert_clusters_sign_homogeneous(clusters_da, shifts_da):
-    """Every non-noise cluster label must have uniform shift sign."""
+def _assert_clusters_sign_homogeneous(clusters_da, sign_da):
+    """Every non-noise cluster label must have uniform shift sign on the sign grid."""
     c = clusters_da.values
-    s = shifts_da.values
+    s = sign_da.values
     for cid in np.unique(c[np.isfinite(c) & (c >= 0)]):
         mask = c == cid
-        signs = np.sign(s[mask])
+        signs = s[mask]
+        signs = signs[np.isfinite(signs)]
+        assert signs.size > 0
         assert np.all(signs > 0) or np.all(signs < 0), (
             f"Cluster {int(cid)} has mixed signs"
         )
@@ -62,16 +62,18 @@ def test_both_directions_split_by_sign_synthetic():
         disable_regridder=True,
         overwrite=True,
     )
-    _assert_clusters_sign_homogeneous(td.data["test_dts_cluster"], td.data["test_dts"])
-    clusters = td.data["test_dts_cluster"].values
+    cluster_var = "test_dts_cluster"
+    sign_var = sign_var_for_cluster_var(cluster_var)
+    assert sign_var in td.data
+    _assert_clusters_sign_homogeneous(td.data[cluster_var], td.data[sign_var])
+    clusters = td.data[cluster_var].values
+    signs = td.data[sign_var].values
     valid = clusters[np.isfinite(clusters) & (clusters >= 0)]
     if valid.size == 0:
         return
-    sign_map = read_cluster_signs_map(td.data["test_dts_cluster"])
-    assert sign_map
-    for cid, expected_sign in sign_map.items():
+    for cid in np.unique(valid.astype(int)):
         mask = clusters == cid
-        assert np.all(np.sign(td.data["test_dts"].values)[mask] == expected_sign)
+        assert np.all(np.sign(signs[mask]) == np.sign(signs[mask][0]))
 
 
 def test_both_directions_sign_homogeneous_on_synth_data():
@@ -88,8 +90,6 @@ def test_both_directions_sign_homogeneous_on_synth_data():
     )
 
     cluster_var = td.cluster_vars[0]
-    shifts_var = td.data[cluster_var].attrs[_attrs.SHIFTS_VARIABLE]
-    _assert_clusters_sign_homogeneous(td.data[cluster_var], td.data[shifts_var])
-    sign_map = read_cluster_signs_map(td.data[cluster_var])
-    if np.any(td.data[cluster_var].values >= 0):
-        assert sign_map
+    sign_var = sign_var_for_cluster_var(cluster_var)
+    assert sign_var in td.data
+    _assert_clusters_sign_homogeneous(td.data[cluster_var], td.data[sign_var])

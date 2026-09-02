@@ -326,6 +326,7 @@ def compute_clusters(
         coords = np.empty((0, 3))
         method_params = {}
         regridder_params = {}
+        cluster_sign = None
     else:
         # Handle dimensions
         space_dims = td.space_dims
@@ -449,9 +450,16 @@ def compute_clusters(
         # Assign cluster labels (including -1 for noise) only to points that were clustered
         clusters.data[idx] = np.asarray(cluster_labels, dtype=np.float64)
 
+        sign_output_label = f"{new_output_label}_sign"
+        cluster_sign = xr.full_like(sh, np.nan).rename(sign_output_label)
+        sign_at_points = np.sign(vals_sh)
+        cluster_sign.data[idx] = np.where(cluster_labels >= 0, sign_at_points, np.nan)
+
         # Transpose if dimensions don't match (shouldn't be needed but keep)
         if clusters.dims != td.data[shifts_variable].dims:
             clusters = clusters.transpose(*td.data[shifts_variable].dims)
+        if cluster_sign.dims != td.data[shifts_variable].dims:
+            cluster_sign = cluster_sign.transpose(*td.data[shifts_variable].dims)
 
         # end of if n_pts > 0
 
@@ -500,18 +508,17 @@ def compute_clusters(
             **regridder_params,
         }
     )
-    if n_pts > 0:
-        from toad.postprocessing.member_support_consensus import (
-            build_cluster_signs_map,
-            cluster_id_signs_from_map,
+    if cluster_sign is not None:
+        cluster_sign.attrs.update(
+            {
+                "description": "Per-voxel shift sign at clustered points (+1/-1)",
+                _attrs.BASE_VARIABLE: base_variable,
+                _attrs.SHIFTS_VARIABLE: shifts_variable,
+                _attrs.CLUSTER_LABELS_VAR: new_output_label,
+                _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER_SIGN,
+                _attrs.TOAD_VERSION: __version__,
+            }
         )
-
-        sign_map = build_cluster_signs_map(cluster_labels, np.sign(vals_sh))
-        if sign_map:
-            cluster_ids = clusters.attrs[_attrs.CLUSTER_IDS]
-            clusters.attrs[_attrs.CLUSTER_ID_SIGNS] = cluster_id_signs_from_map(
-                cluster_ids, sign_map
-            )
 
     logger.info(_format_cluster_summary(new_output_label, cluster_labels, n_pts))
 
@@ -521,12 +528,15 @@ def compute_clusters(
             mma_grid=mma_grid,
             td=td,
             clusters=clusters,
+            cluster_sign=cluster_sign,
             regridder=regridder,
             source_variable=new_output_label,
         )
 
-    # Merge cluster labels back into the original data
-    return xr.merge([td.data, clusters], combine_attrs="override", compat="override")
+    merge_vars = [clusters]
+    if cluster_sign is not None:
+        merge_vars.append(cluster_sign)
+    return xr.merge([td.data, *merge_vars], combine_attrs="override", compat="override")
 
 
 def _clone_regridder(regridder: BaseRegridder | None) -> BaseRegridder | None:
@@ -604,6 +614,7 @@ def _export_mma_cluster_labels(
     mma_grid: Literal["healpix", "native"],
     td: "TOAD",
     clusters: xr.DataArray,
+    cluster_sign: xr.DataArray | None,
     regridder: BaseRegridder | None,
     source_variable: str,
 ) -> None:
@@ -629,6 +640,7 @@ def _export_mma_cluster_labels(
         n_time = len(time_vals)
         time_to_idx = {t: i for i, t in enumerate(time_vals)}
         cluster_healpix = np.full((n_time, npix), np.nan, dtype=np.float32)
+        cluster_sign_healpix = np.full((n_time, npix), np.nan, dtype=np.float32)
         for _, row in df.iterrows():
             t_idx = time_to_idx.get(row["time"])
             if t_idx is None:
@@ -636,6 +648,14 @@ def _export_mma_cluster_labels(
             hp_idx = int(row["hp_pix"])
             if 0 <= hp_idx < npix:
                 cluster_healpix[t_idx, hp_idx] = np.float32(row["cluster"])
+                if (
+                    "sign" in row
+                    and np.isfinite(row["cluster"])
+                    and row["cluster"] >= 0
+                ):
+                    cluster_sign_healpix[t_idx, hp_idx] = np.float32(
+                        np.sign(row["sign"])
+                    )
 
         cluster_attrs = {
             "description": "Cluster variable (time, hp_pixel). For consensus and shift time extraction.",
@@ -643,10 +663,6 @@ def _export_mma_cluster_labels(
             "format": "healpix",
             "nside": nside,
         }
-        if _attrs.CLUSTER_ID_SIGNS in clusters.attrs:
-            cluster_attrs[_attrs.CLUSTER_ID_SIGNS] = clusters.attrs[
-                _attrs.CLUSTER_ID_SIGNS
-            ]
         if _attrs.CLUSTER_IDS in clusters.attrs:
             cluster_attrs[_attrs.CLUSTER_IDS] = clusters.attrs[_attrs.CLUSTER_IDS]
 
@@ -655,6 +671,18 @@ def _export_mma_cluster_labels(
                 (time_dim, "hp_pixel"),
                 cluster_healpix,
                 cluster_attrs,
+            ),
+            "cluster_sign": (
+                (time_dim, "hp_pixel"),
+                cluster_sign_healpix,
+                {
+                    "description": "Per-voxel shift sign (+1/-1) aligned with cluster labels",
+                    "source_variable": source_variable,
+                    "format": "healpix",
+                    "nside": nside,
+                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER_SIGN,
+                    _attrs.CLUSTER_LABELS_VAR: "cluster",
+                },
             ),
         }
         our_dims = {time_dim, *spatial_dims}
@@ -709,10 +737,6 @@ def _export_mma_cluster_labels(
             "description": "Cluster variable in original dims for shift time extraction",
             "source_variable": source_variable,
         }
-        if _attrs.CLUSTER_ID_SIGNS in clusters.attrs:
-            cluster_attrs[_attrs.CLUSTER_ID_SIGNS] = clusters.attrs[
-                _attrs.CLUSTER_ID_SIGNS
-            ]
         if _attrs.CLUSTER_IDS in clusters.attrs:
             cluster_attrs[_attrs.CLUSTER_IDS] = clusters.attrs[_attrs.CLUSTER_IDS]
         native_vars = {
@@ -722,6 +746,17 @@ def _export_mma_cluster_labels(
                 cluster_attrs,
             ),
         }
+        if cluster_sign is not None:
+            native_vars["cluster_sign"] = (
+                cluster_sign.dims,
+                cluster_sign.values.astype(np.float32),
+                {
+                    "description": "Per-voxel shift sign (+1/-1) aligned with cluster labels",
+                    "source_variable": source_variable,
+                    _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER_SIGN,
+                    _attrs.CLUSTER_LABELS_VAR: "cluster",
+                },
+            )
         out = xr.Dataset(
             native_vars,
             coords=all_coords,

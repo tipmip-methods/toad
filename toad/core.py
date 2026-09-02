@@ -674,8 +674,10 @@ class TOAD:
         _derived = (
             _attrs.TYPE_SHIFT,
             _attrs.TYPE_CLUSTER,
+            _attrs.TYPE_CLUSTER_SIGN,
             _attrs.TYPE_CONSENSUS_CLUSTER,
             _attrs.TYPE_CONSENSUS_RATE,
+            _attrs.TYPE_CONSENSUS_SIGN,
         )
         return [
             str(x)
@@ -758,6 +760,11 @@ class TOAD:
     def consensus_rate_var_name(consensus_var: str) -> str:
         """Companion variable name for member-support fractions (``{consensus_var}_rate``)."""
         return f"{consensus_var}{_attrs.CONSENSUS_RATE_SUFFIX}"
+
+    @staticmethod
+    def consensus_sign_var_name(consensus_var: str) -> str:
+        """Companion sign grid name for a consensus labels variable."""
+        return f"{consensus_var}{_attrs.CONSENSUS_SIGN_SUFFIX}"
 
     def _resolve_consensus_rate_var(self, consensus_var: str) -> str:
         """Return the rate companion variable for a consensus labels variable name."""
@@ -926,9 +933,18 @@ class TOAD:
         Remove all cluster variables from the dataset.
 
         This method drops all variables identified as cluster variables from the
-        underlying data object.
+        underlying data object, including companion cluster sign grids.
         """
-        self.data = self.data.drop_vars(self.cluster_vars)
+        from toad.postprocessing.member_support_consensus import (
+            sign_var_for_cluster_var,
+        )
+
+        to_drop = list(self.cluster_vars)
+        for cvar in self.cluster_vars:
+            sign_var = sign_var_for_cluster_var(cvar)
+            if sign_var in self.data:
+                to_drop.append(sign_var)
+        self.data = self.data.drop_vars(list(dict.fromkeys(to_drop)))
 
     def drop_shifts(self):
         """
@@ -943,14 +959,17 @@ class TOAD:
         """
         Remove all consensus outputs from the dataset.
 
-        Drops every variable with ``variable_type`` consensus label or consensus
-        rate (labels and their ``*_rate`` companions).
+        Drops every variable with ``variable_type`` consensus label, rate, or sign.
         """
         to_drop = [
             str(x)
             for x in self.data.data_vars
             if self.data[x].attrs.get(_attrs.VARIABLE_TYPE)
-            in (_attrs.TYPE_CONSENSUS_CLUSTER, _attrs.TYPE_CONSENSUS_RATE)
+            in (
+                _attrs.TYPE_CONSENSUS_CLUSTER,
+                _attrs.TYPE_CONSENSUS_RATE,
+                _attrs.TYPE_CONSENSUS_SIGN,
+            )
         ]
         if to_drop:
             self.data = self.data.drop_vars(to_drop)
@@ -1312,6 +1331,12 @@ class TOAD:
         """Check if a variable is a shift variable."""
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_SHIFT
 
+    def _is_cluster_sign_variable(self, var: str) -> bool:
+        """Check if a variable is a cluster sign companion grid."""
+        return (
+            self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER_SIGN
+        )
+
     def _is_cluster_variable(self, var: str) -> bool:
         """Check if a variable is a cluster variable."""
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) == _attrs.TYPE_CLUSTER
@@ -1334,8 +1359,10 @@ class TOAD:
         return self.data[var].attrs.get(_attrs.VARIABLE_TYPE) not in [
             _attrs.TYPE_SHIFT,
             _attrs.TYPE_CLUSTER,
+            _attrs.TYPE_CLUSTER_SIGN,
             _attrs.TYPE_CONSENSUS_CLUSTER,
             _attrs.TYPE_CONSENSUS_RATE,
+            _attrs.TYPE_CONSENSUS_SIGN,
         ]
 
     def _aggregate_spatial(

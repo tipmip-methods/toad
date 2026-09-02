@@ -69,15 +69,18 @@ class _Attrs:
     # Attribute values
     TYPE_SHIFT: str = "shift"
     TYPE_CLUSTER: str = "cluster"
+    TYPE_CLUSTER_SIGN: str = "cluster_sign"
     TYPE_CONSENSUS_CLUSTER: str = "consensus_cluster"
     TYPE_CONSENSUS_RATE: str = "consensus_rate"
+    TYPE_CONSENSUS_SIGN: str = "consensus_sign"
 
     # Consensus metadata
     CONSENSUS_LABELS_VAR: str = "consensus_labels_var"
+    CLUSTER_LABELS_VAR: str = "cluster_labels_var"
     CONSENSUS_RATE_SUFFIX: str = "_rate"
+    CONSENSUS_SIGN_SUFFIX: str = "_sign"
     N_MODELS: str = "n_models"
     CLUSTER_VARS: str = "cluster_vars"
-    CLUSTER_ID_SIGNS: str = "cluster_id_signs"
 
 
 _attrs = _Attrs()

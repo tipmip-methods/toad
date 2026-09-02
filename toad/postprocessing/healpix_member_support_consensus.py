@@ -16,12 +16,14 @@ from tqdm import tqdm
 
 from toad.clustering import sorted_cluster_labels
 from toad.healpix import build_ring1_spatial_edges
+from toad.postprocessing.aggregation import _filter_consensus_labels_min_size
 from toad.postprocessing.member_support_consensus import (
+    MemberSupport,
     build_sign_aware_consensus_labels,
-    cluster_signs_map_for_var,
+    cluster_signs_flat_for_var,
     has_sign_aware_inputs,
     min_consensus_members,
-    signs_flat_from_cluster_labels,
+    sorted_consensus_labels_by_area,
 )
 from toad.utils import _attrs
 
@@ -198,10 +200,14 @@ def _accumulate_member_support_healpix(
     spatial_tolerance: int,
     show_progress: bool,
     context: HealpixSpacetimeContext,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, bool]:
+) -> MemberSupport:
     n_st = context.T * context.npix
     native_union = np.zeros(n_st, dtype=bool)
     sign_aware = has_sign_aware_inputs(td, cluster_vars)
+    native_by_sign = {
+        1: np.zeros(n_st, dtype=bool),
+        -1: np.zeros(n_st, dtype=bool),
+    }
     votes_pos = np.zeros(n_st, dtype=np.int16)
     votes_neg = np.zeros(n_st, dtype=np.int16)
     votes_any = np.zeros(n_st, dtype=np.int16)
@@ -219,13 +225,15 @@ def _accumulate_member_support_healpix(
             continue
 
         if sign_aware:
-            sign_map = cluster_signs_map_for_var(td, cvar)
-            signs_flat = signs_flat_from_cluster_labels(orig_flat, sign_map)
+            signs_flat = cluster_signs_flat_for_var(td, cvar)
+            if signs_flat is None:
+                continue
             for sign_value, vote_arr in ((1.0, votes_pos), (-1.0, votes_neg)):
                 native_mask = valid & (signs_flat == sign_value)
                 if not np.any(native_mask):
                     continue
                 native_union |= native_mask
+                native_by_sign[int(sign_value)] |= native_mask
                 dilated = _dilate_healpix_support_mask(
                     native_mask.reshape(context.T, context.npix),
                     temporal_tolerance=temporal_tolerance,
@@ -246,8 +254,20 @@ def _accumulate_member_support_healpix(
             votes_any[dilated.reshape(-1)] += 1
 
     if sign_aware:
-        return native_union, votes_pos, votes_neg, True
-    return native_union, votes_any, None, False
+        return MemberSupport(
+            native_union=native_union,
+            votes_primary=votes_pos,
+            votes_secondary=votes_neg,
+            sign_aware=True,
+            native_pos=native_by_sign[1],
+            native_neg=native_by_sign[-1],
+        )
+    return MemberSupport(
+        native_union=native_union,
+        votes_primary=votes_any,
+        votes_secondary=None,
+        sign_aware=False,
+    )
 
 
 def _component_graph_edges_for_kept_voxels(
@@ -367,65 +387,35 @@ def _mark_no_shift_nan(
     rate = np.asarray(ds["rate"].data, dtype=np.float32).copy().reshape(-1)
     rate[~np.isfinite(new_lab.ravel())] = np.nan
     rate = rate.reshape(context.T, context.npix)
-    return xr.Dataset(
-        {
-            "clusters": xr.DataArray(
-                new_lab,
-                coords=da_c.coords,
-                dims=da_c.dims,
-                attrs=da_c.attrs,
-                name=da_c.name,
-            ),
-            "rate": xr.DataArray(
-                rate,
-                coords=ds["rate"].coords,
-                dims=ds["rate"].dims,
-                attrs=ds["rate"].attrs,
-                name=ds["rate"].name,
-            ),
-        }
-    )
-
-
-def _filter_min_cluster_area(
-    da_labels: xr.DataArray,
-    da_rate: xr.DataArray,
-    min_cluster_area: int,
-    *,
-    time_dim: str,
-) -> tuple[xr.DataArray, xr.DataArray]:
-    if min_cluster_area <= 0:
-        return da_labels, da_rate
-    lab = np.asarray(da_labels.data, dtype=np.float64)
-    time_axis = da_labels.dims.index(time_dim)
-    lab_ts = np.moveaxis(lab, time_axis, 0).reshape(lab.shape[time_axis], -1)
-    valid = np.isfinite(lab_ts) & (lab_ts >= 0)
-    if not np.any(valid):
-        return da_labels, da_rate
-    label_ids = lab_ts[valid].astype(np.int64, copy=False)
-    spatial_ids = np.broadcast_to(
-        np.arange(lab_ts.shape[1], dtype=np.int64).reshape(1, -1),
-        lab_ts.shape,
-    )[valid]
-    pairs = np.unique(np.column_stack((label_ids, spatial_ids)), axis=0)
-    unique_ids, areas = np.unique(pairs[:, 0], return_counts=True)
-    remove = unique_ids[areas < int(min_cluster_area)]
-    if remove.size == 0:
-        return da_labels, da_rate
-    flat = lab.ravel().copy()
-    fin = np.isfinite(flat)
-    flat[fin & np.isin(flat, remove.astype(np.float64))] = -1.0
-    flat = sorted_cluster_labels(flat)
-    return (
-        xr.DataArray(
-            flat.reshape(lab.shape),
-            coords=da_labels.coords,
-            dims=da_labels.dims,
-            attrs=da_labels.attrs,
-            name=da_labels.name,
+    out_vars: dict[str, xr.DataArray] = {
+        "clusters": xr.DataArray(
+            new_lab,
+            coords=da_c.coords,
+            dims=da_c.dims,
+            attrs=da_c.attrs,
+            name=da_c.name,
         ),
-        da_rate,
-    )
+        "rate": xr.DataArray(
+            rate,
+            coords=ds["rate"].coords,
+            dims=ds["rate"].dims,
+            attrs=ds["rate"].attrs,
+            name=ds["rate"].name,
+        ),
+    }
+    if "signs" in ds:
+        sign = np.asarray(ds["signs"].data, dtype=np.float32).copy().reshape(-1)
+        sign[~np.isfinite(new_lab.ravel())] = np.nan
+        sign = sign.reshape(context.T, context.npix)
+        da_s = ds["signs"]
+        out_vars["signs"] = xr.DataArray(
+            sign,
+            coords=da_s.coords,
+            dims=da_s.dims,
+            attrs=da_s.attrs,
+            name=da_s.name,
+        )
+    return xr.Dataset(out_vars)
 
 
 def _mark_healpix_votes_no_shift_nan(
@@ -548,7 +538,9 @@ def consensus_clusters_from_healpix_votes(
             temporal_tolerance=temporal_tolerance,
             spatial_tolerance=spatial_tolerance,
         )
-        labels_flat = sorted_cluster_labels(labels_flat)
+        labels_flat, _ = sorted_consensus_labels_by_area(
+            sorted_cluster_labels(labels_flat), n_space=context.npix
+        )
     else:
         labels_flat = np.full(n_st, -1, dtype=np.int64)
 
@@ -622,21 +614,19 @@ def _accumulate_healpix_votes_context(
         spatial_rows=spatial_rows,
         spatial_cols=spatial_cols,
     )
-    native_union, votes_primary, votes_secondary, sign_aware = (
-        _accumulate_member_support_healpix(
-            td,
-            cluster_vars=cluster_vars,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-            context=context,
-        )
+    support = _accumulate_member_support_healpix(
+        td,
+        cluster_vars=cluster_vars,
+        temporal_tolerance=temporal_tolerance,
+        spatial_tolerance=spatial_tolerance,
+        show_progress=show_progress,
+        context=context,
     )
-    if sign_aware and votes_secondary is not None:
-        member_vote_count = np.maximum(votes_primary, votes_secondary)
+    if support.sign_aware and support.votes_secondary is not None:
+        member_vote_count = np.maximum(support.votes_primary, support.votes_secondary)
     else:
-        member_vote_count = votes_primary
-    return native_union, member_vote_count, context
+        member_vote_count = support.votes_primary
+    return support.native_union, member_vote_count, context
 
 
 def run_healpix_member_support_consensus(
@@ -650,7 +640,7 @@ def run_healpix_member_support_consensus(
     k_neighbors: int = 8,
     min_cluster_area: int | None = 2,
     show_progress: bool = True,
-) -> tuple[xr.Dataset, dict[int, int]]:
+) -> xr.Dataset:
     """Run member-support consensus on HEALPix cluster label fields."""
     if temporal_tolerance < 0:
         raise ValueError(
@@ -692,20 +682,18 @@ def run_healpix_member_support_consensus(
         spatial_cols=spatial_cols,
     )
 
-    native_union, votes_primary, votes_secondary, sign_aware = (
-        _accumulate_member_support_healpix(
-            td,
-            cluster_vars=cluster_vars,
-            temporal_tolerance=temporal_tolerance,
-            spatial_tolerance=spatial_tolerance,
-            show_progress=show_progress,
-            context=context,
-        )
+    support = _accumulate_member_support_healpix(
+        td,
+        cluster_vars=cluster_vars,
+        temporal_tolerance=temporal_tolerance,
+        spatial_tolerance=spatial_tolerance,
+        show_progress=show_progress,
+        context=context,
     )
 
     n_members = len(cluster_vars)
     n_st = context.T * context.npix
-    if not np.any(native_union):
+    if not np.any(support.native_union):
         da_clusters = xr.DataArray(
             np.full((T, npix), -1, dtype=np.int32),
             coords={time_dim: context.time_coord, pixel_dim: np.arange(npix)},
@@ -718,12 +706,18 @@ def run_healpix_member_support_consensus(
             dims=[time_dim, pixel_dim],
             name="rate",
         )
+        da_signs = xr.DataArray(
+            np.full((T, npix), np.nan, dtype=np.float32),
+            coords={time_dim: context.time_coord, pixel_dim: np.arange(npix)},
+            dims=[time_dim, pixel_dim],
+            name="signs",
+        )
         return _mark_no_shift_nan(
-            xr.Dataset({"clusters": da_clusters, "rate": da_rate}),
+            xr.Dataset({"clusters": da_clusters, "rate": da_rate, "signs": da_signs}),
             td,
             cluster_vars,
             context,
-        ), {}
+        )
 
     def label_fn(keep: np.ndarray) -> np.ndarray:
         return _label_retained_voxels(
@@ -733,20 +727,23 @@ def run_healpix_member_support_consensus(
             spatial_tolerance=spatial_tolerance,
         )
 
-    labels_flat, rate_flat, sign_by_id = build_sign_aware_consensus_labels(
-        native_union=native_union,
-        votes_pos=votes_primary,
+    labels_flat, rate_flat, signs_flat = build_sign_aware_consensus_labels(
+        native_union=support.native_union,
+        votes_pos=support.votes_primary,
         votes_neg=(
-            votes_secondary
-            if votes_secondary is not None
+            support.votes_secondary
+            if support.votes_secondary is not None
             else np.zeros(n_st, dtype=np.int16)
         ),
         n_members=n_members,
         min_consensus=min_consensus,
         n_st=n_st,
+        n_space=context.npix,
         label_fn=label_fn,
-        sign_aware=sign_aware,
-        votes_any=votes_primary if not sign_aware else None,
+        sign_aware=support.sign_aware,
+        votes_any=support.votes_primary if not support.sign_aware else None,
+        native_pos=support.native_pos,
+        native_neg=support.native_neg,
     )
 
     da_clusters = xr.DataArray(
@@ -761,18 +758,25 @@ def run_healpix_member_support_consensus(
         dims=[time_dim, pixel_dim],
         name="rate",
     )
+    da_signs = xr.DataArray(
+        np.asarray(signs_flat, dtype=np.float32).reshape(T, npix),
+        coords={time_dim: context.time_coord, pixel_dim: np.arange(npix)},
+        dims=[time_dim, pixel_dim],
+        name="signs",
+    )
     ds = _mark_no_shift_nan(
-        xr.Dataset({"clusters": da_clusters, "rate": da_rate}),
+        xr.Dataset({"clusters": da_clusters, "rate": da_rate, "signs": da_signs}),
         td,
         cluster_vars,
         context,
     )
-    if min_cluster_area is not None:
-        da_c, da_r = _filter_min_cluster_area(
+    if min_cluster_area is not None and min_cluster_area > 0:
+        da_c, da_r, da_s = _filter_consensus_labels_min_size(
             ds["clusters"],
             ds["rate"],
             min_cluster_area,
             time_dim=time_dim,
+            da_sign=ds["signs"],
         )
-        ds = xr.Dataset({"clusters": da_c, "rate": da_r})
-    return ds, sign_by_id
+        ds = xr.Dataset({"clusters": da_c, "rate": da_r, "signs": da_s})
+    return ds

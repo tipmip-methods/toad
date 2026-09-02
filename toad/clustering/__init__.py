@@ -23,7 +23,7 @@ visualized using TOAD's plotting utilities.
 import logging
 from collections.abc import Callable
 from time import time as time_now
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import optuna
@@ -486,28 +486,28 @@ def compute_clusters(
         )
 
     # Save details as attributes (single update block)
-    clusters.attrs.update(
-        {
-            _attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
-            _attrs.SHIFT_THRESHOLD: shift_threshold,
-            _attrs.SHIFT_SELECTION: shift_selection,
-            _attrs.SHIFT_DIRECTION: shift_direction,
-            _attrs.MIN_EVENT_MAGNITUDE: min_event_magnitude,
-            _attrs.MIN_EVENT_MAGNITUDE_WINDOW: min_event_magnitude_window,
-            _attrs.TIME_WEIGHT: time_weight,
-            _attrs.N_DATA_POINTS: n_pts,
-            _attrs.METHOD_NAME: method.__class__.__name__,
-            _attrs.RUNTIME_PREPROCESSING: float(preprocessing_time),
-            _attrs.RUNTIME_CLUSTERING: float(clustering_time),
-            _attrs.RUNTIME_TOTAL: float(preprocessing_time + clustering_time),
-            _attrs.TOAD_VERSION: __version__,
-            _attrs.BASE_VARIABLE: base_variable,
-            _attrs.SHIFTS_VARIABLE: shifts_variable,
-            _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER,
-            **method_params,
-            **regridder_params,
-        }
-    )
+    cluster_attrs: dict[str, Any] = {
+        _attrs.CLUSTER_IDS: np.unique(cluster_labels).astype(int),
+        _attrs.SHIFT_THRESHOLD: shift_threshold,
+        _attrs.SHIFT_SELECTION: shift_selection,
+        _attrs.SHIFT_DIRECTION: shift_direction,
+        _attrs.TIME_WEIGHT: time_weight,
+        _attrs.N_DATA_POINTS: n_pts,
+        _attrs.METHOD_NAME: method.__class__.__name__,
+        _attrs.RUNTIME_PREPROCESSING: float(preprocessing_time),
+        _attrs.RUNTIME_CLUSTERING: float(clustering_time),
+        _attrs.RUNTIME_TOTAL: float(preprocessing_time + clustering_time),
+        _attrs.TOAD_VERSION: __version__,
+        _attrs.BASE_VARIABLE: base_variable,
+        _attrs.SHIFTS_VARIABLE: shifts_variable,
+        _attrs.VARIABLE_TYPE: _attrs.TYPE_CLUSTER,
+        **method_params,
+        **regridder_params,
+    }
+    if min_event_magnitude is not None:
+        cluster_attrs[_attrs.MIN_EVENT_MAGNITUDE] = min_event_magnitude
+        cluster_attrs[_attrs.MIN_EVENT_MAGNITUDE_WINDOW] = min_event_magnitude_window
+    clusters.attrs.update(cluster_attrs)
     if cluster_sign is not None:
         cluster_sign.attrs.update(
             {

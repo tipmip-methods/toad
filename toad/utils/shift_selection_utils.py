@@ -110,6 +110,99 @@ def _peaks_local_for_ts_filtered(
 
 
 @njit(cache=True)
+def _episode_magnitudes_for_ts(
+    ts: np.ndarray,
+    base: np.ndarray,
+    thr: float,
+    pre_window: int,
+    post_window: int,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """Collect |Δbase| for every local dts episode with |dts| > ``thr``."""
+    n = ts.size
+    mags = np.empty(n, dtype=np.float64)
+    k = 0
+    i = 0
+
+    while i < n:
+        while i < n:
+            v = ts[i]
+            if not np.isnan(v) and (abs(v) > thr):
+                break
+            i += 1
+        if i >= n:
+            break
+
+        start = i
+        max_abs = abs(ts[i])
+        i += 1
+
+        while i < n:
+            v = ts[i]
+            if np.isnan(v):
+                break
+            av = abs(v)
+            if not (av > thr):
+                break
+            if av > max_abs + eps:
+                max_abs = av
+            i += 1
+
+        end = i - 1
+        if max_abs > thr:
+            mag = _episode_magnitude(base, start, end, pre_window, post_window)
+            if not np.isnan(mag):
+                mags[k] = mag
+                k += 1
+
+    return mags[:k]
+
+
+def collect_episode_magnitudes(
+    shifts: xr.DataArray,
+    base: xr.DataArray,
+    time_dim: str,
+    shift_threshold: float,
+    *,
+    window: int = 3,
+) -> np.ndarray:
+    """Flat array of |Δbase| for every local dts episode above ``shift_threshold``.
+
+    Uses the same pre/post window means as ``min_event_magnitude`` filtering in
+    clustering, but does not apply a magnitude cutoff.
+    """
+    if window < 1:
+        raise ValueError("window must be at least 1")
+
+    space_dims = tuple(d for d in shifts.dims if d != time_dim)
+    da_t_first = shifts.transpose(time_dim, *space_dims)
+    base_t_first = base.transpose(time_dim, *space_dims)
+
+    vals = np.asarray(da_t_first.data)
+    base_vals = np.asarray(base_t_first.data)
+    T = vals.shape[0]
+    space_shape = vals.shape[1:]
+    P = int(np.prod(space_shape)) if space_shape else 1
+
+    dts_TP = vals.reshape(T, P)
+    base_TP = base_vals.reshape(T, P)
+    thr = float(shift_threshold)
+    pre_w = int(window)
+    post_w = int(window)
+
+    chunks: list[np.ndarray] = []
+    for p in range(P):
+        mags = _episode_magnitudes_for_ts(
+            dts_TP[:, p], base_TP[:, p], thr, pre_w, post_w
+        )
+        if mags.size:
+            chunks.append(mags)
+    if not chunks:
+        return np.array([], dtype=np.float64)
+    return np.concatenate(chunks)
+
+
+@njit(cache=True)
 def _peak_global_for_ts_filtered(
     ts: np.ndarray,
     base: np.ndarray,

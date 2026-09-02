@@ -397,3 +397,20 @@ def test_member_id_from_cluster_var():
         )
         == "(2) foo_r1_cluster"
     )
+
+
+def test_plotting_with_scalar_cluster_ids_attr(td_with_clusters):
+    """NetCDF round-trip can store a single cluster id as a scalar attr."""
+    from toad.utils import _attrs
+
+    td = td_with_clusters
+    cluster_var = td.cluster_vars[0]
+    td.data[cluster_var].attrs[_attrs.CLUSTER_IDS] = np.int64(0)
+
+    ids = td.get_cluster_ids(cluster_var, exclude_noise=False)
+    assert ids.shape == (1,)
+    assert int(ids[0]) == 0
+
+    fig, _ = td.plot.overview(cluster_ids=range(3), mode="aggregated")
+    assert fig is not None
+    plt.close(fig)

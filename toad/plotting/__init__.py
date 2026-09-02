@@ -620,8 +620,6 @@ class Plotter:
             )
 
         var = self.td._get_base_var_if_none(var)
-        # get_clusters raises ValueError if no clusters found, so no need to check for None
-        clusters_obj = self.td.get_clusters(var)
 
         # Check for incompatible parameters
         if subplots and ax is not None:
@@ -630,7 +628,8 @@ class Plotter:
             )
 
         # Plot all clusters (except -1) if no clusters passed
-        all_cluster_ids = clusters_obj.cluster_ids
+        all_cluster_ids = self.td.get_cluster_ids(var, exclude_noise=False)
+        existing_ids = set(all_cluster_ids.tolist())
         cluster_ids = (
             cluster_ids
             if cluster_ids is not None
@@ -638,19 +637,19 @@ class Plotter:
         )
 
         # Check that we have a valid clusters value
-        if not isinstance(cluster_ids, (int, list, np.ndarray, range)):
+        if not isinstance(cluster_ids, (int, np.integer, list, np.ndarray, range)):
             raise TypeError("clusters must be int, list, np.ndarray, range, or None")
 
         # Convert single cluster_id to list for consistent handling
-        if isinstance(cluster_ids, int):
+        if isinstance(cluster_ids, (int, np.integer)):
             single_plot = True
-            cluster_ids = [cluster_ids]
+            cluster_ids = [int(cluster_ids)]
         else:
             single_plot = False
             cluster_ids = list(cluster_ids)  # Convert to list for consistent indexing
 
         # Filter out cluster IDs that don't exist
-        valid_cluster_ids = [id for id in cluster_ids if id in all_cluster_ids]
+        valid_cluster_ids = [int(id) for id in cluster_ids if int(id) in existing_ids]
         if len(valid_cluster_ids) == 0:
             # raise ValueError(f"No valid clusters found in clusters for variable {var}")
             logger.warning(f"No valid clusters found in clusters for variable {var}")
@@ -987,7 +986,7 @@ class Plotter:
             v = np.asarray(da.values, dtype=np.float64)
             all_cluster_ids = np.unique(v[np.isfinite(v) & (v >= 0)]).astype(np.int64)
         else:
-            all_cluster_ids = np.asarray(raw_ids, dtype=np.int64)
+            all_cluster_ids = np.atleast_1d(np.asarray(raw_ids, dtype=np.int64))
             all_cluster_ids = all_cluster_ids[all_cluster_ids >= 0]
 
         cluster_ids = (
@@ -3472,9 +3471,9 @@ class Plotter:
                 return [], False, plot_all_data
 
             # Convert single cluster_id to list for consistent handling
-            if isinstance(cluster_ids, int):
+            if isinstance(cluster_ids, (int, np.integer)):
                 single_plot = True
-                cluster_ids_list = [cluster_ids]
+                cluster_ids_list = [int(cluster_ids)]
             else:
                 single_plot = False
                 cluster_ids_list = list(cluster_ids)
@@ -4394,12 +4393,11 @@ def _filter_by_existing_clusters(
         List of cluster IDs that exist in the dataset (excluding noise cluster -1).
     """
 
-    if isinstance(cluster_ids, int):
-        cluster_ids = [cluster_ids]
+    if isinstance(cluster_ids, (int, np.integer)):
+        cluster_ids = [int(cluster_ids)]
 
-    return [
-        id for id in cluster_ids if id in td.get_cluster_ids(var, exclude_noise=False)
-    ]
+    existing = set(np.atleast_1d(td.get_cluster_ids(var, exclude_noise=False)).tolist())
+    return [int(id) for id in cluster_ids if int(id) in existing]
 
 
 # Vertical mini-boxplot on consensus violins: thick IQR bar, median dot.

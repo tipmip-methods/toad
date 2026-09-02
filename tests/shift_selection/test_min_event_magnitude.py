@@ -101,3 +101,65 @@ def test_compute_clusters_respects_min_event_magnitude():
     assert np.isfinite(clusters[:, 1, 1]).any()
     assert td.data["test_dts_cluster"].attrs[_attrs.MIN_EVENT_MAGNITUDE] == 25.0
     assert td.data["test_dts_cluster"].attrs[_attrs.N_DATA_POINTS] == 1
+
+
+def test_compute_clusters_save_without_min_event_magnitude(tmp_path):
+    time = np.arange(8, dtype=float)
+    lat = np.array([0.0, 10.0])
+    lon = np.array([0.0, 10.0])
+
+    var = np.full((8, 2, 2), 100.0)
+    var[4:, 0, 0] = 110.0
+
+    dts = np.zeros((8, 2, 2), dtype=float)
+    dts[3:5, 0, 0] = 1.0
+
+    ds = xr.Dataset(
+        {
+            "test": (("time", "lat", "lon"), var),
+            "test_dts": (("time", "lat", "lon"), dts),
+        },
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    ds["test_dts"].attrs[_attrs.BASE_VARIABLE] = "test"
+    ds["test_dts"].attrs[_attrs.VARIABLE_TYPE] = _attrs.TYPE_SHIFT
+
+    td = TOAD(ds)
+    td.data = compute_clusters(
+        td,
+        var="test_dts",
+        method=DBSCAN(eps=500.0, min_samples=1),
+        shift_threshold=0.5,
+        shift_selection="local",
+        disable_regridder=True,
+        overwrite=True,
+    )
+    assert _attrs.MIN_EVENT_MAGNITUDE not in td.data["test_dts_cluster"].attrs
+    td.save(path=str(tmp_path / "clusters.nc"), overwrite=True)
+
+
+def test_collect_episode_magnitudes_local_episodes():
+    time = np.arange(10, dtype=float)
+    var = np.array(
+        [100.0, 100.0, 100.0, 100.0, 100.0, 130.0, 130.0, 130.0, 130.0, 130.0]
+    )
+    dts = np.array([0.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.0, 0.0, 0.0, 0.0])
+
+    ds = xr.Dataset(
+        {
+            "test": (("time",), var),
+            "test_dts": (("time",), dts),
+        },
+        coords={"time": time},
+    )
+    from toad.utils.shift_selection_utils import collect_episode_magnitudes
+
+    mags = collect_episode_magnitudes(
+        ds["test_dts"],
+        ds["test"],
+        "time",
+        shift_threshold=0.5,
+        window=3,
+    )
+    assert mags.size == 1
+    assert mags[0] == pytest.approx(30.0)

@@ -1202,11 +1202,11 @@ class TOAD:
         Returns:
             List of cluster ids.
         """
-        cluster_ids = self.get_clusters(var).cluster_ids
+        raw = self.get_clusters(var).attrs.get(_attrs.CLUSTER_IDS, [])
+        cluster_ids = np.atleast_1d(np.asarray(raw, dtype=np.int64))
         if exclude_noise:
-            return np.array([id for id in cluster_ids if id != -1])
-        else:
-            return cluster_ids
+            cluster_ids = cluster_ids[cluster_ids != -1]
+        return cluster_ids
 
     def get_cluster_mask(
         self,
@@ -1229,12 +1229,17 @@ class TOAD:
 
         clusters = self.get_clusters(var)
 
-        all_cluster_ids = clusters.cluster_ids
+        all_cluster_ids = np.atleast_1d(
+            np.asarray(clusters.attrs.get(_attrs.CLUSTER_IDS, []), dtype=np.int64)
+        )
         if cluster_id is None:
             cluster_id = all_cluster_ids
         else:
+            existing = set(all_cluster_ids.tolist())
             valid_cluster_ids = [
-                id for id in np.array(cluster_id).flatten() if id in all_cluster_ids
+                int(id)
+                for id in np.atleast_1d(cluster_id).flatten()
+                if int(id) in existing
             ]
             if len(valid_cluster_ids) == 0:
                 raise ValueError(
